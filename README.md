@@ -2,7 +2,7 @@
 
 **Self-Improving RAG & Lifelong Memory Workflow Engine**
 
-MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **32 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience.
+MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **38 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience.
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ MemFlow's core innovation is **composable sub-workflows**: complex capabilities 
 ```
 WorkflowEngine ← JSON config
   ├── WorkflowContext (DI: MemgraphClient, StateStore, LLM, Embeddings, Logger)
-  ├── ModuleRegistry (50 modules: 7 composite wrappers + 32 atomic + 3 standalone + 2 providers + 1 SubWorkflow + 5 monolithic compat)
+  ├── ModuleRegistry (56 modules: 7 composite wrappers + 38 atomic + 3 standalone + 2 providers + 2 core + 4 monolithic compat)
   ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
   └── Stages → Module.process() → shared WorkflowData bus
         └── SubWorkflow stages → nested WorkflowEngine (shared context)
@@ -34,19 +34,20 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## Module Inventory
 
-### Atomic Modules (32)
+### Atomic Modules (38)
 
 | Category | Modules | Paper |
 |---|---|---|
 | **Memory** | `SlidingWindow`, `DensityGate`, `FactExtractor`, `SemanticSynthesis`, `StructuredIndex` | SimpleMem |
 | **Memory** | `IntentAwarePlanner` | SimpleMem §2.3 |
-| **Memory** | `PreCompression`, `SensoryBuffer`, `STMBuffer` | LightMem §3.1–3.2 |
+| **Memory** | `PreCompression`, `SensoryBuffer`, `STMBuffer`, `AttentionScore` | LightMem §3.1–3.2 |
 | **Memory** | `NoveltyGate`, `TopicSegmenter`, `SleepConsolidation` | LightMem |
 | **Memory** | `DualPerspective`, `CrossEventConsolidation`, `GraphPersist` | StructMem |
 | **Agents** | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator`, `FinalSynthesizer` | HERA |
-| **Retrieval** | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker`, `SymbolicSearch` | LightRAG / SimpleMem |
+| **Retrieval** | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker`, `SymbolicSearch`, `SetUnionMerger`, `DualLevelRouter` | LightRAG / SimpleMem / OMNI-SIMPLEMEM |
+| **Chunking** | `ParentChildChunker` | PriHA |
 | **Graph** | `ChunkIngestor`, `EntityExtractor`, `EntityDeduplicator`, `EntityProfiler`, `CommunityDetector` | LightRAG |
-| **Generation** | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector` | PriHA |
+| **Generation** | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector`, `WebSearchAgent` (stub) | PriHA |
 
 ### Composite Modules (7 delegation wrappers)
 

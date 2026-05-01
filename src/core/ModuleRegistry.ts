@@ -22,12 +22,16 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
   // Core
   SubWorkflow: () =>
     import("../modules/core/SubWorkflowModule.js").then((m) => m.SubWorkflowModule as unknown as ModuleFactory),
+  AutonomousLoop: () =>
+    import("../modules/core/AutonomousLoopModule.js").then((m) => m.AutonomousLoopModule as unknown as ModuleFactory),
 
   // Chunking
   S2Chunker: () =>
     import("../modules/chunking/S2ChunkerModule.js").then((m) => m.S2ChunkerModule as unknown as ModuleFactory),
   MarkdownSpatialParser: () =>
     import("../modules/chunking/MarkdownSpatialParserModule.js").then((m) => m.MarkdownSpatialParserModule as unknown as ModuleFactory),
+  ParentChildChunker: () =>
+    import("../modules/chunking/ParentChildChunkerModule.js").then((m) => m.ParentChildChunkerModule as unknown as ModuleFactory),
 
   // Memory — monolithic (backward compat)
   SimpleMem: () =>
@@ -68,6 +72,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/memory/STMBufferModule.js").then((m) => m.STMBufferModule as unknown as ModuleFactory),
   IntentAwarePlanner: () =>
     import("../modules/memory/IntentAwarePlannerModule.js").then((m) => m.IntentAwarePlannerModule as unknown as ModuleFactory),
+  AttentionScore: () =>
+    import("../modules/memory/AttentionScoreModule.js").then((m) => m.AttentionScoreModule as unknown as ModuleFactory),
 
   // Retrieval — monolithic (backward compat)
   LightRAGRetriever: () =>
@@ -88,6 +94,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/retrieval/SymbolicSearchModule.js").then((m) => m.SymbolicSearchModule as unknown as ModuleFactory),
   SetUnionMerger: () =>
     import("../modules/retrieval/SetUnionMergerModule.js").then((m) => m.SetUnionMergerModule as unknown as ModuleFactory),
+  DualLevelRouter: () =>
+    import("../modules/retrieval/DualLevelRouterModule.js").then((m) => m.DualLevelRouterModule as unknown as ModuleFactory),
 
   // Query
   QueryTranslator: () =>

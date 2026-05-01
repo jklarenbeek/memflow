@@ -8,7 +8,11 @@ import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js"
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
 
-const ConfigSchema = z.object({ useLLM: z.boolean().default(true) });
+const ConfigSchema = z.object({
+  useLLM: z.boolean().default(true),
+  /** Query existing Memgraph entities for incremental dedup (LightRAG no-rebuild) */
+  checkExistingGraph: z.boolean().default(true),
+});
 type Config = z.infer<typeof ConfigSchema>;
 
 type Entity = { name: string; type: string; description: string };
@@ -22,9 +26,34 @@ export class EntityDeduplicatorModule implements BaseModule<Config> {
   async process(input: ModuleInput<Config>, context: unknown): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
     const entities = (input.data.entities ?? []) as Entity[];
-    if (entities.length <= 1) return { data: { entities }, metrics: { deduplicated: 0 } };
+    if (entities.length <= 1 && !this.config.checkExistingGraph) {
+      return { data: { entities }, metrics: { deduplicated: 0 } };
+    }
 
-    const uniqueNames = [...new Set(entities.map((e) => e.name))];
+    // Fetch existing entities from Memgraph for incremental dedup
+    let existingEntities: Entity[] = [];
+    if (this.config.checkExistingGraph) {
+      try {
+        const candidateNames = entities.map((e) => e.name.toLowerCase());
+        const existing = await ctx.memgraph.query<{ name: string; type: string; description: string }>(
+          `MATCH (e:Entity) WHERE toLower(e.name) IN $candidateNames
+           RETURN e.name AS name, e.type AS type, e.description AS description`,
+          { candidateNames },
+        );
+        existingEntities = existing.map((e) => ({
+          name: e.name,
+          type: e.type ?? "unknown",
+          description: e.description ?? "",
+        }));
+        ctx.logger.debug(`EntityDeduplicator: found ${existingEntities.length} existing entities in graph`);
+      } catch {
+        ctx.logger.debug("EntityDeduplicator: Memgraph lookup failed, proceeding with batch-only dedup");
+      }
+    }
+
+    // Combine new + existing for unified deduplication
+    const allEntities = [...existingEntities, ...entities];
+    const uniqueNames = [...new Set(allEntities.map((e) => e.name))];
     if (uniqueNames.length <= 1) return { data: { entities }, metrics: { deduplicated: 0 } };
 
     let result: Entity[];
@@ -43,15 +72,15 @@ export class EntityDeduplicatorModule implements BaseModule<Config> {
 
         const seen = new Set<string>();
         result = [];
-        for (const entity of entities) {
+        for (const entity of allEntities) {
           const canonical = canonicalMap.get(entity.name) ?? entity.name;
           if (!seen.has(canonical)) { seen.add(canonical); result.push({ ...entity, name: canonical }); }
         }
       } catch {
-        result = this.simpleDedupe(entities);
+        result = this.simpleDedupe(allEntities);
       }
     } else {
-      result = this.simpleDedupe(entities);
+      result = this.simpleDedupe(allEntities);
     }
 
     ctx.logger.info(`EntityDeduplicator: ${entities.length} → ${result.length}`);

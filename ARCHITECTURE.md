@@ -32,7 +32,7 @@ graph TD
     CTX --> EMB["Embedding Provider"]
     CTX --> LOG["Winston Logger"]
     
-    WE --> MR["ModuleRegistry (50 modules)"]
+    WE --> MR["ModuleRegistry (56 modules)"]
     
     MR --> SUB["SubWorkflow"]
     
@@ -98,7 +98,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, and runtime plugin registration. Registers **50 built-in modules**: 7 composite wrappers (thin delegation layers), 32 atomic modules, 3 standalone modules, 2 provider modules, 1 SubWorkflow engine module, and 5 monolithic compatibility wrappers.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, and runtime plugin registration. Registers **56 built-in modules**: 7 composite wrappers (thin delegation layers), 38 atomic modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), and 4 monolithic compatibility wrappers.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -355,30 +355,31 @@ src/
   core/
     WorkflowEngine.ts         — DAG executor with parallel, retry, learning loops, sub-workflow support
     WorkflowContext.ts         — DI container (Memgraph, LLM, Embeddings, StateStore, Logger)
-    ModuleRegistry.ts          — Lazy-loading singleton with 50 registered modules
+    ModuleRegistry.ts          — Lazy-loading singleton with 56 registered modules
     StateStore.ts              — Memgraph-backed persistent state with LRU cache
     types.ts                   — All interfaces (WorkflowData, BaseModule, etc.)
     errors.ts                  — 7 typed error classes
   modules/
-    core/                      SubWorkflowModule
-    chunking/                  S2ChunkerModule, MarkdownSpatialParserModule
+    core/                      SubWorkflowModule, AutonomousLoopModule
+    chunking/                  S2ChunkerModule, MarkdownSpatialParserModule, ParentChildChunkerModule
     memory/                    SimpleMemModule, LightMemModule, StructMemModule,
                                SlidingWindowModule, DensityGateModule, FactExtractorModule,
                                SemanticSynthesisModule, NoveltyGateModule, TopicSegmenterModule,
                                SleepConsolidationModule, DualPerspectiveModule,
                                CrossEventConsolidationModule, GraphPersistModule,
                                StructuredIndexModule, PreCompressionModule, SensoryBufferModule,
-                               STMBufferModule, IntentAwarePlannerModule
+                               STMBufferModule, IntentAwarePlannerModule, AttentionScoreModule
     agents/                    HERAOrchestratorModule, PlanGeneratorModule, TrajectoryExecutorModule,
                                RewardComputerModule, ExperienceReflectorModule,
-                               RoPEEvolverModule, TopologyMutatorModule
+                               RoPEEvolverModule, TopologyMutatorModule, FinalSynthesizerModule
     retrieval/                 LightRAGRetrieverModule, IntentClassifierModule, VectorSearchModule,
                                GraphSearchModule, KeywordSearchModule, ResultRankerModule,
-                               SymbolicSearchModule
+                               SymbolicSearchModule, SetUnionMergerModule, DualLevelRouterModule
     graph/                     MemgraphGraphModule, ChunkIngestorModule, EntityExtractorModule,
                                EntityDeduplicatorModule, EntityProfilerModule, CommunityDetectorModule
     generation/                PriHAFusionModule, QueryClarifierModule, AnswerGeneratorModule,
-                               HallucinationValidatorModule, CitationInjectorModule
+                               HallucinationValidatorModule, CitationInjectorModule,
+                               WebSearchAgentModule (stub)
     query/                     QueryTranslatorModule
     providers/                 EmbedderModule, LLMProviderModule
   workflows/
