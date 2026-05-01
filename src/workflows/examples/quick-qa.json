@@ -1,0 +1,57 @@
+{
+  "name": "quick-qa",
+  "version": "1.0",
+  "description": "Minimal QA pipeline: query → embed → hybrid retrieval → PriHA fusion. Fastest path from question to answer with hallucination validation. Ideal for LangChain.js developers who want a simple RAG setup.",
+  "entry": "translate",
+  "stages": [
+    {
+      "id": "translate",
+      "module": "QueryTranslator",
+      "config": {
+        "techniques": ["hyde"],
+        "useLLM": true
+      },
+      "next": "embed"
+    },
+    {
+      "id": "embed",
+      "module": "Embedder",
+      "config": {
+        "provider": "ollama",
+        "model": "nomic-embed-text"
+      },
+      "next": "retrieve"
+    },
+    {
+      "id": "retrieve",
+      "module": "LightRAGRetriever",
+      "config": {
+        "topK": 5,
+        "useGraph": true,
+        "useVector": true,
+        "usePyramid": false,
+        "intentAware": false,
+        "tokenBudget": 3000
+      },
+      "next": "fuse"
+    },
+    {
+      "id": "fuse",
+      "module": "PriHAFusion",
+      "config": {
+        "enableTriage": false,
+        "enableDualSource": false,
+        "enableValidation": true,
+        "citationStyle": "inline",
+        "maxContextTokens": 4000
+      }
+    }
+  ],
+  "globalConfig": {
+    "llmProvider": "ollama",
+    "llmModel": "llama3.2",
+    "embeddingProvider": "ollama",
+    "embeddingModel": "nomic-embed-text",
+    "logLevel": "info"
+  }
+}

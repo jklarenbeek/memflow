@@ -1,0 +1,71 @@
+{
+  "name": "memflow",
+  "version": "0.2.0",
+  "description": "MemFlow: Self-Improving RAG & Lifelong Memory Workflow Engine — S2 Chunking, LightRAG, SimpleMem, LightMem, StructMem, HERA, PriHA, and AutoResearchClaw",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "bun": "./src/core/index.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./modules/*": {
+      "bun": "./src/modules/*/index.ts",
+      "default": "./dist/modules/*/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "bun src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "test": "bun test",
+    "docker:build": "docker build -t memflow -f docker/Dockerfile .",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down"
+  },
+  "keywords": [
+    "rag",
+    "memory",
+    "llm",
+    "workflow",
+    "langchain",
+    "memgraph",
+    "s2-chunking",
+    "lightrag",
+    "simplemem",
+    "lightmem",
+    "structmem",
+    "hera",
+    "priha",
+    "autoresearch"
+  ],
+  "author": "MemFlow Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/core": "^0.3.40",
+    "@langchain/community": "^0.3.30",
+    "@langchain/langgraph": "^0.2.40",
+    "@langchain/ollama": "^0.1.5",
+    "@langchain/openai": "^0.3.17",
+    "@langchain/textsplitters": "^0.3.0",
+    "langchain": "^0.3.15",
+    "neo4j-driver": "^5.27.0",
+    "zod": "^3.24.2",
+    "uuid": "^11.0.5",
+    "winston": "^3.17.0",
+    "hono": "^4.6.20"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "bun": ">=1.0.0"
+  }
+}

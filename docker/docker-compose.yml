@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  memflow:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3000:3000"
+      - "7687:7687"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MEMGRAPH_URI=bolt://localhost:7687
+      - LOG_LEVEL=info
+      - PORT=3000
+    volumes:
+      - memgraph-data:/var/lib/memgraph
+    restart: unless-stopped
+
+volumes:
+  memgraph-data:

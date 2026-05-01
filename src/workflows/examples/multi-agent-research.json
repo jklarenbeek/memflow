@@ -1,0 +1,87 @@
+{
+  "name": "multi-agent-research",
+  "version": "1.0",
+  "description": "Advanced multi-agent research pipeline: query translation → parallel retrieval branches → HERA orchestration with learning loop. Demonstrates parallel DAG execution, experience library evolution, RoPE prompt evolution, and topology mutation. For LangGraph.js developers building agentic RAG systems.",
+  "entry": "translate",
+  "stages": [
+    {
+      "id": "translate",
+      "module": "QueryTranslator",
+      "config": {
+        "techniques": ["hyde", "multi_query", "step_back"],
+        "useLLM": true
+      },
+      "next": ["vector_retrieve", "graph_retrieve"]
+    },
+    {
+      "id": "vector_retrieve",
+      "module": "LightRAGRetriever",
+      "config": {
+        "topK": 10,
+        "useGraph": false,
+        "useVector": true,
+        "usePyramid": true,
+        "intentAware": true,
+        "tokenBudget": 6000
+      },
+      "next": "orchestrate",
+      "dependsOn": ["translate"]
+    },
+    {
+      "id": "graph_retrieve",
+      "module": "LightRAGRetriever",
+      "config": {
+        "topK": 8,
+        "useGraph": true,
+        "useVector": false,
+        "usePyramid": false,
+        "intentAware": false
+      },
+      "next": "orchestrate",
+      "dependsOn": ["translate"]
+    },
+    {
+      "id": "orchestrate",
+      "module": "HERAOrchestrator",
+      "config": {
+        "maxAgents": 4,
+        "enableEvolution": true,
+        "enableRoPE": true,
+        "ropeFailureThreshold": 0.4,
+        "enableTopologyMutation": true,
+        "mutationThreshold": 0.3,
+        "mutationTriggerCount": 3,
+        "experienceLibrarySize": 50
+      },
+      "dependsOn": ["vector_retrieve", "graph_retrieve"],
+      "next": "fuse"
+    },
+    {
+      "id": "fuse",
+      "module": "PriHAFusion",
+      "config": {
+        "enableTriage": true,
+        "enableDualSource": true,
+        "enableValidation": true,
+        "citationStyle": "inline",
+        "maxClarificationDepth": 2,
+        "maxSubQueries": 3,
+        "maxContextTokens": 8000
+      }
+    }
+  ],
+  "globalConfig": {
+    "llmProvider": "ollama",
+    "llmModel": "llama3.2",
+    "embeddingProvider": "ollama",
+    "embeddingModel": "nomic-embed-text",
+    "maxConcurrency": 4,
+    "logLevel": "info"
+  },
+  "meta": {
+    "learning": true,
+    "maxIterations": 3,
+    "metrics": ["avgScore", "agents", "experienceSize"],
+    "autoResearch": false
+  }
+}

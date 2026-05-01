@@ -1,0 +1,114 @@
+{
+  "name": "rag-memory-pipeline",
+  "version": "1.0",
+  "description": "Full RAG pipeline: query translation → S2 chunking → three-tier memory (SimpleMem → LightMem → StructMem) → hybrid retrieval → PriHA fusion. Demonstrates the complete memory lifecycle with spectral document chunking and dual-source answer generation.",
+  "entry": "translate",
+  "stages": [
+    {
+      "id": "translate",
+      "module": "QueryTranslator",
+      "config": {
+        "techniques": ["hyde", "multi_query"],
+        "useLLM": true
+      },
+      "next": "parse"
+    },
+    {
+      "id": "parse",
+      "module": "MarkdownSpatialParser",
+      "config": {},
+      "next": "chunk"
+    },
+    {
+      "id": "chunk",
+      "module": "S2Chunker",
+      "config": {
+        "maxTokenLength": 512,
+        "alpha": 0.5
+      },
+      "next": "embed"
+    },
+    {
+      "id": "embed",
+      "module": "Embedder",
+      "config": {
+        "provider": "ollama",
+        "model": "nomic-embed-text"
+      },
+      "next": "graph"
+    },
+    {
+      "id": "graph",
+      "module": "MemgraphGraph",
+      "config": {
+        "vectorDim": 768,
+        "useMAGE": true
+      },
+      "next": "simplemem"
+    },
+    {
+      "id": "simplemem",
+      "module": "SimpleMem",
+      "config": {
+        "synthesisThreshold": 0.82,
+        "windowSize": 5,
+        "windowOverlap": 2
+      },
+      "next": "lightmem"
+    },
+    {
+      "id": "lightmem",
+      "module": "LightMem",
+      "config": {
+        "noveltyThreshold": 0.75,
+        "sensoryBufferSize": 50,
+        "stmCapacity": 200,
+        "topicSimilarityThreshold": 0.6
+      },
+      "next": "structmem"
+    },
+    {
+      "id": "structmem",
+      "module": "StructMem",
+      "config": {
+        "relationThreshold": 0.7,
+        "persistToGraph": true,
+        "consolidationThreshold": 10
+      },
+      "next": "retrieve"
+    },
+    {
+      "id": "retrieve",
+      "module": "LightRAGRetriever",
+      "config": {
+        "topK": 8,
+        "useGraph": true,
+        "useVector": true,
+        "usePyramid": true,
+        "intentAware": true
+      },
+      "next": "fuse"
+    },
+    {
+      "id": "fuse",
+      "module": "PriHAFusion",
+      "config": {
+        "enableTriage": true,
+        "enableDualSource": true,
+        "enableValidation": true,
+        "citationStyle": "inline"
+      }
+    }
+  ],
+  "globalConfig": {
+    "llmProvider": "ollama",
+    "llmModel": "llama3.2",
+    "embeddingProvider": "ollama",
+    "embeddingModel": "nomic-embed-text",
+    "maxConcurrency": 4,
+    "logLevel": "info"
+  },
+  "meta": {
+    "learning": false
+  }
+}
