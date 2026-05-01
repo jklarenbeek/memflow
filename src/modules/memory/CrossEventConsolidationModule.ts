@@ -28,6 +28,10 @@ const ConfigSchema = z.object({
   relationThreshold: z.number().min(0).max(1).default(0.7),
   /** Number of seed entries to retrieve from consolidated history */
   seedCount: z.number().default(5),
+  /** Time window (ms) for timestamp-based event reconstruction and seed filtering */
+  timeWindowMs: z.number().default(3600000), // 1 hour default
+  /** Number of past consolidation windows to search for seeds (efficiency bound) */
+  seedSearchWindow: z.number().default(10),
 });
 
 type CrossEventConfig = z.infer<typeof ConfigSchema>;
@@ -62,10 +66,12 @@ export class CrossEventConsolidationModule implements BaseModule<CrossEventConfi
       .map((u, i) => `[${i + 1}] (${u.type}) ${u.content}`)
       .join("\n");
 
-    // 3. Retrieve seed entries (use existing consolidated units if present)
+    // 3. Retrieve seed entries using aggregated query + time window filtering
     let seedContext = "No prior consolidated context available.";
     if (sorted[0]?.embedding?.length > 0) {
       const dim = sorted[0].embedding.length;
+
+      // Incremental centroid: average embedding of buffered entries
       const avgEmb = new Array(dim).fill(0);
       let count = 0;
       for (const u of sorted) {
@@ -76,10 +82,26 @@ export class CrossEventConsolidationModule implements BaseModule<CrossEventConfi
       }
       if (count > 0) for (let i = 0; i < dim; i++) avgEmb[i] /= count;
 
-      // Use the most distant units as seeds for diversity
-      const seeds = sorted
-        .filter((u) => u.embedding?.length === dim)
-        .map((u) => ({ unit: u, sim: cosineSimilarity(avgEmb, u.embedding) }))
+      // Compute time bounds for seed search (only recent windows)
+      const latestTs = new Date(sorted[sorted.length - 1].timestamp).getTime();
+      const earliestTs = new Date(sorted[0].timestamp).getTime();
+      const timeCutoff = earliestTs - (this.config.timeWindowMs * this.config.seedSearchWindow);
+
+      // Pre-filter by recency (only entries within seedSearchWindow time windows)
+      const recentUnits = sorted
+        .filter((u) => {
+          const ts = new Date(u.timestamp).getTime();
+          return ts >= timeCutoff && u.embedding?.length === dim;
+        });
+
+      // Rank by cosine similarity and filter by time proximity
+      const seeds = recentUnits
+        .map((u) => ({
+          unit: u,
+          sim: cosineSimilarity(avgEmb, u.embedding),
+          timeDelta: Math.abs(new Date(u.timestamp).getTime() - latestTs),
+        }))
+        .filter((s) => s.timeDelta <= this.config.timeWindowMs * this.config.seedSearchWindow)
         .sort((a, b) => b.sim - a.sim) // Most similar first (StructMem §3.2 Eq.4)
         .slice(0, this.config.seedCount);
 

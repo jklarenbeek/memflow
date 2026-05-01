@@ -32,14 +32,14 @@ graph TD
     CTX --> EMB["Embedding Provider"]
     CTX --> LOG["Winston Logger"]
     
-    WE --> MR["ModuleRegistry (38 modules)"]
+    WE --> MR["ModuleRegistry (50 modules)"]
     
     MR --> SUB["SubWorkflow"]
     
     subgraph "Atomic Modules"
-        MR --> M_MEM["Memory: SlidingWindow, DensityGate, FactExtractor, SemanticSynthesis, NoveltyGate, TopicSegmenter, SleepConsolidation, DualPerspective, CrossEventConsolidation, GraphPersist, StructuredIndex"]
+        MR --> M_MEM["Memory: SlidingWindow, DensityGate, FactExtractor, SemanticSynthesis, NoveltyGate, TopicSegmenter, SleepConsolidation, DualPerspective, CrossEventConsolidation, GraphPersist, StructuredIndex, PreCompression, SensoryBuffer, STMBuffer, IntentAwarePlanner"]
         MR --> M_AGT["Agents: PlanGenerator, TrajectoryExecutor, RewardComputer, ExperienceReflector, RoPEEvolver, TopologyMutator, FinalSynthesizer"]
-        MR --> M_RET["Retrieval: IntentClassifier, VectorSearch, GraphSearch, KeywordSearch, ResultRanker"]
+        MR --> M_RET["Retrieval: IntentClassifier, VectorSearch, GraphSearch, KeywordSearch, ResultRanker, SymbolicSearch"]
         MR --> M_GRF["Graph: ChunkIngestor, EntityExtractor, EntityDeduplicator, EntityProfiler, CommunityDetector"]
         MR --> M_GEN["Generation: QueryClarifier, AnswerGenerator, HallucinationValidator, CitationInjector"]
     end
@@ -98,7 +98,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, and runtime plugin registration. Registers 40 built-in modules: 12 composite wrappers (now thin delegation layers), 27 atomic modules, and 1 SubWorkflow engine module.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, and runtime plugin registration. Registers **50 built-in modules**: 7 composite wrappers (thin delegation layers), 32 atomic modules, 3 standalone modules, 2 provider modules, 1 SubWorkflow engine module, and 5 monolithic compatibility wrappers.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -111,7 +111,7 @@ Enables workflows-within-workflows:
 
 ### Atomic Modules — Memory Pipeline
 
-#### SimpleMem Decomposition (5 atomic modules)
+#### SimpleMem Decomposition (6 atomic modules)
 
 | Module | Paper Ref | Reads → Writes |
 |---|---|---|
@@ -120,28 +120,35 @@ Enables workflows-within-workflows:
 | **FactExtractor** | SimpleMem §2 | `filteredChunks` → `memoryUnits` |
 | **SemanticSynthesis** | SimpleMem §2 | `memoryUnits` → `memoryUnits` (merged) |
 | **StructuredIndex** | SimpleMem §2 | `memoryUnits` → `memoryUnits` (enriched) |
+| **IntentAwarePlanner** | SimpleMem §2.3 | `query`, `memoryUnits` → `expandedQueries`, `searchScope`, `retrievalDepth` |
 
-Sub-workflow: `workflows/sub/simplemem-pipeline.json` — `Window → Gate → Extract → Synthesize → Index`
+Sub-workflow (write path): `workflows/sub/simplemem-pipeline.json` — `Window → Gate → Extract → Synthesize → Index`
+Sub-workflow (read path): `workflows/sub/simplemem-retrieval.json` — `Plan → [Sem ∥ Lex ∥ Sym] → Rank`
 
 - **SlidingWindow**: Groups chunks into overlapping windows (configurable `windowSize`, `windowOverlap`) for temporal context.
 - **DensityGate**: Implements Φ_gate(W) from the paper — LLM-based semantic density evaluation with heuristic fallback. Only windows with `≥ minFactCount` distinct facts pass through.
 - **FactExtractor**: LLM de-linearisation of text into typed MemoryUnit objects with batch embedding. Supports coreference resolution via the extraction prompt.
 - **SemanticSynthesis**: Cosine-based merge of highly similar units (strictly `> synthesisThreshold`, default 0.82). Averages embeddings and combines content.
 - **StructuredIndex**: Multi-view indexing — enriches each unit with TF-based lexical keywords and structured symbolic metadata (type, timestamp, confidence) for complementary retrieval paths.
+- **IntentAwarePlanner**: Decomposes the query into three complementary retrieval signals — `{qₛₑₘ, qₗₑₓ, qₛᵧₘ, d}` — where `d` is adaptive retrieval depth estimated from query complexity. Uses LLM with heuristic fallback.
 
-#### LightMem Decomposition (3 atomic modules)
+#### LightMem Decomposition (6 atomic modules)
 
 | Module | Paper Ref | Reads → Writes |
 |---|---|---|
+| **PreCompression** | LightMem §3.1 | `memoryUnits` → `memoryUnits` (compressed, redundancy removed) |
+| **SensoryBuffer** | LightMem §3.1 | `memoryUnits` → `memoryUnits` (flushed when buffer ≥ th tokens, [] otherwise) |
 | **NoveltyGate** | LightMem Tier 1 | `memoryUnits` → `memoryUnits` (novel only) |
-| **TopicSegmenter** | LightMem §3.1 | `memoryUnits` → `topicSegments` |
+| **TopicSegmenter** | LightMem §3.2 | `memoryUnits` → `topicSegments` |
+| **STMBuffer** | LightMem §3.2 | `topicSegments` → `memoryUnits` (LTM-promoted summaries with topic, embedding, user/model content) |
 | **SleepConsolidation** | LightMem §3.3 | `topicSegments` → `memoryUnits` (LTM) |
 
-Sub-workflow: `workflows/sub/lightmem-pipeline.json` — `Novelty → Segment → Consolidate`
+Sub-workflow: `workflows/sub/lightmem-pipeline.json` — `PreCompress → SensoryBuffer → [conditional: buffer full?] → NoveltyGate → TopicSegmenter → STMBuffer → SleepConsolidation`
 
-- **NoveltyGate**: Cosine similarity filtering against existing memories. Checks both existing units and already-accepted batch units to prevent intra-batch duplicates.
-- **TopicSegmenter**: **Hybrid B1∩B2 boundary detection** — B1 = attention-based local similarity minima; B2 = threshold drops below `topicSimilarityThreshold`. Final boundaries = B1∩B2 with B2 fallback if intersection is empty. Small segments are merged into adjacent ones.
-- **SleepConsolidation**: Parallel LLM summarization of topic segments via `Promise.allSettled`. **Soft-update LTM** semantics: `newTs >= existingTs` constraint ensures only newer information overwrites. LTM is capped at `ltmMaxSize`.
+This 7-stage pipeline implements all three tiers from the LightMem paper:
+- **Light₁** (Pre-Compression + Sensory Buffer): `PreCompression` applies LLM-based cross-entropy density scoring per sentence (replaces Python-only LLMLingua-2 with an LLM approximation), retaining only sentences above the τ-percentile threshold. `SensoryBuffer` accumulates compressed units in a crash-recoverable Memgraph-backed buffer of capacity `th` tokens, flushing downstream only when full.
+- **Light₂** (Novelty Gate + Topic Segmentation + STM Buffer): `NoveltyGate` cosine-filters against existing memories. `TopicSegmenter` applies hybrid B1∩B2 boundary detection — B1 = local similarity minima; B2 = threshold drops below `topicSimilarityThreshold`. `STMBuffer` accumulates topic segments and promotes to LTM format (`{topic, eᵢ := embedding(sumᵢ), userᵢ, modelᵢ}`) when capacity is reached.
+- **Light₃** (Sleep Consolidation): Parallel LLM summarization of topic segments. **Soft-update LTM** semantics: `newTs >= existingTs` constraint ensures only newer information overwrites.
 
 #### StructMem Decomposition (3 atomic modules)
 
@@ -192,6 +199,18 @@ Sub-workflow: `workflows/sub/hera-orchestration.json` — `Plan → Execute → 
 Sub-workflow: `workflows/sub/hybrid-retrieval.json` — `Intent → [Vector ∥ Graph ∥ Keyword] → Rank`
 
 The 3-way parallel search fan-out is now **visible in JSON** instead of hidden in imperative code. Each search strategy has independent weight and topK configuration. ResultRanker handles dedup, scoring, pyramid expansion with budget gating, and MemoryUnit retrieval.
+
+#### SimpleMem Multi-View Retrieval (2 additional atomic modules)
+
+| Module | Paper Ref | Reads → Writes |
+|---|---|---|
+| **IntentAwarePlanner** | SimpleMem §2.3 | `query`, `memoryUnits` → `expandedQueries`, `semanticQuery`, `lexicalQuery`, `symbolicFilter`, `retrievalDepth` |
+| **SymbolicSearch** | SimpleMem §2.1 | `query`, `symbolicFilter`, `memoryUnits` → `candidates` (appended with source="symbolic") |
+
+Sub-workflow: `workflows/sub/simplemem-retrieval.json` — `Plan → [Sem ∥ Lex ∥ Sym] → Rank`
+
+- **IntentAwarePlanner**: Uses LLM reasoning to decompose the query into three complementary retrieval signals (`qₛₑₘ`, `qₗₑₓ`, `qₛᵧₘ`) and estimate adaptive retrieval depth `d`. Outputs: individual queries per channel + combined `expandedQueries` array + `retrievalDepth`.
+- **SymbolicSearch**: Queries memory units by structured metadata constraints (type, entities, time range, confidence) produced by `StructuredIndex`. Supports Memgraph-backed retrieval with in-memory filtering fallback.
 
 ### Atomic Modules — Graph Indexing
 
@@ -281,8 +300,8 @@ All LLM prompts are externalised in `src/prompts/` as TOML files:
 
 ```
 src/prompts/
-  simplemem/     extraction.toml, density_gating.toml
-  lightmem/      consolidation.toml
+  simplemem/     extraction.toml, density_gating.toml, synthesis.toml, intent_aware_planning.toml
+  lightmem/      consolidation.toml, pre_compression.toml
   structmem/     dual_perspective.toml, consolidation_synthesis.toml
   retrieval/     intent_inference.toml
   hera/          plan_generation.toml, reflection.toml, reflection_single.toml, synthesis.toml, rope_evolution.toml, topology_mutation.toml
@@ -313,10 +332,11 @@ Pre-built sub-workflows in `src/workflows/sub/`:
 
 | File | Stages | Key Feature |
 |---|---|---|
-| `simplemem-pipeline.json` | Window → Gate → Extract → Synthesize | Full SimpleMem §2 |
-| `lightmem-pipeline.json` | Novelty → Segment → Consolidate | B1∩B2 + soft-update LTM |
+| `simplemem-pipeline.json` | Window → Gate → Extract → Synthesize → Index | Full SimpleMem §2 write path |
+| `simplemem-retrieval.json` | Plan → [Sem ∥ Lex ∥ Sym] → Rank | SimpleMem §2.3 multi-view retrieval |
+| `lightmem-pipeline.json` | PreCompress → SensoryBuffer → [cond] → Novelty → Segment → STMBuffer → Consolidate | Full LightMem 3-tier (Light₁+Light₂+Light₃) |
 | `structmem-pipeline.json` | DualPersp → Consolidate → Persist | Cbuf→seed→LLM synthesis |
-| `hera-orchestration.json` | Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] | Conditional branches |
+| `hera-orchestration.json` | Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] → Synthesize | Conditional GRPO branches |
 | `hybrid-retrieval.json` | Intent → [Vector ∥ Graph ∥ Keyword] → Rank | 3-way parallel fan-out |
 | `graph-indexing.json` | Ingest → Extract → Dedup → Profile → Community | LightRAG §3.1 |
 | `priha-fusion.json` | Clarify → Generate → Validate → Cite | Full PriHA pipeline |
@@ -335,7 +355,7 @@ src/
   core/
     WorkflowEngine.ts         — DAG executor with parallel, retry, learning loops, sub-workflow support
     WorkflowContext.ts         — DI container (Memgraph, LLM, Embeddings, StateStore, Logger)
-    ModuleRegistry.ts          — Lazy-loading singleton with 38 registered modules
+    ModuleRegistry.ts          — Lazy-loading singleton with 50 registered modules
     StateStore.ts              — Memgraph-backed persistent state with LRU cache
     types.ts                   — All interfaces (WorkflowData, BaseModule, etc.)
     errors.ts                  — 7 typed error classes
@@ -346,12 +366,15 @@ src/
                                SlidingWindowModule, DensityGateModule, FactExtractorModule,
                                SemanticSynthesisModule, NoveltyGateModule, TopicSegmenterModule,
                                SleepConsolidationModule, DualPerspectiveModule,
-                               CrossEventConsolidationModule, GraphPersistModule
+                               CrossEventConsolidationModule, GraphPersistModule,
+                               StructuredIndexModule, PreCompressionModule, SensoryBufferModule,
+                               STMBufferModule, IntentAwarePlannerModule
     agents/                    HERAOrchestratorModule, PlanGeneratorModule, TrajectoryExecutorModule,
                                RewardComputerModule, ExperienceReflectorModule,
                                RoPEEvolverModule, TopologyMutatorModule
     retrieval/                 LightRAGRetrieverModule, IntentClassifierModule, VectorSearchModule,
-                               GraphSearchModule, KeywordSearchModule, ResultRankerModule
+                               GraphSearchModule, KeywordSearchModule, ResultRankerModule,
+                               SymbolicSearchModule
     graph/                     MemgraphGraphModule, ChunkIngestorModule, EntityExtractorModule,
                                EntityDeduplicatorModule, EntityProfilerModule, CommunityDetectorModule
     generation/                PriHAFusionModule, QueryClarifierModule, AnswerGeneratorModule,
@@ -360,7 +383,8 @@ src/
     providers/                 EmbedderModule, LLMProviderModule
   workflows/
     examples/                  rag-memory-pipeline.json, quick-qa.json, multi-agent-research.json
-    sub/                       simplemem-pipeline.json, lightmem-pipeline.json, structmem-pipeline.json,
+    sub/                       simplemem-pipeline.json, simplemem-retrieval.json,
+                               lightmem-pipeline.json, structmem-pipeline.json,
                                hera-orchestration.json, hybrid-retrieval.json, graph-indexing.json,
                                priha-fusion.json
   prompts/                     TOML prompt templates (see Prompt System section)

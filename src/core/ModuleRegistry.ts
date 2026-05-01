@@ -86,6 +86,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/retrieval/ResultRankerModule.js").then((m) => m.ResultRankerModule as unknown as ModuleFactory),
   SymbolicSearch: () =>
     import("../modules/retrieval/SymbolicSearchModule.js").then((m) => m.SymbolicSearchModule as unknown as ModuleFactory),
+  SetUnionMerger: () =>
+    import("../modules/retrieval/SetUnionMergerModule.js").then((m) => m.SetUnionMergerModule as unknown as ModuleFactory),
 
   // Query
   QueryTranslator: () =>
@@ -140,6 +142,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/generation/HallucinationValidatorModule.js").then((m) => m.HallucinationValidatorModule as unknown as ModuleFactory),
   CitationInjector: () =>
     import("../modules/generation/CitationInjectorModule.js").then((m) => m.CitationInjectorModule as unknown as ModuleFactory),
+  WebSearchAgent: () =>
+    import("../modules/generation/WebSearchAgentModule.js").then((m) => m.WebSearchAgentModule as unknown as ModuleFactory),
 
   // Providers
   Embedder: () =>

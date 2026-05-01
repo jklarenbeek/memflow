@@ -89,6 +89,8 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
     addAgents: [],
     removeAgents: [],
   };
+  /** Per-agent failure buffer — tracks recent failures per agent (HERA §3.4.1) */
+  private agentFailureBuffers: Record<string, Array<{ query: string; action: string; result: string }>> = {};
 
   constructor(config: Record<string, unknown> = {}) {
     this.config = ConfigSchema.parse(config);
@@ -142,6 +144,7 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
           evolvedRolePrompts: this.evolvedRolePrompts,
           consecutiveFailures: this.consecutiveFailures,
           mutatedTopology: this.mutatedTopology,
+          agentFailureBuffers: this.agentFailureBuffers,
           _stageConfigs: stageOverrides,
         },
         config: {},
@@ -178,6 +181,25 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
       trajectory.finalAnswer = finalAnswer;
       trajectory.insights = insights;
       this.previousTrajectories.push(trajectory);
+
+      // Update per-agent failure buffers (HERA §3.4.1)
+      if (trajectory.reward < this.config.ropeFailureThreshold) {
+        for (const step of trajectory.steps) {
+          if (!this.agentFailureBuffers[step.agent]) {
+            this.agentFailureBuffers[step.agent] = [];
+          }
+          this.agentFailureBuffers[step.agent].push({
+            query: trajectory.query.substring(0, 200),
+            action: step.action,
+            result: step.result.substring(0, 300),
+          });
+          // Keep buffer bounded per agent (last 10 failures)
+          if (this.agentFailureBuffers[step.agent].length > 10) {
+            this.agentFailureBuffers[step.agent] =
+              this.agentFailureBuffers[step.agent].slice(-10);
+          }
+        }
+      }
     }
 
     return {

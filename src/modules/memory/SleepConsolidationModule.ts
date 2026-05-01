@@ -26,6 +26,10 @@ const ConfigSchema = z.object({
   ltmMaxSize: z.number().default(1000),
   /** Cosine threshold for soft-update matching */
   softUpdateThreshold: z.number().min(0).max(1).default(0.8),
+  /** LightMem §3.3: Per-entry update queue size n */
+  updateQueueSize: z.number().default(5),
+  /** Enable per-entry offline parallel update queues (paper-aligned mode) */
+  enableOfflineQueues: z.boolean().default(true),
 });
 
 type SleepConsolidationConfig = z.infer<typeof ConfigSchema>;
@@ -107,38 +111,113 @@ export class SleepConsolidationModule implements BaseModule<SleepConsolidationCo
       }
     }
 
-    // Soft-update: merge with existing LTM using timestamp constraint
+    // Soft-update: merge with existing LTM using paper-aligned approach
     let ltm = [...existing];
-    for (const newEntry of newLtmEntries) {
-      const newTs = new Date(newEntry.timestamp).getTime();
-      let merged = false;
 
-      for (let i = 0; i < ltm.length; i++) {
-        if (ltm[i].embedding.length === 0 || newEntry.embedding.length === 0) continue;
-        const sim = cosineSimilarity(ltm[i].embedding, newEntry.embedding);
-        if (sim >= this.config.softUpdateThreshold) {
-          const existingTs = new Date(ltm[i].timestamp).getTime();
-          // Only update if new timestamp >= existing (soft-update constraint)
-          if (newTs >= existingTs) {
-            ltm[i] = {
-              ...ltm[i],
-              content: newEntry.content,
-              embedding: newEntry.embedding,
-              timestamp: newEntry.timestamp,
-              metadata: {
-                ...ltm[i].metadata,
-                ...newEntry.metadata,
-                softUpdated: true,
-              },
-            };
-          }
-          merged = true;
-          break;
+    if (this.config.enableOfflineQueues) {
+      // LightMem §3.3: Per-entry update queues with parallel offline update
+      // Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ, j ≠ i) :n
+      const allEntries = [...ltm, ...newLtmEntries];
+
+      // 1. Build update queues: for each LTM entry, find topK newer similar entries
+      const updateQueues = new Map<string, { target: MemoryUnit; sources: MemoryUnit[] }>();
+
+      for (const entry of ltm) {
+        if (entry.embedding.length === 0) continue;
+        const entryTs = new Date(entry.timestamp).getTime();
+
+        const queue = allEntries
+          .filter((other) =>
+            other.id !== entry.id &&
+            other.embedding.length > 0 &&
+            new Date(other.timestamp).getTime() >= entryTs // tⱼ ≥ tᵢ constraint
+          )
+          .map((other) => ({
+            unit: other,
+            sim: cosineSimilarity(entry.embedding, other.embedding),
+          }))
+          .filter((s) => s.sim >= this.config.softUpdateThreshold)
+          .sort((a, b) => b.sim - a.sim)
+          .slice(0, this.config.updateQueueSize)
+          .map((s) => s.unit);
+
+        if (queue.length > 0) {
+          updateQueues.set(entry.id, { target: entry, sources: queue });
         }
       }
 
-      if (!merged) {
-        ltm.push(newEntry);
+      // 2. Execute updates in parallel (queues are independent per entry)
+      const updateResults = await Promise.allSettled(
+        [...updateQueues.entries()].map(async ([entryId, { target, sources }]) => {
+          // Use the most recent source's content as the update
+          const bestSource = sources[0];
+          const idx = ltm.findIndex((u) => u.id === entryId);
+          if (idx >= 0 && bestSource) {
+            ltm[idx] = {
+              ...ltm[idx],
+              content: bestSource.content,
+              embedding: bestSource.embedding,
+              timestamp: bestSource.timestamp,
+              metadata: {
+                ...ltm[idx].metadata,
+                ...bestSource.metadata,
+                softUpdated: true,
+                updateQueueSize: sources.length,
+              },
+            };
+          }
+        }),
+      );
+
+      // 3. Add truly new entries (not matched to any existing)
+      const updatedIds = new Set(updateQueues.keys());
+      for (const newEntry of newLtmEntries) {
+        const hasMatch = ltm.some(
+          (e) =>
+            e.embedding.length > 0 &&
+            newEntry.embedding.length > 0 &&
+            cosineSimilarity(e.embedding, newEntry.embedding) >= this.config.softUpdateThreshold,
+        );
+        if (!hasMatch) {
+          ltm.push(newEntry);
+        }
+      }
+
+      ctx.logger.debug(
+        `SleepConsolidation: ${updateQueues.size} entries updated via offline queues`,
+      );
+    } else {
+      // Legacy mode: simple sequential soft-update
+      for (const newEntry of newLtmEntries) {
+        const newTs = new Date(newEntry.timestamp).getTime();
+        let merged = false;
+
+        for (let i = 0; i < ltm.length; i++) {
+          if (ltm[i].embedding.length === 0 || newEntry.embedding.length === 0) continue;
+          const sim = cosineSimilarity(ltm[i].embedding, newEntry.embedding);
+          if (sim >= this.config.softUpdateThreshold) {
+            const existingTs = new Date(ltm[i].timestamp).getTime();
+            if (newTs >= existingTs) {
+              ltm[i] = {
+                ...ltm[i],
+                content: newEntry.content,
+                embedding: newEntry.embedding,
+                timestamp: newEntry.timestamp,
+                metadata: {
+                  ...ltm[i].metadata,
+                  ...newEntry.metadata,
+                  softUpdated: true,
+                },
+              };
+            }
+            merged = true;
+            break;
+          }
+        }
+
+        if (!merged) {
+          ltm.push(newEntry);
+        }
       }
     }
 

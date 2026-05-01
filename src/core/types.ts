@@ -243,6 +243,18 @@ export interface MemoryUnit {
   embedding: number[];
   timestamp: Date;
   type: "fact" | "event" | "summary" | "relation";
+  /** LightMem §3.2: Original user utterance that triggered this memory unit */
+  userContent?: string;
+  /** LightMem §3.2: Model response that generated/contributed to this unit */
+  modelContent?: string;
+  /** Model identifier (e.g. "llama3.2", "gpt-4o-mini") for provenance tracking */
+  modelId?: string;
+  /** Provider identifier (e.g. "ollama", "openrouter", "openai") for provenance tracking */
+  providerId?: string;
+  /** User identifier — relates questions to answers for attribution */
+  userId?: string;
+  /** First-class topic label (LightMem §3.2: topic field in LTM entry structure) */
+  topicLabel?: string;
   metadata: {
     source?: string;
     confidence?: number;
