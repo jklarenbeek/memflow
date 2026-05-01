@@ -54,6 +54,12 @@ export class MemgraphClient {
   private readonly config: MemgraphConfig;
   private readonly logger: Logger;
 
+  /**
+   * Telemetry counter — tracks total Cypher queries executed.
+   * Read via `getQueryCount()` for module-level telemetry (Improvement #10).
+   */
+  private _queryCount = 0;
+
   constructor(config: Partial<MemgraphConfig>, logger: Logger) {
     this.config = MemgraphConfigSchema.parse(config);
     this.logger = logger;
@@ -68,6 +74,16 @@ export class MemgraphClient {
     );
   }
 
+  /** Get the total number of Cypher queries executed since creation. */
+  getQueryCount(): number {
+    return this._queryCount;
+  }
+
+  /** Reset the query counter (useful between workflow stages for per-stage telemetry). */
+  resetQueryCount(): void {
+    this._queryCount = 0;
+  }
+
   // -----------------------------------------------------------------------
   // Core query execution
   // -----------------------------------------------------------------------
@@ -77,6 +93,7 @@ export class MemgraphClient {
     cypher: string,
     params: Record<string, unknown> = {},
   ): Promise<T[]> {
+    this._queryCount++;
     const session = this.driver.session({ database: this.config.database });
     try {
       const result = await session.run(cypher, params);
@@ -97,6 +114,7 @@ export class MemgraphClient {
     fn: (tx: ManagedTransaction) => Promise<T>,
     mode: "read" | "write" = "write",
   ): Promise<T> {
+    this._queryCount++;
     const session = this.driver.session({ database: this.config.database });
     try {
       return mode === "write"
@@ -106,6 +124,52 @@ export class MemgraphClient {
       throw new MemgraphError(
         `Transaction failed: ${(err as Error).message}`,
         err as Error,
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Batch operations (Improvement #5)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Execute a batched Cypher query using UNWIND.
+   *
+   * Wraps the common pattern of iterating over N items and executing
+   * a query per item into a single UNWIND-based query that sends all
+   * items to Memgraph in one round-trip.
+   *
+   * @param cypher — Cypher template that starts with `UNWIND $items AS item`
+   * @param items — Array of parameter objects for each item
+   *
+   * @example
+   * ```ts
+   * await client.batchQuery(
+   *   `UNWIND $items AS item
+   *    MATCH (n:Entity {id: item.id})
+   *    SET n.communityId = item.communityId`,
+   *   nodes.map(n => ({ id: n.id, communityId: n.communityId })),
+   * );
+   * ```
+   */
+  async batchQuery<T = Record<string, unknown>>(
+    cypher: string,
+    items: Record<string, unknown>[],
+    additionalParams: Record<string, unknown> = {},
+  ): Promise<T[]> {
+    if (items.length === 0) return [];
+    this._queryCount++;
+    const session = this.driver.session({ database: this.config.database });
+    try {
+      const result = await session.run(cypher, { items, ...additionalParams });
+      return result.records.map((r) => r.toObject() as T);
+    } catch (err) {
+      throw new MemgraphError(
+        `Batch query failed (${items.length} items): ${(err as Error).message}`,
+        err as Error,
+        cypher,
       );
     } finally {
       await session.close();
@@ -257,8 +321,11 @@ export class MemgraphClient {
   /**
    * Persist memory units to the graph.
    *
-   * Uses parameterised queries only — no string interpolation of
-   * relationship types (fixes the Cypher injection from HRW).
+   * Uses UNWIND for batch operations — reduces N round-trips to 2
+   * (one for units, one for relations). All values are parameterised;
+   * no string interpolation of user data.
+   *
+   * (Improvement #5: Batch Memgraph operations)
    */
   async persistMemoryUnits(
     units: Array<{
@@ -271,43 +338,47 @@ export class MemgraphClient {
       relations?: Array<{ targetId: string; type: string; weight: number }>;
     }>,
   ): Promise<void> {
-    await this.withTransaction(async (tx) => {
-      for (const unit of units) {
-        await tx.run(
-          `MERGE (mu:MemoryUnit {id: $id})
-           SET mu.content = $content,
-               mu.embedding = $embedding,
-               mu.type = $type,
-               mu.timestamp = $timestamp,
-               mu.confidence = $confidence`,
-          {
-            id: unit.id,
-            content: unit.content,
-            embedding: unit.embedding,
-            type: unit.type,
-            timestamp: unit.timestamp,
-            confidence: (unit.metadata.confidence as number) ?? 0.8,
-          },
-        );
+    if (units.length === 0) return;
 
-        // Relations: use parameterised CASE for type safety instead of
-        // string interpolation (fixes HRW's Cypher injection bug)
-        for (const rel of unit.relations ?? []) {
-          await tx.run(
-            `MATCH (src:MemoryUnit {id: $srcId})
-             MERGE (tgt:MemoryUnit {id: $tgtId})
-             MERGE (src)-[r:MEMORY_RELATION {relType: $relType}]->(tgt)
-             SET r.weight = $weight`,
-            {
-              srcId: unit.id,
-              tgtId: rel.targetId,
-              relType: rel.type,
-              weight: rel.weight,
-            },
-          );
-        }
-      }
-    });
+    // Batch MERGE all memory units in a single UNWIND query
+    await this.batchQuery(
+      `UNWIND $items AS item
+       MERGE (mu:MemoryUnit {id: item.id})
+       SET mu.content = item.content,
+           mu.embedding = item.embedding,
+           mu.type = item.type,
+           mu.timestamp = item.timestamp,
+           mu.confidence = item.confidence`,
+      units.map((u) => ({
+        id: u.id,
+        content: u.content,
+        embedding: u.embedding,
+        type: u.type,
+        timestamp: u.timestamp,
+        confidence: (u.metadata.confidence as number) ?? 0.8,
+      })),
+    );
+
+    // Batch MERGE all relations in a single UNWIND query
+    const allRelations = units.flatMap((u) =>
+      (u.relations ?? []).map((rel) => ({
+        srcId: u.id,
+        tgtId: rel.targetId,
+        relType: rel.type,
+        weight: rel.weight,
+      })),
+    );
+
+    if (allRelations.length > 0) {
+      await this.batchQuery(
+        `UNWIND $items AS item
+         MATCH (src:MemoryUnit {id: item.srcId})
+         MERGE (tgt:MemoryUnit {id: item.tgtId})
+         MERGE (src)-[r:MEMORY_RELATION {relType: item.relType}]->(tgt)
+         SET r.weight = item.weight`,
+        allRelations,
+      );
+    }
   }
 
   /**

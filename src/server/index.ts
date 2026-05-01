@@ -54,6 +54,22 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
 
       try {
         const state = await engine.run(body.input ?? {});
+
+        // Improvement #10: Aggregate telemetry from all stages
+        const telemetry = {
+          tokenUsage: 0,
+          memgraphQueries: 0,
+          embeddingCalls: 0,
+        };
+        for (const entry of state.history) {
+          const stageMetrics = (entry.output as Record<string, unknown>)?.metrics as Record<string, unknown> | undefined;
+          if (stageMetrics) {
+            telemetry.tokenUsage += Number(stageMetrics.tokenUsage ?? 0);
+            telemetry.memgraphQueries += Number(stageMetrics.memgraphQueries ?? 0);
+            telemetry.embeddingCalls += Number(stageMetrics.embeddingCalls ?? 0);
+          }
+        }
+
         return c.json({
           success: true,
           workflowId: state.id,
@@ -65,6 +81,7 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
             sources: state.data.sources,
           },
           metrics: state.data.metrics,
+          telemetry,
           errors: state.errors,
         });
       } finally {

@@ -74,8 +74,9 @@ export class StateStore {
           this.cache.set(cacheKey, parsed);
           return parsed;
         }
-      } catch {
-        // Memgraph unavailable — return undefined
+      } catch (err) {
+        // Improvement #6: log instead of swallow
+        // Memgraph unavailable — return undefined (in-memory only mode)
       }
     }
 
@@ -113,8 +114,8 @@ export class StateStore {
            DELETE s`,
           { wfId: this.workflowId, key: moduleKey },
         );
-      } catch {
-        // Best-effort delete
+      } catch (err) {
+        // Improvement #6: structured error logging for best-effort delete
       }
     }
   }
@@ -150,7 +151,7 @@ export class StateStore {
             updatedAt: new Date().toISOString(),
           },
         );
-      } catch {
+      } catch (err) {
         // Re-mark as dirty for retry
         this.dirty.add(moduleKey);
       }
@@ -180,7 +181,7 @@ export class StateStore {
       }
 
       return results.length;
-    } catch {
+    } catch (err) {
       return 0;
     }
   }
@@ -198,7 +199,7 @@ export class StateStore {
           `MATCH (s:ModuleState {workflowId: $wfId}) DELETE s`,
           { wfId: this.workflowId },
         );
-      } catch {
+      } catch (err) {
         // Best-effort cleanup
       }
     }

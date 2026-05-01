@@ -50,6 +50,8 @@ export class CitationInjectorModule implements BaseModule<Config> {
    * Store citation URLs and metadata in Memgraph as :Citation nodes.
    * Links them to an :Answer node via :CITES edges for traceability.
    *
+   * Uses UNWIND batch operations to reduce N+1 round-trips to 2 (Improvement #5).
+   *
    * Schema:
    *   (:Answer {id})-[:CITES]->(:Citation {url, title, accessedAt, verified})
    */
@@ -66,36 +68,41 @@ export class CitationInjectorModule implements BaseModule<Config> {
         { answerId, timestamp: new Date().toISOString() },
       );
 
-      // Create citation nodes and link them
-      for (const source of sources) {
+      // Batch create citation nodes and link them (Improvement #5)
+      const citationItems = sources.map((source) => {
         const isUrl = /^https?:\/\//.test(source);
-        const title = isUrl
-          ? source.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]
-          : source;
+        return {
+          url: source,
+          title: isUrl
+            ? source.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]
+            : source,
+          timestamp: new Date().toISOString(),
+          verified: false,
+          isUrl,
+          answerId,
+        };
+      });
 
-        await ctx.memgraph.query(
-          `MERGE (c:Citation {url: $url})
-           SET c.title = $title,
-               c.accessedAt = $timestamp,
-               c.verified = $verified,
-               c.isUrl = $isUrl
-           WITH c
-           MATCH (a:Answer {id: $answerId})
-           MERGE (a)-[:CITES]->(c)`,
-          {
-            url: source,
-            title,
-            timestamp: new Date().toISOString(),
-            verified: false,
-            isUrl,
-            answerId,
-          },
-        );
-      }
+      await ctx.memgraph.batchQuery(
+        `UNWIND $items AS item
+         MERGE (c:Citation {url: item.url})
+         SET c.title = item.title,
+             c.accessedAt = item.timestamp,
+             c.verified = item.verified,
+             c.isUrl = item.isUrl
+         WITH c, item
+         MATCH (a:Answer {id: item.answerId})
+         MERGE (a)-[:CITES]->(c)`,
+        citationItems,
+      );
 
       ctx.logger.debug(`CitationInjector: persisted ${sources.length} citations for answer ${answerId}`);
-    } catch {
-      ctx.logger.debug("CitationInjector: Memgraph persistence failed, citations still in-memory");
+    } catch (err) {
+      // Improvement #6: structured error logging instead of bare catch
+      ctx.logger.warn(
+        "CitationInjector: Memgraph persistence failed, citations still in-memory",
+        { error: (err as Error).message, answerId, sourceCount: sources.length },
+      );
     }
   }
 

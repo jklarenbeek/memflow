@@ -19,18 +19,20 @@ import type {
   MemoryUnit,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { cosineSimilarity } from "../../utils/similarity.js";
+import { similarity, type SimilarityFunction } from "../../utils/similarity.js";
 
 const ConfigSchema = z.object({
-  /** Cosine similarity threshold — units above this are considered duplicates */
+  /** Similarity threshold — units above this are considered duplicates */
   noveltyThreshold: z.number().min(0).max(1).default(0.75),
+  /** Similarity function for novelty comparison (Improvement #14) */
+  similarityFunction: z.enum(["cosine", "euclidean", "dotProduct"]).default("cosine"),
 });
 
 type NoveltyGateConfig = z.infer<typeof ConfigSchema>;
 
 export class NoveltyGateModule implements BaseModule<NoveltyGateConfig> {
   readonly name = "NoveltyGate";
-  readonly version = "0.2.0";
+  readonly version = "0.3.0";
   private config: NoveltyGateConfig;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -64,7 +66,7 @@ export class NoveltyGateModule implements BaseModule<NoveltyGateConfig> {
       let isNovel = true;
       for (const existing of existingUnits) {
         if (existing.embedding.length === 0) continue;
-        const sim = cosineSimilarity(unit.embedding, existing.embedding);
+        const sim = similarity(unit.embedding, existing.embedding, this.config.similarityFunction as SimilarityFunction);
         if (sim >= this.config.noveltyThreshold) {
           isNovel = false;
           break;
@@ -75,7 +77,7 @@ export class NoveltyGateModule implements BaseModule<NoveltyGateConfig> {
       if (isNovel) {
         for (const accepted of novel) {
           if (accepted.embedding.length === 0) continue;
-          const sim = cosineSimilarity(unit.embedding, accepted.embedding);
+          const sim = similarity(unit.embedding, accepted.embedding, this.config.similarityFunction as SimilarityFunction);
           if (sim >= this.config.noveltyThreshold) {
             isNovel = false;
             break;

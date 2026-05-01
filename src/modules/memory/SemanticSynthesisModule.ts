@@ -25,14 +25,16 @@ import type {
   MemoryUnit,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { cosineSimilarity } from "../../utils/similarity.js";
+import { similarity, type SimilarityFunction } from "../../utils/similarity.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
 
 const ConfigSchema = z.object({
-  /** Cosine similarity threshold for merging (strictly greater than) */
+  /** Similarity threshold for merging (strictly greater than) */
   synthesisThreshold: z.number().min(0).max(1).default(0.82),
   /** Use LLM for intelligent synthesis (falls back to pairwise concat) */
   useLLM: z.boolean().default(true),
+  /** Similarity function for cluster detection (Improvement #14) */
+  similarityFunction: z.enum(["cosine", "euclidean", "dotProduct"]).default("cosine"),
 });
 
 type SemanticSynthesisConfig = z.infer<typeof ConfigSchema>;
@@ -115,7 +117,7 @@ export class SemanticSynthesisModule implements BaseModule<SemanticSynthesisConf
       if (units[i].embedding.length === 0) continue;
       for (let j = i + 1; j < n; j++) {
         if (units[j].embedding.length === 0) continue;
-        const sim = cosineSimilarity(units[i].embedding, units[j].embedding);
+        const sim = similarity(units[i].embedding, units[j].embedding, this.config.similarityFunction as SimilarityFunction);
         if (sim > this.config.synthesisThreshold) {
           union(i, j);
         }
@@ -163,7 +165,12 @@ export class SemanticSynthesisModule implements BaseModule<SemanticSynthesisConf
       let embedding: number[] = cluster[0].embedding;
       try {
         embedding = await embedder.embedQuery(synthesized.substring(0, 500));
-      } catch { /* keep first unit's embedding */ }
+      } catch (embErr) {
+        // Improvement #6: structured error logging
+        ctx.logger.debug("SemanticSynthesis: re-embedding failed, keeping original", {
+          error: (embErr as Error).message,
+        });
+      }
 
       return {
         ...cluster[0],
@@ -179,7 +186,12 @@ export class SemanticSynthesisModule implements BaseModule<SemanticSynthesisConf
           ),
         },
       };
-    } catch {
+    } catch (err) {
+      // Improvement #6: structured error logging
+      ctx.logger.warn("SemanticSynthesis: LLM synthesis failed, using pairwise merge", {
+        error: (err as Error).message,
+        clusterSize: cluster.length,
+      });
       // Fallback to pairwise merge
       return this.pairwiseMerge(cluster);
     }

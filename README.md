@@ -4,6 +4,14 @@
 
 MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **38 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience.
 
+### v0.3.0 Highlights
+
+- **Batch Memgraph operations** — `UNWIND`-based batch queries reduce graph write round-trips by 10-50×
+- **Structured telemetry** — per-module `tokenUsage`, `memgraphQueries`, `embeddingCalls` counters aggregated in API responses
+- **Configurable similarity** — strategy pattern (`cosine`, `euclidean`, `dotProduct`) across all similarity-dependent modules
+- **Config validation at load time** — Zod schema validation during `initialize()` catches errors before execution
+- **Proper error boundaries** — bare `catch {}` blocks replaced with structured logging across 15+ modules
+
 ## Quick Start
 
 ```bash
@@ -26,82 +34,34 @@ WorkflowEngine ← JSON config
   ├── WorkflowContext (DI: MemgraphClient, StateStore, LLM, Embeddings, Logger)
   ├── ModuleRegistry (56 modules: 7 composite wrappers + 38 atomic + 3 standalone + 2 providers + 2 core + 4 monolithic compat)
   ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
-  └── Stages → Module.process() → shared WorkflowData bus
-        └── SubWorkflow stages → nested WorkflowEngine (shared context)
+  ├── Config Validation (Zod schemas validated at initialize(), not mid-pipeline)
+  └── Stages → Module.process() → shared WorkflowData bus (with telemetry counters)
+        ├── SubWorkflow stages → nested WorkflowEngine (shared context)
+        └── MemgraphClient.batchQuery() → UNWIND-based batch operations
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## Module Inventory
 
-### Atomic Modules (38)
+MemFlow registers **56 modules** across 10 categories:
 
-| Category | Modules | Paper |
+| Category | Count | Key Modules |
 |---|---|---|
-| **Memory** | `SlidingWindow`, `DensityGate`, `FactExtractor`, `SemanticSynthesis`, `StructuredIndex` | SimpleMem |
-| **Memory** | `IntentAwarePlanner` | SimpleMem §2.3 |
-| **Memory** | `PreCompression`, `SensoryBuffer`, `STMBuffer`, `AttentionScore` | LightMem §3.1–3.2 |
-| **Memory** | `NoveltyGate`, `TopicSegmenter`, `SleepConsolidation` | LightMem |
-| **Memory** | `DualPerspective`, `CrossEventConsolidation`, `GraphPersist` | StructMem |
-| **Agents** | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator`, `FinalSynthesizer` | HERA |
-| **Retrieval** | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker`, `SymbolicSearch`, `SetUnionMerger`, `DualLevelRouter` | LightRAG / SimpleMem / OMNI-SIMPLEMEM |
-| **Chunking** | `ParentChildChunker` | PriHA |
-| **Graph** | `ChunkIngestor`, `EntityExtractor`, `EntityDeduplicator`, `EntityProfiler`, `CommunityDetector` | LightRAG |
-| **Generation** | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector`, `WebSearchAgent` (stub) | PriHA |
+| Core | 2 | `SubWorkflow`, `AutonomousLoop` |
+| Chunking | 3 | `S2Chunker`, `MarkdownSpatialParser`, `ParentChildChunker` |
+| Memory | 16 | SimpleMem (6), LightMem (7 incl. `AttentionScore`), StructMem (3) |
+| Retrieval | 9 | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker`, `SymbolicSearch`, `SetUnionMerger`, `DualLevelRouter` + wrapper |
+| Agents | 8 | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator`, `FinalSynthesizer` + wrapper |
+| Graph | 6 | `ChunkIngestor`, `EntityExtractor`, `EntityDeduplicator`, `EntityProfiler`, `CommunityDetector` + wrapper |
+| Generation | 6 | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector`, `WebSearchAgent` (stub) + wrapper |
+| Query | 1 | `QueryTranslator` |
+| Providers | 2 | `Embedder`, `LLMProvider` |
+| Compat | 3 | `SimpleMem`, `LightMem`, `StructMem` (monolithic wrappers) |
 
-### Composite Modules (7 delegation wrappers)
-
-These modules preserve backward compatibility by maintaining the original API surface while delegating all algorithmic logic to their respective atomic sub-workflows via `SubWorkflowModule`.
-
-| Module | Sub-Workflow | Pipeline |
-|---|---|---|
-| **SimpleMem** | `simplemem-pipeline.json` | Window → Gate → Extract → Synthesize → Index |
-| **LightMem** | `lightmem-pipeline.json` | PreCompress → SensoryBuffer → [conditional] → NoveltyGate → TopicSegmenter → STMBuffer → SleepConsolidation |
-| **StructMem** | `structmem-pipeline.json` | DualPerspective → CrossEventConsolidation → GraphPersist |
-| **LightRAGRetriever** | `hybrid-retrieval.json` | IntentClassifier → [Vector ∥ Graph ∥ Keyword] → ResultRanker |
-| **HERAOrchestrator** | `hera-orchestration.json` | Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] → Synthesize |
-| **PriHAFusion** | `priha-fusion.json` | Clarify → Generate → Validate → Cite |
-| **MemgraphGraph** | `graph-indexing.json` | Ingest → Extract → Dedup → Profile → Communities |
-
-### Standalone Modules (3)
-
-| Module | Purpose |
-|---|---|
-| **S2Chunker** | Real spectral clustering on spatial+semantic affinity (extends LangChain TextSplitter) |
-| **QueryTranslator** | HyDE, Multi-Query, Step-Back, Rewriting |
-| **MarkdownSpatialParser** | Markdown → spatial elements |
-
-### Infrastructure
-
-| Module | Purpose |
-|---|---|
-| **SubWorkflow** | Execute a child workflow as a single stage (workflows-within-workflows) |
-| **Embedder** | LangChain embedding provider (Ollama / OpenAI / OpenRouter) |
-| **LLMProvider** | LangChain chat model provider (Ollama / OpenAI / OpenRouter) |
-| **MemgraphGraph** | Graph indexing: chunk ingestion, entity extraction, deduplication, profiling, community detection |
-
-## Sub-Workflows
-
-Pre-built sub-workflow JSONs compose atomic modules into paper-aligned pipelines:
-
-| Sub-Workflow | Stages | Highlights |
-|---|---|---|
-| `simplemem-pipeline.json` | Window → Gate → Extract → Synthesize → Index | Full SimpleMem §2 write path |
-| `simplemem-retrieval.json` | Plan → [Sem ∥ Lex ∥ Sym] → Rank | SimpleMem §2.3 multi-view retrieval |
-| `lightmem-pipeline.json` | PreCompress → SensoryBuffer → [cond] → Novelty → Segment → STMBuffer → Consolidate | Full LightMem 3-tier (Light₁+Light₂+Light₃) |
-| `structmem-pipeline.json` | DualPersp → Consolidate → Persist | Cbuf→seed→LLM synthesis |
-| `hera-orchestration.json` | Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] → Synthesize | Conditional GRPO branches |
-| `hybrid-retrieval.json` | Intent → [Vector ∥ Graph ∥ Keyword] → Rank | 3-way parallel search |
-| `graph-indexing.json` | Ingest → Extract → Dedup → Profile → Community | LightRAG §3.1 |
-| `priha-fusion.json` | Clarify → Generate → Validate → Cite | Full PriHA pipeline |
-
-> **Note**: The PriHA Reconciler module (CLocal + CWeb fusion with priority rules and conflict resolution, per PriHA §3.3) is not yet implemented because it depends on the **Web Search Agent** (`WebSearchAgent`), which is currently a stub awaiting a search API provider integration. When the WSA is completed, the Reconciler will fuse local and web retrieval results with source priority, temporal freshness scoring, and conflict resolution. The `WebSearchAgent` stub is registered and available for development against its output contract.
-
-### Additional Retrieval Module
-
-| Module | Paper | Purpose |
-|---|---|---|
-| **SetUnionMerger** | OMNI-SIMPLEMEM §4.2 | Set-union deduplication of multi-channel candidates (alternative to score-based `ResultRanker`) |
+> **Full module reference** with input/output fingerprints, config schemas, and paper traceability: **[docs/modules/MODULES.md](docs/modules/MODULES.md)**
+>
+> **Improvement roadmap**: **[docs/modules/IMPROVE.md](docs/modules/IMPROVE.md)**
 
 ## API
 
@@ -117,6 +77,20 @@ curl -X POST http://localhost:3000/workflow/run \
   -H "Content-Type: application/json" \
   -d '{"workflow": {...}, "input": {"query": "..."}}'
 ```
+
+The `/workflow/run` response includes aggregated telemetry:
+
+```json
+{
+  "success": true,
+  "workflowId": "...",
+  "data": { "finalAnswer": "...", "confidence": 0.92, "sources": [...] },
+  "telemetry": {
+    "tokenUsage": 4200,
+    "memgraphQueries": 12,
+    "embeddingCalls": 3
+  }
+}
 
 ## Docker
 

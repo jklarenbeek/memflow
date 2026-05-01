@@ -120,6 +120,10 @@ export class WorkflowEngine {
 
     this.context = await WorkflowContext.create(globalConfig);
 
+    // Improvement #11: Validate all module configs before execution begins.
+    // This surfaces config errors at startup instead of mid-pipeline.
+    await this.validateModuleConfigs();
+
     // Resolve and init all modules
     for (const stage of this.config.stages) {
       const mod = await this.registry.getModule(
@@ -149,6 +153,9 @@ export class WorkflowEngine {
    */
   async initializeWithContext(parentContext: WorkflowContext): Promise<void> {
     this.context = parentContext;
+
+    // Improvement #11: Validate all module configs before execution begins.
+    await this.validateModuleConfigs();
 
     // Resolve and init all modules using the shared context
     for (const stage of this.config.stages) {
@@ -390,6 +397,56 @@ export class WorkflowEngine {
       lastError!,
       maxAttempts,
     );
+  }
+
+  // -----------------------------------------------------------------------
+  // Module config validation (Improvement #11)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Validate all module configs at workflow load time.
+   *
+   * Resolves each module and calls `getConfigSchema().parse()` on the
+   * stage config. Collects all validation errors and surfaces them before
+   * execution begins — preventing failures minutes into a long-running pipeline.
+   *
+   * (Improvement #11 from IMPROVE.md)
+   */
+  private async validateModuleConfigs(): Promise<void> {
+    const errors: Array<{ stageId: string; module: string; error: string }> = [];
+
+    for (const stage of this.config.stages) {
+      try {
+        const mod = await this.registry.getModule(
+          stage.module,
+          stage.config as Record<string, unknown>,
+          `__validate__${stage.id}`,
+        );
+
+        // Attempt schema validation
+        const schema = mod.getConfigSchema();
+        schema.parse(stage.config);
+      } catch (err) {
+        errors.push({
+          stageId: stage.id,
+          module: stage.module,
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    // Clean up validation-only instances
+    this.registry.clearInstances();
+
+    if (errors.length > 0) {
+      const summary = errors
+        .map((e) => `  Stage "${e.stageId}" (${e.module}): ${e.error}`)
+        .join("\n");
+
+      throw new WorkflowConfigError(
+        `Module config validation failed for ${errors.length} stage(s):\n${summary}`,
+      );
+    }
   }
 
   /**

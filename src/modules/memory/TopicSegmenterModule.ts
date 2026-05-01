@@ -21,20 +21,22 @@ import type {
   MemoryUnit,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { cosineSimilarity } from "../../utils/similarity.js";
+import { similarity, type SimilarityFunction } from "../../utils/similarity.js";
 
 const ConfigSchema = z.object({
   /** B2 cosine threshold for topic boundary detection */
   topicSimilarityThreshold: z.number().min(0).max(1).default(0.6),
   /** Minimum segment size (prevents single-unit segments) */
   minSegmentSize: z.number().default(2),
+  /** Similarity function to use for boundary detection (Improvement #14) */
+  similarityFunction: z.enum(["cosine", "euclidean", "dotProduct"]).default("cosine"),
 });
 
 type TopicSegmenterConfig = z.infer<typeof ConfigSchema>;
 
 export class TopicSegmenterModule implements BaseModule<TopicSegmenterConfig> {
   readonly name = "TopicSegmenter";
-  readonly version = "0.2.0";
+  readonly version = "0.3.0";
   private config: TopicSegmenterConfig;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -47,6 +49,7 @@ export class TopicSegmenterModule implements BaseModule<TopicSegmenterConfig> {
   ): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
     const units = (input.data.memoryUnits ?? []) as MemoryUnit[];
+    const simFn = this.config.similarityFunction as SimilarityFunction;
 
     if (units.length <= 1) {
       return {
@@ -55,11 +58,11 @@ export class TopicSegmenterModule implements BaseModule<TopicSegmenterConfig> {
       };
     }
 
-    // Compute pairwise cosine similarities between adjacent units
+    // Compute pairwise similarities between adjacent units (Improvement #14: configurable)
     const similarities: number[] = [];
     for (let i = 0; i < units.length - 1; i++) {
       if (units[i].embedding.length > 0 && units[i + 1].embedding.length > 0) {
-        similarities.push(cosineSimilarity(units[i].embedding, units[i + 1].embedding));
+        similarities.push(similarity(units[i].embedding, units[i + 1].embedding, simFn));
       } else {
         similarities.push(0.5); // Default for missing embeddings
       }
@@ -118,9 +121,19 @@ export class TopicSegmenterModule implements BaseModule<TopicSegmenterConfig> {
       }
     }
 
+    // Improvement #7: Set topicLabel on each MemoryUnit from segment analysis
+    for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+      const segment = segments[segIdx];
+      // Generate a topic label from the segment's content
+      const topicLabel = this.deriveTopicLabel(segment, segIdx);
+      for (const unit of segment) {
+        unit.topicLabel = topicLabel;
+      }
+    }
+
     ctx.logger.info(
       `TopicSegmenter: ${segments.length} segments from ${units.length} units ` +
-        `(B1=${b1Boundaries.size}, B2=${b2Boundaries.size}, B1∩B2=${intersection.length})`,
+        `(B1=${b1Boundaries.size}, B2=${b2Boundaries.size}, B1∩B2=${intersection.length}, sim=${simFn})`,
     );
 
     return {
@@ -132,6 +145,45 @@ export class TopicSegmenterModule implements BaseModule<TopicSegmenterConfig> {
         hybridBoundaries: intersection.length,
       },
     };
+  }
+
+  /**
+   * Derive a topic label for a segment from its content.
+   *
+   * Uses lightweight heuristics (most common entities, leading keywords)
+   * rather than an LLM call to keep segmentation fast.
+   * (Improvement #7: populates topicLabel on MemoryUnit)
+   */
+  private deriveTopicLabel(segment: MemoryUnit[], segmentIndex: number): string {
+    // Collect all entities mentioned across the segment
+    const entityCounts = new Map<string, number>();
+    for (const unit of segment) {
+      for (const entity of unit.metadata.entities ?? []) {
+        entityCounts.set(entity, (entityCounts.get(entity) ?? 0) + 1);
+      }
+    }
+
+    // If we have entities, use the top 2 as the label
+    if (entityCounts.size > 0) {
+      const topEntities = [...entityCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([name]) => name);
+      return topEntities.join(" & ");
+    }
+
+    // Fallback: extract leading keywords from the first unit's content
+    const firstContent = segment[0]?.content ?? "";
+    const words = firstContent
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+      .slice(0, 3);
+
+    if (words.length > 0) {
+      return words.join(" ");
+    }
+
+    return `topic-${segmentIndex + 1}`;
   }
 
   getConfigSchema() { return ConfigSchema; }

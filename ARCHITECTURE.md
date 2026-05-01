@@ -67,8 +67,8 @@ graph TD
 
 ### WorkflowEngine (`core/WorkflowEngine.ts`)
 1. Parse JSON config → validate with Zod
-2. `initialize()` → create WorkflowContext, resolve modules, call `init()`
-3. `initializeWithContext(parentCtx)` → reuse existing context (for sub-workflows)
+2. `initialize()` → create WorkflowContext, **validate all module configs** (fail-fast), resolve modules, call `init()`
+3. `initializeWithContext(parentCtx)` → reuse existing context (for sub-workflows), **validate configs**
 4. `run()` → execute DAG with retry, trace, and optional learning iterations
 5. `shutdown()` → call `shutdown()` on all modules and context
 
@@ -76,6 +76,7 @@ Features:
 - **Parallel DAG execution**: when `next` is an array, branches execute concurrently via `Promise.allSettled`. The `dependsOn` field gates execution until all listed dependencies complete. `maxConcurrency` in `globalConfig` limits parallel width.
 - **Configurable conditional routing**: `next` can be `{ "metric>threshold": "stageId", "default": "fallback" }` with operators `>`, `>=`, `<`, `<=`, `==`, `!=`. Bare metric names default to `> 0.5` for backward compatibility.
 - **Sub-workflow nesting**: stages with `module: "SubWorkflow"` instantiate a child WorkflowEngine with shared context, controlled by `workflow`/`workflowRef`, `inputMap`, and `outputMap`.
+- **Config validation at load time**: `validateModuleConfigs()` resolves every module and calls `getConfigSchema().parse()` during `initialize()`, surfacing all Zod validation errors as a single `WorkflowConfigError` before execution begins — prevents failures minutes into long-running pipelines.
 - Exponential backoff retry per stage
 - Learning loop with composite scoring
 - State export as JSON
@@ -89,6 +90,14 @@ DI container holding all shared runtime resources:
 - **Winston logger** — structured JSON logging
 - **Trace accumulator** — per-stage timing and I/O summaries
 
+### MemgraphClient (`providers/MemgraphClient.ts`)
+Singleton Cypher query client with parameterised-only bindings:
+- **`query(cypher, params)`** — single parameterised query execution
+- **`batchQuery(cypher, items, additionalParams?)`** — `UNWIND $items AS item` batch helper that reduces N round-trips to 1. Used by `ChunkIngestor`, `CommunityDetector`, `ParentChildChunker`, `CitationInjector`, and `persistMemoryUnits()`.
+- **`withTransaction(fn, mode)`** — managed read/write transactions
+- **`getQueryCount()` / `resetQueryCount()`** — telemetry counters for per-stage Cypher query tracking
+- **Identifier validation** — strict `^[A-Za-z_][A-Za-z0-9_]{0,63}$` allowlist for labels/properties
+
 ### StateStore (`core/StateStore.ts`)
 Persistent module state for stateful components (LightMem tiers, HERA experience library):
 - **In-memory LRU cache** for zero-latency hot reads within a run
@@ -98,7 +107,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, and runtime plugin registration. Registers **56 built-in modules**: 7 composite wrappers (thin delegation layers), 38 atomic modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), and 4 monolithic compatibility wrappers.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **56 built-in modules**: 7 composite wrappers (thin delegation layers), 38 atomic modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), and 4 monolithic compatibility wrappers.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -107,158 +116,47 @@ Enables workflows-within-workflows:
 - Shares parent's WorkflowContext (no duplicate connections)
 - Recursion depth guard (default max 5)
 
+### AutonomousLoopModule (`modules/core/AutonomousLoopModule.ts`)
+Meta-module that wraps any sub-workflow in an iterative diagnosis → mutation → re-execution loop (OMNI-SIMPLEMEM §3). Uses `ModuleRegistry.resolve()` to instantiate child workflows (decoupled from direct `SubWorkflowModule` import).
+
 ## Module Deep Dive
 
-### Atomic Modules — Memory Pipeline
+> **Full per-module reference** (input/output fingerprints, config schemas, behavioral descriptions, paper traceability): **[docs/modules/MODULES.md](docs/modules/MODULES.md)**
 
-#### SimpleMem Decomposition (6 atomic modules)
+### Pipeline Architecture Summary
 
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **SlidingWindow** | SimpleMem §2 | `chunks` → `windowedChunks` |
-| **DensityGate** | SimpleMem Eq.1 | `windowedChunks` → `filteredChunks` |
-| **FactExtractor** | SimpleMem §2 | `filteredChunks` → `memoryUnits` |
-| **SemanticSynthesis** | SimpleMem §2 | `memoryUnits` → `memoryUnits` (merged) |
-| **StructuredIndex** | SimpleMem §2 | `memoryUnits` → `memoryUnits` (enriched) |
-| **IntentAwarePlanner** | SimpleMem §2.3 | `query`, `memoryUnits` → `expandedQueries`, `searchScope`, `retrievalDepth` |
-
-Sub-workflow (write path): `workflows/sub/simplemem-pipeline.json` — `Window → Gate → Extract → Synthesize → Index`
-Sub-workflow (read path): `workflows/sub/simplemem-retrieval.json` — `Plan → [Sem ∥ Lex ∥ Sym] → Rank`
-
-- **SlidingWindow**: Groups chunks into overlapping windows (configurable `windowSize`, `windowOverlap`) for temporal context.
-- **DensityGate**: Implements Φ_gate(W) from the paper — LLM-based semantic density evaluation with heuristic fallback. Only windows with `≥ minFactCount` distinct facts pass through.
-- **FactExtractor**: LLM de-linearisation of text into typed MemoryUnit objects with batch embedding. Supports coreference resolution via the extraction prompt.
-- **SemanticSynthesis**: Cosine-based merge of highly similar units (strictly `> synthesisThreshold`, default 0.82). Averages embeddings and combines content.
-- **StructuredIndex**: Multi-view indexing — enriches each unit with TF-based lexical keywords and structured symbolic metadata (type, timestamp, confidence) for complementary retrieval paths.
-- **IntentAwarePlanner**: Decomposes the query into three complementary retrieval signals — `{qₛₑₘ, qₗₑₓ, qₛᵧₘ, d}` — where `d` is adaptive retrieval depth estimated from query complexity. Uses LLM with heuristic fallback.
-
-#### LightMem Decomposition (6 atomic modules)
-
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **PreCompression** | LightMem §3.1 | `memoryUnits` → `memoryUnits` (compressed, redundancy removed) |
-| **SensoryBuffer** | LightMem §3.1 | `memoryUnits` → `memoryUnits` (flushed when buffer ≥ th tokens, [] otherwise) |
-| **NoveltyGate** | LightMem Tier 1 | `memoryUnits` → `memoryUnits` (novel only) |
-| **TopicSegmenter** | LightMem §3.2 | `memoryUnits` → `topicSegments` |
-| **STMBuffer** | LightMem §3.2 | `topicSegments` → `memoryUnits` (LTM-promoted summaries with topic, embedding, user/model content) |
-| **SleepConsolidation** | LightMem §3.3 | `topicSegments` → `memoryUnits` (LTM) |
-
-Sub-workflow: `workflows/sub/lightmem-pipeline.json` — `PreCompress → SensoryBuffer → [conditional: buffer full?] → NoveltyGate → TopicSegmenter → STMBuffer → SleepConsolidation`
-
-This 7-stage pipeline implements all three tiers from the LightMem paper:
-- **Light₁** (Pre-Compression + Sensory Buffer): `PreCompression` applies LLM-based cross-entropy density scoring per sentence (replaces Python-only LLMLingua-2 with an LLM approximation), retaining only sentences above the τ-percentile threshold. `SensoryBuffer` accumulates compressed units in a crash-recoverable Memgraph-backed buffer of capacity `th` tokens, flushing downstream only when full.
-- **Light₂** (Novelty Gate + Topic Segmentation + STM Buffer): `NoveltyGate` cosine-filters against existing memories. `TopicSegmenter` applies hybrid B1∩B2 boundary detection — B1 = local similarity minima; B2 = threshold drops below `topicSimilarityThreshold`. `STMBuffer` accumulates topic segments and promotes to LTM format (`{topic, eᵢ := embedding(sumᵢ), userᵢ, modelᵢ}`) when capacity is reached.
-- **Light₃** (Sleep Consolidation): Parallel LLM summarization of topic segments. **Soft-update LTM** semantics: `newTs >= existingTs` constraint ensures only newer information overwrites.
-
-#### StructMem Decomposition (3 atomic modules)
-
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **DualPerspective** | StructMem §3.1 | `memoryUnits` → `memoryUnits` (enriched) |
-| **CrossEventConsolidation** | StructMem §3.2 | `memoryUnits` → `memoryUnits` (with relations) |
-| **GraphPersist** | StructMem | `memoryUnits` → (Memgraph side-effect) |
-
-Sub-workflow: `workflows/sub/structmem-pipeline.json` — `DualPersp → Consolidate → Persist`
-
-- **DualPerspective**: Enriches units with temporal anchoring (ISO timestamps from content) and entity extraction (named entities, event types, interactional relations). LLM-driven with regex NER fallback.
-- **CrossEventConsolidation**: Full Cbuf = Sortτ pipeline — temporally sort buffer, compute aggregated query, retrieve seed entries for diversity, LLM synthesizes cross-event connections. Fallback: pairwise cosine binding with typed relation inference (CAUSAL/INVOLVES/TEMPORAL_FOLLOW).
-- **GraphPersist**: Writes enriched memory units and their relations to Memgraph via parameterised queries. Configurable batch size and dry-run mode.
-
-### Atomic Modules — HERA Agent Pipeline
-
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **PlanGenerator** | HERA | `query`, `retrievalResult` → `agentPlan` |
-| **TrajectoryExecutor** | HERA | `query`, `agentPlan` → `trajectory` |
-| **RewardComputer** | HERA | `trajectory` → `trajectory` (with reward) |
-| **ExperienceReflector** | HERA | `trajectory` → `insights`, `experienceLibrary` |
-| **RoPEEvolver** | HERA §3.4 | `trajectory` → `evolvedRolePrompts` |
-| **TopologyMutator** | HERA §3.5 | `trajectory` → `mutatedTopology` |
-| **FinalSynthesizer** | HERA | `trajectory` → `finalAnswer` |
-
-Sub-workflow: `workflows/sub/hera-orchestration.json` — `Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] → Synthesize`
-
-- **PlanGenerator**: LLM generates query-specific agent topology from available roles, informed by experience library insights and persisted topology mutations.
-- **TrajectoryExecutor**: Sequential multi-agent execution with accumulated context. Uses evolved prompts (RoPE) when available, TOML role prompts as fallback. Computes composite reward inline.
-- **RewardComputer**: Configurable multi-signal composite reward: retrieval quality (30%), step success rate (25%), answer completeness (25%), token efficiency (20%). Weights are tunable via config.
-- **ExperienceReflector**: GRPO-style group comparison — ranks current trajectory against prior trajectories, extracts insights via LLM, updates experience library with utility-based pruning.
-- **RoPEEvolver**: Identifies weakest agent (error steps or shortest output), runs contrastive LLM analysis to evolve its prompt with operational rules and behavioral principles.
-- **TopologyMutator**: After `mutationTriggerCount` consecutive failures, LLM recommends structural changes (replace/augment agents). Mutations are persisted and fed into future `PlanGenerator` calls.
-- **FinalSynthesizer**: LLM synthesis of accumulated agent step outputs into a polished, coherent final answer. Falls back to the last step's output if synthesis fails.
-
-### Atomic Modules — Hybrid Retrieval
-
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **IntentClassifier** | LightRAG | `query` → `searchScope` |
-| **VectorSearch** | LightRAG | `query` → `candidates` (appends) |
-| **GraphSearch** | LightRAG | `query` → `candidates` (appends) |
-| **KeywordSearch** | LightRAG | `query` → `candidates` (appends) |
-| **ResultRanker** | LightRAG | `candidates` → `retrievalResult` |
-
-Sub-workflow: `workflows/sub/hybrid-retrieval.json` — `Intent → [Vector ∥ Graph ∥ Keyword] → Rank`
-
-The 3-way parallel search fan-out is now **visible in JSON** instead of hidden in imperative code. Each search strategy has independent weight and topK configuration. ResultRanker handles dedup, scoring, pyramid expansion with budget gating, and MemoryUnit retrieval.
-
-#### SimpleMem Multi-View Retrieval (2 additional atomic modules)
-
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **IntentAwarePlanner** | SimpleMem §2.3 | `query`, `memoryUnits` → `expandedQueries`, `semanticQuery`, `lexicalQuery`, `symbolicFilter`, `retrievalDepth` |
-| **SymbolicSearch** | SimpleMem §2.1 | `query`, `symbolicFilter`, `memoryUnits` → `candidates` (appended with source="symbolic") |
-
-Sub-workflow: `workflows/sub/simplemem-retrieval.json` — `Plan → [Sem ∥ Lex ∥ Sym] → Rank`
-
-- **IntentAwarePlanner**: Uses LLM reasoning to decompose the query into three complementary retrieval signals (`qₛₑₘ`, `qₗₑₓ`, `qₛᵧₘ`) and estimate adaptive retrieval depth `d`. Outputs: individual queries per channel + combined `expandedQueries` array + `retrievalDepth`.
-- **SymbolicSearch**: Queries memory units by structured metadata constraints (type, entities, time range, confidence) produced by `StructuredIndex`. Supports Memgraph-backed retrieval with in-memory filtering fallback.
-
-### Atomic Modules — Graph Indexing
-
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **ChunkIngestor** | LightRAG §3.1 | `chunks`, `embeddings` → `:Chunk` nodes |
-| **EntityExtractor** | LightRAG §3.1 | `chunks` → `entities`, `relationships` |
-| **EntityDeduplicator** | LightRAG §3.1 | `entities` → `entities` (canonical) |
-| **EntityProfiler** | LightRAG §3.1 | `entities`, `chunks` → profile summaries |
-| **CommunityDetector** | LightRAG | (graph state) → `communities`, `communitySummaries`, `:Community` nodes |
-
-Sub-workflow: `workflows/sub/graph-indexing.json` — `Ingest → Extract → Dedup → Profile → Community`
-
-**CommunityDetector** now supports two MAGE algorithms (configurable via `algorithm`):
-
-| Algorithm | MAGE Procedure | Runtime | Key Properties |
+| Pipeline | Atomic Modules | Sub-Workflow | Paper |
 |---|---|---|---|
-| **Louvain** (default) | `community_detection.get()` | O(n log n) | Greedy modularity maximization, parallel via graph coloring heuristic |
-| **Leiden** | `leiden_community_detection.get()` | O(L·m) | Guarantees well-connected communities, non-deterministic (controlled via `theta`) |
+| **SimpleMem Write** | SlidingWindow → DensityGate → FactExtractor → SemanticSynthesis → StructuredIndex | `simplemem-pipeline.json` | SimpleMem §2 |
+| **SimpleMem Read** | IntentAwarePlanner → [VectorSearch ∥ KeywordSearch ∥ SymbolicSearch] → ResultRanker | `simplemem-retrieval.json` | SimpleMem §2.3 |
+| **LightMem** | PreCompression → SensoryBuffer → [cond] → NoveltyGate → TopicSegmenter → STMBuffer → SleepConsolidation | `lightmem-pipeline.json` | LightMem §3.1–3.3 |
+| **StructMem** | DualPerspective → CrossEventConsolidation → GraphPersist | `structmem-pipeline.json` | StructMem §3 |
+| **HERA Agents** | PlanGenerator → TrajectoryExecutor → RewardComputer → ExperienceReflector → [RoPEEvolver] → [TopologyMutator] → FinalSynthesizer | `hera-orchestration.json` | HERA |
+| **Hybrid Retrieval** | IntentClassifier → [VectorSearch ∥ GraphSearch ∥ KeywordSearch] → ResultRanker | `hybrid-retrieval.json` | LightRAG |
+| **Graph Indexing** | ChunkIngestor → EntityExtractor → EntityDeduplicator → EntityProfiler → CommunityDetector | `graph-indexing.json` | LightRAG §3.1 |
+| **PriHA Generation** | QueryClarifier → AnswerGenerator → HallucinationValidator → CitationInjector | `priha-fusion.json` | PriHA |
 
-After detection, the module:
-1. **Writes `communityId`** property to each `:Entity` node for downstream community-based retrieval
-2. **Generates LLM summaries** per community (configurable, capped at `maxSummaries`)
-3. **Persists `:Community` nodes** to Memgraph with `{id, summary, nodeCount, members, updatedAt}`
-4. **Outputs** `communities` (grouped node info) and `communitySummaries` on the WorkflowData bus for high-level LightRAG retrieval
+### Key Algorithmic Behaviors
 
-### Atomic Modules — PriHA Generation
+- **SleepConsolidation**: Per-entry update queues `Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ)` with parallel `Promise.allSettled` execution (LightMem §3.3)
+- **RoPEEvolver**: Prompt consolidation via projection ΠC — merges, not overwrites. Integrates per-agent failure buffers from `HERAOrchestrator` (HERA §3.4)
+- **KeywordSearch**: Dual mode — basic Memgraph text index or MAGE BM25 with configurable k1/b parameters
+- **CommunityDetector**: Louvain (`community_detection.get()`) or Leiden (`leiden_community_detection.get()`) with LLM community summaries persisted as `:Community` nodes. Uses `batchQuery()` for N→1 label writes.
+- **CrossEventConsolidation**: Time-window–bounded seed retrieval with aggregated centroid query (StructMem §3.2)
+- **EntityDeduplicator**: `checkExistingGraph` mode queries Memgraph before dedup for true incremental graph updates
+- **CitationInjector**: Persists `:Citation` nodes with `:CITES` edges for traceable source attribution. Uses `batchQuery()` UNWIND for N+1→2 round-trip reduction.
+- **TopicSegmenter**: Hybrid B1∩B2 boundary detection with configurable similarity function (`cosine`, `euclidean`, `dotProduct`). Derives `topicLabel` for each segment.
+- **NoveltyGate**: Cosine-based novelty filtering with configurable `similarityFunction` parameter.
+- **SemanticSynthesis**: LLM-based session-scoped consolidation with configurable `similarityFunction` for cluster detection.
+- **FactExtractor**: Populates `modelId` and `providerId` from `WorkflowContext.globalConfig` for provenance tracking. Emits telemetry counters (`embeddingCalls`, `tokenUsage`).
+- **ChunkIngestor**: Uses `batchQuery()` UNWIND for N→1 batch ingestion. Emits `memgraphQueries` telemetry.
 
-| Module | Paper Ref | Reads → Writes |
-|---|---|---|
-| **QueryClarifier** | PriHA (PHC-O) | `query` → `query` (refined), `clarifications` |
-| **AnswerGenerator** | PriHA | `query`, `retrievalResult` → `finalAnswer` |
-| **HallucinationValidator** | PriHA | `finalAnswer` → `finalAnswer` (validated) |
-| **CitationInjector** | PriHA | `finalAnswer`, `sources` → `finalAnswer` (cited) |
+### Standalone Modules
 
-Sub-workflow: `workflows/sub/priha-fusion.json` — `Clarify → Generate → Validate → Cite`
-
-### S2Chunker (`modules/chunking/S2Chunker.ts`)
-- **Paper**: S2 Chunking (arXiv:2501.05485)
-- Real spectral clustering: affinity matrix → normalised Laplacian → Jacobi eigensolver → eigengap heuristic for k → K-Means++ on eigenvectors
-- Extends `TextSplitter` from `@langchain/textsplitters`
-- L2-normalised embeddings, reading-order reconstruction
-- **Deviation from paper**: combined weight formula uses configurable `alpha` parameter (default 0.5) instead of the paper's fixed average: `w = alpha * w_semantic + (1 - alpha) * w_spatial`.
-- Companion: `MarkdownSpatialParser` (367L) converts Markdown → spatial elements
-
-### QueryTranslator (`modules/query/QueryTranslatorModule.ts`)
-- HyDE, Multi-Query, Step-Back, Query Rewriting, Intent Clarification
-- Real LLM calls with string-template fallbacks
+- **S2Chunker**: Real spectral clustering on spatial+semantic affinity (extends LangChain `TextSplitter`). Companion: `MarkdownSpatialParser`.
+- **QueryTranslator**: HyDE, Multi-Query, Step-Back, Query Rewriting, Intent Clarification — real LLM calls with string-template fallbacks.
+- **ParentChildChunker**: Two-tier chunking (small children for precision, large parents for context) with `:BELONGS_TO` graph edges. Uses `batchQuery()` for N→2 batch persistence.
+- **AutonomousLoop**: Meta-module wrapping any sub-workflow in an iterative diagnosis → mutation → re-execution loop (OMNI-SIMPLEMEM §3). Decoupled from `SubWorkflowModule` — uses `ModuleRegistry.resolve()`.
 
 ## Data Model in Memgraph
 
@@ -281,7 +179,7 @@ Sub-workflow: `workflows/sub/priha-fusion.json` — `Clarify → Generate → Va
 |---|---|---|
 | `/health` | GET | Service health + registered modules |
 | `/modules` | GET | List available modules |
-| `/workflow/run` | POST | Execute workflow from JSON config + input |
+| `/workflow/run` | POST | Execute workflow from JSON config + input. Returns aggregated `telemetry` (tokenUsage, memgraphQueries, embeddingCalls). |
 
 ## Type Safety
 
@@ -297,11 +195,14 @@ The `WorkflowData` interface provides typed fields for all inter-module data:
 | Retrieval | `retrievalResult`, `candidates`, `searchScope` |
 | Agents | `agentResult`, `agentPlan`, `trajectory`, `insights` |
 | Generation | `finalAnswer`, `sources`, `confidence` |
+| Telemetry | `metrics.tokenUsage`, `metrics.memgraphQueries`, `metrics.embeddingCalls` |
 | Meta | `metrics`, `[key: string]: unknown` (escape hatch) |
 
 ## Error Handling
 
 7 typed error classes: `MemFlowError`, `WorkflowStageError`, `WorkflowConfigError`, `WorkflowDAGError`, `ModuleNotFoundError`, `ProviderError`, `MemgraphError`.
+
+All module error boundaries use structured logging instead of bare `catch {}` blocks. Errors include the originating module name, error message, and relevant context (node IDs, query details, batch sizes) for actionable debugging.
 
 ## Security & Production Notes
 
@@ -407,9 +308,9 @@ src/
                                hera-orchestration.json, hybrid-retrieval.json, graph-indexing.json,
                                priha-fusion.json
   prompts/                     TOML prompt templates (see Prompt System section)
-  providers/                   LLMProvider.ts, EmbeddingProvider.ts, MemgraphClient.ts
-  server/                      Hono HTTP server (dual-runtime Bun/Node.js)
-  utils/                       promptLoader.ts, similarity.ts, tokens.ts
+  providers/                   LLMProvider.ts, EmbeddingProvider.ts, MemgraphClient.ts (batchQuery, query counters)
+  server/                      Hono HTTP server (dual-runtime Bun/Node.js, telemetry aggregation)
+  utils/                       promptLoader.ts, similarity.ts (cosine/euclidean/dotProduct strategy), tokens.ts
 ```
 
 ---

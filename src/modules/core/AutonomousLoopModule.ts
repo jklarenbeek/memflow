@@ -33,7 +33,7 @@
 import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { SubWorkflowModule } from "../../core/SubWorkflowModule.js";
+import { ModuleRegistry } from "../../core/ModuleRegistry.js";
 
 const ConfigSchema = z.object({
   /** Path to the sub-workflow to wrap in the loop */
@@ -79,11 +79,18 @@ export class AutonomousLoopModule implements BaseModule<AutonomousLoopConfig> {
 
     for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
       // 1. Execute sub-workflow
-      const subWorkflow = new SubWorkflowModule({
-        workflowRef: this.config.workflowRef,
-        inputMap: this.config.inputMap,
-        outputMap: this.config.outputMap,
-      });
+      // Improvement #12: Use ModuleRegistry.resolve() instead of direct import
+      // This enables AutonomousLoop to wrap any registered module
+      const registry = ModuleRegistry.getInstance();
+      const subWorkflow = await registry.getModule(
+        "SubWorkflow",
+        {
+          workflowRef: this.config.workflowRef,
+          inputMap: this.config.inputMap,
+          outputMap: this.config.outputMap,
+        },
+        `autonomous-loop-${iteration}`,
+      );
 
       const result = await subWorkflow.process(
         { data: currentInput, config: {} },
@@ -157,7 +164,12 @@ Respond with JSON:
             (currentInput as any).query = `${query} (please provide more detail and context)`;
           }
         }
-      } catch {
+      } catch (err) {
+        // Improvement #6: structured error logging
+        ctx.logger.warn("AutonomousLoop: diagnosis failed", {
+          error: (err as Error).message,
+          iteration,
+        });
         diagnosis = "diagnosis_failed";
       }
 

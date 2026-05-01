@@ -20,6 +20,7 @@ import type {
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
+import { estimateTokens } from "../../utils/tokens.js";
 
 const ConfigSchema = z.object({
   /** Max facts to extract per chunk */
@@ -53,6 +54,14 @@ export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
     const embedder = ctx.getEmbeddings();
     const newUnits: MemoryUnit[] = [];
 
+    // Improvement #7: Extract modelId and providerId from context for provenance tracking
+    const modelId = ctx.globalConfig.llmModel ?? "unknown";
+    const providerId = ctx.globalConfig.llmProvider ?? "unknown";
+
+    // Improvement #10: Track telemetry counters
+    let embeddingCalls = 0;
+    let tokenUsage = 0;
+
     for (const chunk of chunks) {
       try {
         const { messages } = loadAndRender("simplemem/extraction", {
@@ -61,6 +70,7 @@ export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
 
         const resp = await llm.invoke(messages);
         const text = typeof resp.content === "string" ? resp.content : "";
+        tokenUsage += estimateTokens(text);
         const parsed = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? "[]") as Array<{
           content?: string;
           type?: string;
@@ -74,7 +84,13 @@ export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
         let embeddings: number[][] = [];
         try {
           embeddings = await embedder.embedDocuments(factTexts);
-        } catch {
+          embeddingCalls++;
+        } catch (embErr) {
+          // Improvement #6: structured error logging
+          ctx.logger.warn("FactExtractor: batch embedding failed", {
+            error: (embErr as Error).message,
+            factCount: factTexts.length,
+          });
           embeddings = factTexts.map(() => []);
         }
 
@@ -88,6 +104,9 @@ export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
             embedding: embeddings[i] ?? [],
             timestamp: new Date(),
             type: (fact.type as MemoryUnit["type"]) ?? "fact",
+            // Improvement #7: Populate provenance fields
+            modelId,
+            providerId,
             metadata: {
               source: chunk.metadata?.source ?? "extraction",
               importance: fact.importance ?? 0.7,
@@ -95,12 +114,23 @@ export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
             },
           });
         }
-      } catch {
+      } catch (err) {
+        // Improvement #6: structured error logging instead of bare catch
+        ctx.logger.warn("FactExtractor: LLM extraction failed for chunk, using fallback", {
+          error: (err as Error).message,
+          chunkSource: chunk.metadata?.source,
+        });
+
         // Fallback: treat the entire chunk as a single fact
         let embedding: number[] = [];
         try {
           embedding = await embedder.embedQuery(chunk.pageContent.substring(0, 500));
-        } catch { /* no embedding available */ }
+          embeddingCalls++;
+        } catch (embErr) {
+          ctx.logger.debug("FactExtractor: fallback embedding failed", {
+            error: (embErr as Error).message,
+          });
+        }
 
         newUnits.push({
           id: uuid(),
@@ -108,6 +138,8 @@ export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
           embedding,
           timestamp: new Date(),
           type: "fact",
+          modelId,
+          providerId,
           metadata: { source: "fallback-extraction" },
         });
       }
@@ -117,7 +149,13 @@ export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
 
     return {
       data: { memoryUnits: [...existing, ...newUnits] },
-      metrics: { extracted: newUnits.length, chunks: chunks.length },
+      metrics: {
+        extracted: newUnits.length,
+        chunks: chunks.length,
+        // Improvement #10: module-level telemetry
+        embeddingCalls,
+        tokenUsage,
+      },
     };
   }
 

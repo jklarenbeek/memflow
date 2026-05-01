@@ -24,7 +24,10 @@ export class GraphSearchModule implements BaseModule<GraphConfig> {
     const existing = (input.data.candidates ?? []) as Array<Record<string, unknown>>;
 
     let queryEmb: number[] = [];
-    try { queryEmb = await ctx.getEmbeddings().embedQuery(query); } catch { queryEmb = new Array(768).fill(0.01); }
+    try { queryEmb = await ctx.getEmbeddings().embedQuery(query); } catch (err) {
+      ctx.logger.debug("GraphSearch: embedding failed, using fallback", { error: (err as Error).message });
+      queryEmb = new Array(768).fill(0.01);
+    }
 
     try {
       const results = await ctx.memgraph.query<{ node: Record<string, unknown>; score: number }>(
@@ -44,8 +47,8 @@ export class GraphSearchModule implements BaseModule<GraphConfig> {
 
       ctx.logger.info(`GraphSearch: ${candidates.length} hits`);
       return { data: { candidates: [...existing, ...candidates] }, metrics: { hits: candidates.length } };
-    } catch {
-      ctx.logger.debug("GraphSearch: not available");
+    } catch (err) {
+      ctx.logger.debug("GraphSearch: not available", { error: (err as Error).message });
       return { data: { candidates: existing }, metrics: { hits: 0 } };
     }
   }

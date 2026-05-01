@@ -197,42 +197,45 @@ export class ParentChildChunkerModule implements BaseModule<ParentChildConfig> {
   /**
    * Persist parent-child chunk structure to Memgraph.
    * Creates :ParentChunk and :ChildChunk nodes with :BELONGS_TO edges.
+   *
+   * Uses UNWIND batch operations to reduce N round-trips to 2 (Improvement #5).
    */
   private async persistToGraph(
     parents: ChunkOutput[],
     children: ChunkOutput[],
-    relations: ChunkRelation[],
+    _relations: ChunkRelation[],
     ctx: WorkflowContext,
   ): Promise<void> {
     try {
-      // Batch create parent chunks
-      for (const parent of parents) {
-        await ctx.memgraph.query(
-          `CREATE (p:ParentChunk {id: $id, text: $text, tokenEstimate: $tokens})`,
-          { id: parent.id, text: parent.text, tokens: parent.tokenEstimate },
-        );
-      }
+      // Batch create parent chunks with single UNWIND query
+      await ctx.memgraph.batchQuery(
+        `UNWIND $items AS item
+         CREATE (p:ParentChunk {id: item.id, text: item.text, tokenEstimate: item.tokens})`,
+        parents.map((p) => ({ id: p.id, text: p.text, tokens: p.tokenEstimate })),
+      );
 
-      // Batch create child chunks and relations
-      for (const child of children) {
-        const parentId = (child.metadata as any).parentId;
-        await ctx.memgraph.query(
-          `CREATE (c:ChildChunk {id: $childId, text: $text, tokenEstimate: $tokens})
-           WITH c
-           MATCH (p:ParentChunk {id: $parentId})
-           CREATE (c)-[:BELONGS_TO]->(p)`,
-          {
-            childId: child.id,
-            text: child.text,
-            tokens: child.tokenEstimate,
-            parentId,
-          },
-        );
-      }
+      // Batch create child chunks and relations with single UNWIND query
+      await ctx.memgraph.batchQuery(
+        `UNWIND $items AS item
+         CREATE (c:ChildChunk {id: item.childId, text: item.text, tokenEstimate: item.tokens})
+         WITH c, item
+         MATCH (p:ParentChunk {id: item.parentId})
+         CREATE (c)-[:BELONGS_TO]->(p)`,
+        children.map((c) => ({
+          childId: c.id,
+          text: c.text,
+          tokens: c.tokenEstimate,
+          parentId: (c.metadata as Record<string, unknown>).parentId,
+        })),
+      );
 
       ctx.logger.debug(`ParentChildChunker: persisted ${parents.length} parents, ${children.length} children to Memgraph`);
-    } catch {
-      ctx.logger.debug("ParentChildChunker: Memgraph persistence failed, continuing without graph");
+    } catch (err) {
+      // Improvement #6: structured error logging instead of bare catch
+      ctx.logger.warn(
+        "ParentChildChunker: Memgraph batch persistence failed, continuing without graph",
+        { error: (err as Error).message, parents: parents.length, children: children.length },
+      );
     }
   }
 

@@ -199,7 +199,17 @@ export interface ModuleOutput {
 }
 
 export interface ModuleMetrics {
-  [key: string]: number | string;
+  /**
+   * Standard telemetry counters (Improvement #10).
+   * Modules should populate these when relevant for cost estimation
+   * and resource tracking.
+   */
+  tokenUsage?: number;
+  memgraphQueries?: number;
+  embeddingCalls?: number;
+
+  /** Allow module-specific metrics */
+  [key: string]: number | string | boolean | undefined;
 }
 
 /**

@@ -220,39 +220,58 @@ export class CommunityDetectorModule implements BaseModule<CommunityConfig> {
   /**
    * Write community labels back to Entity nodes as a `communityId` property.
    * This enables community-based retrieval queries downstream.
+   *
+   * Uses UNWIND batch query to reduce N round-trips to 1 (Improvement #5).
    */
   private async writeCommunityLabels(
     results: Array<{ community_id: number; name?: string; id?: string }>,
     ctx: WorkflowContext,
   ): Promise<void> {
-    // Batch update: set communityId on each node
-    for (const row of results) {
-      if (row.community_id === -1) continue;
-      const identifier = row.id ?? row.name;
-      if (!identifier) continue;
+    const validNodes = results
+      .filter((r) => r.community_id !== -1 && (r.id ?? r.name))
+      .map((r) => ({
+        nodeId: r.id ?? r.name ?? "",
+        communityId: r.community_id,
+      }));
 
-      try {
-        await ctx.memgraph.query(
-          `MATCH (n:${this.config.nodeLabel} {id: $nodeId})
-           SET n.communityId = $communityId`,
-          { nodeId: identifier, communityId: row.community_id },
-        );
-      } catch {
-        // Try matching by name if id fails
+    if (validNodes.length === 0) return;
+
+    try {
+      // Batch update: single UNWIND query for all nodes (Improvement #5)
+      await ctx.memgraph.batchQuery(
+        `UNWIND $items AS item
+         MATCH (n:${this.config.nodeLabel})
+         WHERE n.id = item.nodeId OR n.name = item.nodeId
+         SET n.communityId = item.communityId`,
+        validNodes,
+      );
+    } catch (err) {
+      // Improvement #6: structured error logging instead of bare catch
+      ctx.logger.warn(
+        `CommunityDetector: batch label write failed, falling back to individual queries`,
+        { error: (err as Error).message, nodeCount: validNodes.length },
+      );
+
+      // Fallback: individual queries for compatibility with older Memgraph
+      for (const node of validNodes) {
         try {
           await ctx.memgraph.query(
-            `MATCH (n:${this.config.nodeLabel} {name: $nodeName})
+            `MATCH (n:${this.config.nodeLabel})
+             WHERE n.id = $nodeId OR n.name = $nodeId
              SET n.communityId = $communityId`,
-            { nodeName: identifier, communityId: row.community_id },
+            { nodeId: node.nodeId, communityId: node.communityId },
           );
-        } catch {
-          // Silently skip if node can't be matched
+        } catch (innerErr) {
+          ctx.logger.debug(
+            `CommunityDetector: failed to update node ${node.nodeId}`,
+            { error: (innerErr as Error).message },
+          );
         }
       }
     }
 
     ctx.logger.debug(
-      `CommunityDetector: wrote communityId labels to ${results.filter((r) => r.community_id !== -1).length} nodes`,
+      `CommunityDetector: wrote communityId labels to ${validNodes.length} nodes`,
     );
   }
 
@@ -307,8 +326,12 @@ export class CommunityDetectorModule implements BaseModule<CommunityConfig> {
               timestamp: new Date().toISOString(),
             },
           );
-        } catch {
-          // Summary persistence is best-effort
+        } catch (err) {
+          // Improvement #6: log summary persistence failure instead of swallowing
+          ctx.logger.debug(
+            `CommunityDetector: summary persistence failed for community ${community.id}`,
+            { error: (err as Error).message },
+          );
         }
       }),
     );
