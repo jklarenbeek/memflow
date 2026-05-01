@@ -1,0 +1,15 @@
+[meta]
+name = "query_rewriting"
+version = "1.0"
+description = "Query query_rewriting technique"
+module = "QueryTranslator"
+
+[config]
+temperature = 0.3
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+Rewrite this question for maximum clarity: "{{query}}""""
+

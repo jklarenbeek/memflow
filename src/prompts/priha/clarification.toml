@@ -1,0 +1,17 @@
+[meta]
+name = "clarification"
+version = "1.0"
+description = "PHC-O iterative query clarification"
+module = "PriHAFusion"
+
+[config]
+temperature = 0.2
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+The user asked: "{{query}}". {{context}}
+Decompose into {{max_sub_queries}} specific, self-contained sub-queries.
+Output JSON: {"clarifications": ["what is missing"], "subqueries": ["specific query 1", "specific query 2"]}"""
+

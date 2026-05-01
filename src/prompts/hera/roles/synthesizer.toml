@@ -1,0 +1,15 @@
+[meta]
+name = "synthesizer"
+version = "1.0"
+description = "Role prompt for synthesizer agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a final synthesizer. Produce the polished, well-cited response that addresses the original query comprehensively. Incorporate critic feedback, ensure all claims are supported, and present the answer in a clear format."""
+

@@ -3,18 +3,14 @@
  *
  * Implements the LightMem paper (arXiv:2510.18866, ICLR 2026):
  *
- *  1. Sensory Memory: pre-compression via novelty gating — units with
- *     cosine similarity above threshold are filtered as redundant
- *  2. Short-Term Memory (STM): topic-segmented buffer with capacity-bounded
- *     accumulation. When STM reaches capacity, units are summarized per-topic
- *     and promoted to LTM
- *  3. Long-Term Memory (LTM): sleep-time offline parallel updates with
- *     abstractive consolidation via LLM
+ *  1. Sensory Memory: pre-compression via novelty gating
+ *  2. Short-Term Memory (STM): topic-segmented buffer with hybrid
+ *     B1∩B2 boundary detection (attention + similarity, paper §3.1)
+ *  3. Long-Term Memory (LTM): soft-update at test time with
+ *     timestamp-constrained similarity Q(ei) = Topk(ej, sim(vi,vj)) | tj ≥ ti
+ *     plus offline parallel sleep-time consolidation (paper §3.3)
  *
- * Topic segmentation (§3.1): identifies topic boundaries via pairwise
- * cosine similarity drops between adjacent units, matching the paper's
- * hybrid attention + similarity boundary detection (simplified to
- * similarity-only for workflow-module compatibility).
+ * All LLM prompts are loaded from TOML files in src/prompts/lightmem/.
  *
  * Second stage of the memory pipeline: SimpleMem → LightMem → StructMem
  */
@@ -29,6 +25,7 @@ import type {
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { cosineSimilarity } from "../../utils/similarity.js";
+import { loadAndRender } from "../../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -67,7 +64,7 @@ interface TopicSegment {
 
 export class LightMemModule implements BaseModule<LightMemConfig> {
   readonly name = "LightMem";
-  readonly version = "3.0.0";
+  readonly version = "0.2.0";
   private config: LightMemConfig;
   private ctx?: WorkflowContext;
 
@@ -209,50 +206,93 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
   // -----------------------------------------------------------------------
 
   /**
-   * Topic segmentation (LightMem paper §3.1).
+   * Hybrid topic segmentation (LightMem paper §3.1).
    *
-   * Identifies topic boundaries by computing cosine similarity between
-   * adjacent units. When similarity drops below `topicSimilarityThreshold`,
-   * a new topic segment begins. This matches the paper's B2 boundary set.
+   * Implements B = B1 ∩ B2 where:
+   *  - B1: attention-based boundaries — local maxima in the sub-diagonal
+   *    of the turn-level attention matrix M (approx. via embedding distances)
+   *  - B2: similarity-based boundaries — sim(sk-1, sk) < τ
+   *
+   * Final boundaries are the intersection B1 ∩ B2.
    */
   private async flushSensoryToSTM(ctx: WorkflowContext): Promise<void> {
     const buffer = [...this.sensoryBuffer];
     this.sensoryBuffer = [];
 
     if (buffer.length === 0) return;
+    if (buffer.length < 3) {
+      // Too few units for meaningful segmentation
+      this.stm.push({ topicId: uuidv4(), units: buffer });
+      return;
+    }
 
-    // Detect topic boundaries via similarity drops
-    const segments: MemoryUnit[][] = [];
-    let currentSegment: MemoryUnit[] = [buffer[0]];
-
+    // Compute pairwise similarities between consecutive units
+    const sims: number[] = [];
     for (let i = 1; i < buffer.length; i++) {
       const prev = buffer[i - 1];
       const curr = buffer[i];
-
       if (prev.embedding.length > 0 && curr.embedding.length > 0) {
-        const sim = cosineSimilarity(prev.embedding, curr.embedding);
-        if (sim < this.config.topicSimilarityThreshold) {
-          // Topic boundary detected
-          segments.push(currentSegment);
-          currentSegment = [curr];
-          continue;
-        }
+        sims.push(cosineSimilarity(prev.embedding, curr.embedding));
+      } else {
+        sims.push(1.0); // No embedding = assume continuity
       }
-
-      currentSegment.push(curr);
     }
-    segments.push(currentSegment);
 
-    // Convert to TopicSegments and add to STM
+    // B1: Attention-based boundaries — local maxima in distance
+    // We approximate the sub-diagonal attention matrix M_{k,k-1} as
+    // (1 - cosine_similarity), then find local maxima in this sequence.
+    const distances = sims.map((s) => 1 - s);
+    const b1 = new Set<number>();
+    for (let k = 1; k < distances.length - 1; k++) {
+      if (distances[k] > distances[k - 1] && distances[k] > distances[k + 1]) {
+        b1.add(k + 1); // k+1 because boundary is after position k
+      }
+    }
+
+    // B2: Similarity-based boundaries — drops below threshold τ
+    const b2 = new Set<number>();
+    for (let k = 0; k < sims.length; k++) {
+      if (sims[k] < this.config.topicSimilarityThreshold) {
+        b2.add(k + 1);
+      }
+    }
+
+    // B = B1 ∩ B2 — intersection
+    const boundaries = new Set<number>();
+    for (const k of b1) {
+      if (b2.has(k)) boundaries.add(k);
+    }
+
+    // If intersection is empty but B2 has boundaries, fall back to B2
+    // (ensures we still segment when attention peaks are subtle)
+    if (boundaries.size === 0) {
+      for (const k of b2) boundaries.add(k);
+    }
+
+    // Segment buffer at boundary positions
+    const segments: MemoryUnit[][] = [];
+    let segStart = 0;
+    const sortedBounds = [...boundaries].sort((a, b) => a - b);
+    for (const bound of sortedBounds) {
+      if (bound > segStart && bound < buffer.length) {
+        segments.push(buffer.slice(segStart, bound));
+        segStart = bound;
+      }
+    }
+    segments.push(buffer.slice(segStart));
+
+    // Add to STM
     for (const unitGroup of segments) {
-      this.stm.push({
-        topicId: uuidv4(),
-        units: unitGroup,
-      });
+      if (unitGroup.length > 0) {
+        this.stm.push({
+          topicId: uuidv4(),
+          units: unitGroup,
+        });
+      }
     }
 
     ctx.logger.info(
-      `LightMem: Flushed ${buffer.length} sensory units into ${segments.length} topic segments`,
+      `LightMem: Flushed ${buffer.length} sensory units into ${segments.length} topic segments (B1∩B2: ${boundaries.size} boundaries)`,
     );
   }
 
@@ -261,11 +301,13 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
   // -----------------------------------------------------------------------
 
   /**
-   * Sleep-time consolidation (LightMem paper §3.3).
+   * Sleep-time consolidation with soft-update (LightMem paper §3.3).
    *
-   * Summarizes each STM topic segment via LLM, producing compact LTM
-   * entries. Updates are parallelizable since each topic segment is
-   * independent (paper's "offline parallel update" property).
+   * 1. Summarize each STM topic segment via LLM (TOML prompt)
+   * 2. Soft-update existing LTM entries using paper's algorithm:
+   *    Q(ei) = Topk(ej, sim(vi, vj)) | tj ≥ ti, j ≠ i
+   *    Only entries with later timestamps may update earlier ones.
+   * 3. Parallel execution since segments are independent.
    */
   private async promoteSTMtoLTM(ctx: WorkflowContext): Promise<number> {
     ctx.logger.info("LightMem: Sleep-time consolidation — promoting STM to LTM");
@@ -276,6 +318,7 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
     );
 
     let promoted = 0;
+    const newEntries: MemoryUnit[] = [];
 
     // Parallel update: each segment is independent (paper §3.3)
     const results = await Promise.allSettled(
@@ -286,12 +329,12 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
           const llm = ctx.getLLM();
           const embeddings = ctx.getEmbeddings();
 
-          const response = await llm.invoke([
-            {
-              role: "user",
-              content: `Consolidate these related memory entries into a single concise summary that preserves key facts and relationships:\n${texts.substring(0, 3000)}`,
-            },
-          ]);
+          // Load prompt from TOML
+          const { messages } = loadAndRender("lightmem/consolidation", {
+            texts: texts.substring(0, 3000),
+          });
+
+          const response = await llm.invoke(messages);
 
           const summaryText =
             typeof response.content === "string" ? response.content : "";
@@ -323,15 +366,57 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
       if (result.status === "fulfilled") {
         const value = result.value;
         if (Array.isArray(value)) {
-          // LLM failed — push original units back to STM
-          this.stm.push({
-            topicId: uuidv4(),
-            units: value,
-          });
+          this.stm.push({ topicId: uuidv4(), units: value });
         } else {
-          this.ltm.push(value);
+          newEntries.push(value);
           promoted++;
         }
+      }
+    }
+
+    // Soft-update existing LTM with timestamp-constrained similarity (paper §3.3)
+    // Q(ei) = Topk(ej, sim(vi, vj)) | tj ≥ ti, j ≠ i
+    for (const newEntry of newEntries) {
+      if (newEntry.embedding.length === 0) {
+        this.ltm.push(newEntry);
+        continue;
+      }
+
+      // Find top-k similar existing entries that are OLDER (tj < ti for new updating old)
+      const candidates = this.ltm
+        .filter((existing) => {
+          if (existing.embedding.length === 0) return false;
+          // Only entries with earlier timestamps can be updated by newer ones
+          const existingTs = existing.timestamp instanceof Date
+            ? existing.timestamp.getTime()
+            : new Date(existing.timestamp).getTime();
+          const newTs = newEntry.timestamp instanceof Date
+            ? newEntry.timestamp.getTime()
+            : new Date(newEntry.timestamp).getTime();
+          return newTs >= existingTs; // new entry is later
+        })
+        .map((existing) => ({
+          entry: existing,
+          sim: cosineSimilarity(newEntry.embedding, existing.embedding),
+        }))
+        .filter((c) => c.sim > 0.7) // Only meaningfully similar
+        .sort((a, b) => b.sim - a.sim)
+        .slice(0, 3); // Top-3
+
+      // If highly similar entries exist, merge into them (update in place)
+      if (candidates.length > 0 && candidates[0].sim > 0.85) {
+        const target = candidates[0].entry;
+        target.content = `${target.content} [Updated: ${newEntry.content}]`
+          .substring(0, 800);
+        target.metadata.lastUpdated = new Date().toISOString();
+        target.metadata.updateCount =
+          ((target.metadata.updateCount as number) ?? 0) + 1;
+        ctx.logger.debug(
+          `LightMem: Soft-updated LTM entry "${target.content.substring(0, 40)}…"`,
+        );
+      } else {
+        // No close match — insert as new entry
+        this.ltm.push(newEntry);
       }
     }
 

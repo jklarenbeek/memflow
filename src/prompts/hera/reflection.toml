@@ -1,0 +1,16 @@
+[meta]
+name = "reflection"
+version = "1.0"
+description = "GRPO-style trajectory comparison and insight extraction"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.3
+max_tokens = 1024
+
+[[messages]]
+role = "user"
+content = """
+Compare these agent trajectories. Extract 2-3 insights on what made the best one succeed (e.g. "use parallel retrieval for multi-hop").
+Trajectories: {{trajectories}}"""
+

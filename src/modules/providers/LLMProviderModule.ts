@@ -23,7 +23,7 @@ type LLMConfig = z.infer<typeof ConfigSchema>;
 
 export class LLMProviderModule implements BaseModule<LLMConfig> {
   readonly name = "LLMProvider";
-  readonly version = "2.0.0";
+  readonly version = "0.2.0";
   private config: LLMConfig;
 
   constructor(config: Record<string, unknown> = {}) {

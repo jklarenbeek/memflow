@@ -19,6 +19,7 @@ import type {
   ModuleOutput,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { loadAndRender } from "../../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -49,7 +50,7 @@ export class QueryTranslatorModule
   implements BaseModule<QueryTranslatorConfig>
 {
   readonly name = "QueryTranslator";
-  readonly version = "2.0.0";
+  readonly version = "0.2.0";
   private config: QueryTranslatorConfig;
   private ctx?: WorkflowContext;
 
@@ -95,18 +96,12 @@ export class QueryTranslatorModule
     ctx: WorkflowContext,
   ): Promise<string[]> {
     const llm = ctx.getLLM();
-    const prompts: Record<string, string> = {
-      hyde: `Write a short paragraph that directly answers this question as if it were a passage from a relevant document: "${query}"`,
-      multi_query: `Generate 2 alternative search queries for: "${query}". Output as JSON array: ["query1", "query2"]`,
-      step_back: `What is the broader topic or principle behind this question: "${query}"? Respond with one broader question.`,
-      query_rewriting: `Rewrite this question for maximum clarity: "${query}"`,
-      intent_clarification: `What is the user really asking with: "${query}"? Rephrase as a clear, unambiguous query.`,
-    };
 
     try {
-      const resp = await llm.invoke([
-        { role: "user", content: prompts[technique] ?? `Expand: ${query}` },
-      ]);
+      // Load technique prompt from TOML
+      const { messages } = loadAndRender(`query/${technique}`, { query });
+
+      const resp = await llm.invoke(messages);
       const text =
         typeof resp.content === "string" ? resp.content : String(resp.content);
 

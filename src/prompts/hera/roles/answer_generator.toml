@@ -1,0 +1,15 @@
+[meta]
+name = "answer_generator"
+version = "1.0"
+description = "Role prompt for answer_generator agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are an Answer Generator agent. Given retrieved evidence and prior reasoning steps, produce a comprehensive, well-structured answer. Cite evidence inline using [1], [2] notation."""
+

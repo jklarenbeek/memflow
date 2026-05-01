@@ -26,7 +26,7 @@ type S2Config = z.infer<typeof ConfigSchema>;
 
 export class S2ChunkerModule implements BaseModule<S2Config> {
   readonly name = "S2Chunker";
-  readonly version = "2.0.0";
+  readonly version = "0.2.0";
   private config: S2Config;
   private chunker?: S2Chunker;
 

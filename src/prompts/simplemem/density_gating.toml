@@ -1,0 +1,34 @@
+[meta]
+name = "density_gating"
+version = "1.0"
+description = "Semantic density gating — filter low-information windows (paper Eq. 1)"
+module = "SimpleMem"
+
+[config]
+temperature = 0.0
+max_tokens = 512
+
+[[messages]]
+role = "system"
+content = """
+You are a semantic density evaluator. Your task is to assess whether a dialogue window contains meaningful, information-dense content worth preserving as memory.
+
+Low-density content includes: greetings, phatic expressions, filler phrases, acknowledgments without substance, and pure chitchat.
+High-density content includes: factual statements, decisions, plans, preferences, events, opinions with reasoning."""
+
+[[messages]]
+role = "user"
+content = """
+Evaluate the semantic density of the following text window relative to the conversation history.
+
+If the window contains meaningful information worth extracting, output a JSON object:
+{"dense": true, "reason": "brief justification"}
+
+If the window is low-density (chitchat, greetings, fillers), output:
+{"dense": false, "reason": "brief justification"}
+
+History context: {{history}}
+
+Window to evaluate:
+{{window_text}}"""
+

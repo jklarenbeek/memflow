@@ -1,0 +1,18 @@
+[meta]
+name = "synthesis"
+version = "1.0"
+description = "Synthesise final answer from agent trajectory"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "user"
+content = """
+Synthesize the final answer from this agent trajectory. Include inline citations [1], [2] where evidence was used. Be concise and accurate.
+
+Query: {{query}}
+Steps: {{steps}}"""
+

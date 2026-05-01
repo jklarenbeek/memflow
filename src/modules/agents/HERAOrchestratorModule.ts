@@ -24,6 +24,7 @@ import type {
   RetrievalResult,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { loadAndRender, loadRolePrompt } from "../../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -69,7 +70,7 @@ type HERAConfig = z.infer<typeof ConfigSchema>;
 
 export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
   readonly name = "HERAOrchestrator";
-  readonly version = "3.0.0";
+  readonly version = "0.2.0";
   private config: HERAConfig;
   private ctx?: WorkflowContext;
 
@@ -83,6 +84,11 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
   private failedTrajectoryBuffer: Map<string, AgentTrajectory[]> = new Map();
   /** Topology mutation: consecutive failure counter */
   private consecutiveFailures = 0;
+  /** Topology mutation: persisted structural changes for next plan */
+  private mutatedTopology: { addAgents: string[]; removeAgents: string[] } = {
+    addAgents: [],
+    removeAgents: [],
+  };
 
   constructor(config: Record<string, unknown> = {}) {
     this.config = ConfigSchema.parse(config);
@@ -173,17 +179,16 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
       .map((e) => e.insight)
       .join("\n");
 
-    const prompt = `You are an expert multi-agent RAG orchestrator.
-Given query: "${query}"
-Available evidence: ${retrieval ? `${retrieval.chunks.length} chunks, score ${retrieval.score.toFixed(2)}` : "none yet"}
-Past successful insights: ${relevantExp || "none"}
-
-Output a JSON plan:
-{"agents": ["retriever", "reasoner", "critic"], "order": "sequential", "tokenBudget": 6000}`;
+    const prompt = loadAndRender("hera/plan_generation", {
+      query,
+      evidence_summary: retrieval ? `${retrieval.chunks.length} chunks, score ${retrieval.score.toFixed(2)}` : "none yet",
+      insights: relevantExp || "none",
+      available_roles: Object.keys(this.config.rolePrompts).join(", "),
+    });
 
     try {
       const llm = ctx.getLLM();
-      const resp = await llm.invoke([{ role: "user", content: prompt }]);
+      const resp = await llm.invoke(prompt.messages);
       const text =
         typeof resp.content === "string"
           ? resp.content
@@ -198,8 +203,14 @@ Output a JSON plan:
         tokenBudget: parsed.tokenBudget ?? 6000,
       };
     } catch {
+      // Apply any persisted topology mutations
+      let agents = ["retriever", "reasoner", "synthesizer"];
+      if (this.mutatedTopology.addAgents.length > 0) {
+        agents = [...agents, ...this.mutatedTopology.addAgents];
+      }
+      agents = agents.filter((a) => !this.mutatedTopology.removeAgents.includes(a));
       return {
-        agents: ["retriever", "reasoner", "synthesizer"],
+        agents,
         order: "sequential",
         tokenBudget: 6000,
       };
@@ -226,9 +237,10 @@ Output a JSON plan:
     const llm = ctx.getLLM();
 
     for (const role of plan.agents) {
-      // RoPE: prefer evolved prompts over defaults (paper §3.4)
+      // RoPE: prefer evolved prompts, then TOML roles, then config defaults (paper §3.4)
       const rolePrompt =
         this.evolvedRolePrompts.get(role) ??
+        loadRolePrompt(role) ??
         this.config.rolePrompts[role] ??
         `You are ${role}.`;
       const fullPrompt = `${rolePrompt}\n\nQuery: ${query}\n\nCurrent context: ${contextSoFar}\n\nRespond with your output.`;
@@ -344,10 +356,14 @@ Output a JSON plan:
     try {
       const llm = ctx.getLLM();
       const prompt = hasPrior
-        ? `Compare these agent trajectories. Extract 2-3 insights on what made the best one succeed (e.g. "use parallel retrieval for multi-hop").\nTrajectories: ${JSON.stringify(ranked.map((t, i) => ({ rank: i + 1, reward: t.reward, agents: t.plan.agents, steps: t.steps.length })))}`
-        : `Analyze this single agent trajectory and extract 2-3 insights about what worked well and what could be improved (e.g. "use parallel retrieval for multi-hop").\nTrajectory: ${JSON.stringify({ reward: current.reward, agents: current.plan.agents, steps: current.steps.map((s) => ({ agent: s.agent, action: s.action })) })}`;
+        ? loadAndRender("hera/reflection", {
+            trajectories: JSON.stringify(ranked.map((t, i) => ({ rank: i + 1, reward: t.reward, agents: t.plan.agents, steps: t.steps.length }))),
+          })
+        : loadAndRender("hera/reflection_single", {
+            trajectory: JSON.stringify({ reward: current.reward, agents: current.plan.agents, steps: current.steps.map((s) => ({ agent: s.agent, action: s.action })) }),
+          });
 
-      const resp = await llm.invoke([{ role: "user", content: prompt }]);
+      const resp = await llm.invoke(prompt.messages);
       const insightText =
         typeof resp.content === "string" ? resp.content : "";
       const insights =
@@ -394,12 +410,12 @@ Output a JSON plan:
   ): Promise<string> {
     try {
       const llm = ctx.getLLM();
-      const prompt = `Synthesize the final answer from this agent trajectory. Include inline citations [1], [2] where evidence was used. Be concise and accurate.
+      const { messages } = loadAndRender("hera/synthesis", {
+        query: trajectory.query,
+        steps: trajectory.steps.map((s) => `${s.agent}: ${s.result.substring(0, 400)}`).join("\n\n"),
+      });
 
-Query: ${trajectory.query}
-Steps: ${trajectory.steps.map((s) => `${s.agent}: ${s.result.substring(0, 400)}`).join("\n\n")}`;
-
-      const resp = await llm.invoke([{ role: "user", content: prompt }]);
+      const resp = await llm.invoke(messages);
       return typeof resp.content === "string"
         ? resp.content
         : "Synthesis failed";
@@ -457,24 +473,13 @@ Steps: ${trajectory.steps.map((s) => `${s.agent}: ${s.result.substring(0, 400)}`
         .filter(Boolean)
         .join("\n");
 
-      const resp = await llm.invoke([
-        {
-          role: "user",
-          content: `You are improving an AI agent's role prompt via contrastive analysis.
-
-Current prompt for "${weakAgent}": "${currentPrompt}"
-
-Recent failures:
-${recentFailures}
-
-Analyze these failures and output JSON with prompt improvements:
-{
-  "operationalRules": ["short-term corrective rule 1", "rule 2"],
-  "behavioralPrinciples": ["long-term strategy 1"],
-  "evolvedPrompt": "The improved complete prompt for this agent role"
-}`,
-        },
-      ]);
+      const resp = await llm.invoke(
+        loadAndRender("hera/rope_evolution", {
+          agent_role: weakAgent,
+          current_prompt: currentPrompt,
+          recent_failures: recentFailures,
+        }).messages,
+      );
 
       const text = typeof resp.content === "string" ? resp.content : "";
       const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
@@ -512,24 +517,22 @@ Analyze these failures and output JSON with prompt improvements:
       const currentRoles = trajectory.plan.agents;
       const unusedRoles = availableRoles.filter((r) => !currentRoles.includes(r));
 
-      const resp = await llm.invoke([
-        {
-          role: "user",
-          content: `The current agent topology [${currentRoles.join(", ")}] has failed ${this.consecutiveFailures} times.
-
-Available alternative roles: [${unusedRoles.join(", ")}]
-Recent reward: ${trajectory.reward.toFixed(3)}
-
-Suggest a topology mutation. Output JSON:
-{"action": "replace|augment", "removeAgent": "agent_to_remove", "addAgent": "agent_to_add", "reason": "..."}`,
-        },
-      ]);
+      const resp = await llm.invoke(
+        loadAndRender("hera/topology_mutation", {
+          current_roles: currentRoles.join(", "),
+          failure_count: this.consecutiveFailures,
+          unused_roles: unusedRoles.join(", "),
+          reward: trajectory.reward.toFixed(3),
+        }).messages,
+      );
 
       const text = typeof resp.content === "string" ? resp.content : "";
       const mutation = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
 
       if (mutation.action === "replace" && mutation.removeAgent && mutation.addAgent) {
-        // Replace the failing agent in the default role prompts consideration
+        // Persist topology mutation structurally for future plans
+        this.mutatedTopology.removeAgents.push(mutation.removeAgent);
+        this.mutatedTopology.addAgents.push(mutation.addAgent);
         ctx.logger.info(
           `HERA Topology: Replacing "${mutation.removeAgent}" with "${mutation.addAgent}" — ${mutation.reason}`,
         );
@@ -540,6 +543,8 @@ Suggest a topology mutation. Output JSON:
           utility: 0.8,
         });
       } else if (mutation.action === "augment" && mutation.addAgent) {
+        // Persist augmentation
+        this.mutatedTopology.addAgents.push(mutation.addAgent);
         ctx.logger.info(
           `HERA Topology: Augmenting with "${mutation.addAgent}" — ${mutation.reason}`,
         );

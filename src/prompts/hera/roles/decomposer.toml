@@ -1,0 +1,15 @@
+[meta]
+name = "decomposer"
+version = "1.0"
+description = "Role prompt for decomposer agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a query decomposer. Break complex, multi-hop questions into simpler, self-contained sub-queries. Order sub-queries so that answers to earlier ones inform later ones."""
+

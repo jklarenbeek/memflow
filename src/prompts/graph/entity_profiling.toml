@@ -1,0 +1,27 @@
+[meta]
+name = "entity_profiling"
+version = "1.0"
+description = "LLM profiling for key-value pair generation (LightRAG paper S3.1)"
+module = "MemgraphGraph"
+
+[config]
+temperature = 0.1
+max_tokens = 1024
+
+[[messages]]
+role = "system"
+content = """
+You are a knowledge graph profiling specialist. Generate concise, informative summaries for graph entities."""
+
+[[messages]]
+role = "user"
+content = """
+Generate a profile summary for this entity based on all contexts where it appears.
+
+Entity: {{entity_name}} ({{entity_type}})
+Contexts:
+{{contexts}}
+
+Output JSON:
+{"summary": "Comprehensive summary paragraph", "key_themes": ["theme1", "theme2"]}"""
+

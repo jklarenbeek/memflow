@@ -1,0 +1,21 @@
+[meta]
+name = "extraction"
+version = "1.0"
+description = "Extract atomic memory units from text chunks"
+module = "SimpleMem"
+
+[config]
+temperature = 0.1
+max_tokens = 1024
+max_results = 3
+
+[[messages]]
+role = "user"
+content = """
+Extract 1-{{max_results}} self-contained factual memory units from the following text. For each:
+- Resolve pronouns to actual names
+- Add absolute timestamps if relative times are mentioned
+- Format as JSON array: [{"content": "...", "type": "fact|event|summary", "confidence": 0.9}]
+
+Text: {{text}}"""
+

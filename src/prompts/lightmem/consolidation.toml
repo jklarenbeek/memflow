@@ -1,0 +1,16 @@
+[meta]
+name = "consolidation"
+version = "1.0"
+description = "Sleep-time LTM consolidation — summarise topic segments"
+module = "LightMem"
+
+[config]
+temperature = 0.2
+max_tokens = 1024
+
+[[messages]]
+role = "user"
+content = """
+Consolidate these related memory entries into a single concise summary that preserves key facts and relationships:
+{{texts}}"""
+

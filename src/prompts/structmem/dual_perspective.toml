@@ -1,0 +1,24 @@
+[meta]
+name = "dual_perspective"
+version = "1.0"
+description = "Dual-perspective extraction — factual + relational (paper S3.1)"
+module = "StructMem"
+
+[config]
+temperature = 0.1
+max_tokens = 1024
+
+[[messages]]
+role = "user"
+content = """
+Analyze this memory unit with dual-perspective extraction.
+Memory: "{{content}}"
+
+Output JSON with these fields:
+{
+  "temporal": "ISO-8601 timestamp or descriptive time reference",
+  "entities": ["entity1", "entity2"],
+  "relations": [{"source": "entity1", "target": "entity2", "type": "CAUSAL|INVOLVES|TEMPORAL_FOLLOW", "description": "..."}],
+  "eventType": "fact|action|state_change|interaction"
+}"""
+

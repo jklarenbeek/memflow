@@ -24,6 +24,7 @@ import type {
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { cosineSimilarity } from "../../utils/similarity.js";
+import { loadAndRender } from "../../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -50,12 +51,14 @@ type StructMemConfig = z.infer<typeof ConfigSchema>;
 
 export class StructMemModule implements BaseModule<StructMemConfig> {
   readonly name = "StructMem";
-  readonly version = "3.0.0";
+  readonly version = "0.2.0";
   private config: StructMemConfig;
   private ctx?: WorkflowContext;
 
   /** Event buffer for cross-event consolidation (paper §3.2) */
   private eventBuffer: MemoryUnit[] = [];
+  /** History of consolidated units for seed retrieval (paper §3.2) */
+  private consolidatedHistory: MemoryUnit[] = [];
   /** Timestamp of last consolidation trigger */
   private lastConsolidationTime: number = Date.now();
 
@@ -99,7 +102,7 @@ export class StructMemModule implements BaseModule<StructMemConfig> {
 
     let consolidated: MemoryUnit[] = [];
     if (shouldConsolidate) {
-      consolidated = this.triggerConsolidation(ctx);
+      consolidated = await this.triggerConsolidation(ctx);
 
       // 4. Persist consolidated units to Memgraph
       if (this.config.persistToGraph && consolidated.length > 0) {
@@ -131,28 +134,90 @@ export class StructMemModule implements BaseModule<StructMemConfig> {
   // -----------------------------------------------------------------------
 
   /**
-   * Trigger cross-event consolidation.
+   * Cross-event consolidation (paper §3.2).
    *
-   * Per the paper: Cbuf = Sortτ{x ∈ Mbuffer} — buffer entries are sorted
-   * temporally, then semantic connections are induced between related events.
-   * After consolidation, the buffer is flushed.
+   * Full pipeline:
+   *  1. Cbuf = Sortτ{x ∈ Mbuffer} — temporally sort buffer
+   *  2. Compute aggregated query from buffered entries
+   *  3. Retrieve seed entries from previously consolidated memory
+   *  4. Synthesize cross-event connections via LLM (TOML prompt)
+   *  5. Fallback: pairwise cosine binding if LLM fails
    */
-  private triggerConsolidation(ctx: WorkflowContext): MemoryUnit[] {
+  private async triggerConsolidation(ctx: WorkflowContext): Promise<MemoryUnit[]> {
     if (this.eventBuffer.length === 0) return [];
 
     ctx.logger.info(
       `StructMem: Consolidation triggered (${this.eventBuffer.length} buffered events)`,
     );
 
-    // Sort buffer temporally (Cbuf = Sortτ)
+    // 1. Sort buffer temporally (Cbuf = Sortτ)
     const sorted = [...this.eventBuffer].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
 
-    // Bind cross-event relations on the temporally sorted buffer
-    this.bindRelations(sorted);
+    // 2. Aggregate query from buffered entries
+    const bufferedEvents = sorted
+      .map((u, i) => `[${i + 1}] (${u.type}) ${u.content}`)
+      .join("\n");
 
-    // Flush buffer and reset timer
+    // 3. Retrieve seed entries from previously consolidated output
+    const existingUnits = this.consolidatedHistory;
+    let seedContext = "No prior consolidated context available.";
+    if (existingUnits.length > 0 && sorted[0]?.embedding?.length > 0) {
+      const dim = sorted[0].embedding.length;
+      const avgEmb = new Array(dim).fill(0);
+      let count = 0;
+      for (const u of sorted) {
+        if (u.embedding.length === dim) {
+          for (let i = 0; i < dim; i++) avgEmb[i] += u.embedding[i];
+          count++;
+        }
+      }
+      if (count > 0) for (let i = 0; i < dim; i++) avgEmb[i] /= count;
+
+      const seeds = existingUnits
+        .filter((u) => u.embedding?.length === dim)
+        .map((u) => ({ unit: u, sim: cosineSimilarity(avgEmb, u.embedding) }))
+        .sort((a, b) => b.sim - a.sim)
+        .slice(0, 5);
+      if (seeds.length > 0) {
+        seedContext = seeds.map((s) => `[${s.unit.type}] ${s.unit.content}`).join("\n");
+      }
+    }
+
+    // 4. Synthesize cross-event connections via LLM
+    try {
+      const llm = ctx.getLLM();
+      const { messages } = loadAndRender("structmem/consolidation_synthesis", {
+        buffered_events: bufferedEvents.substring(0, 3000),
+        seed_context: seedContext.substring(0, 2000),
+      });
+
+      const resp = await llm.invoke(messages);
+      const text = typeof resp.content === "string" ? resp.content : "";
+      const connections = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? "[]") as Array<{
+        source_id?: string; target_id?: string; relation?: string; weight?: number;
+      }>;
+
+      for (const conn of connections) {
+        const si = parseInt(conn.source_id ?? "0") - 1;
+        const ti = parseInt(conn.target_id ?? "0") - 1;
+        if (si >= 0 && si < sorted.length && ti >= 0 && ti < sorted.length) {
+          sorted[si].relations = sorted[si].relations ?? [];
+          sorted[si].relations!.push({
+            targetId: sorted[ti].id,
+            type: conn.relation ?? "RELATES",
+            weight: conn.weight ?? 0.7,
+          });
+        }
+      }
+      ctx.logger.info(`StructMem: Synthesized ${connections.length} cross-event connections`);
+    } catch {
+      // 5. Fallback: pairwise cosine binding
+      this.bindRelations(sorted);
+    }
+
+    this.consolidatedHistory.push(...sorted);
     this.eventBuffer = [];
     this.lastConsolidationTime = Date.now();
 
@@ -180,21 +245,11 @@ export class StructMemModule implements BaseModule<StructMemConfig> {
 
     for (const unit of units) {
       try {
-        const resp = await llm.invoke([
-          {
-            role: "user",
-            content:
-              `Analyze this memory unit with dual-perspective extraction.\n` +
-              `Memory: "${unit.content.substring(0, 600)}"\n\n` +
-              `Output JSON with these fields:\n` +
-              `{\n` +
-              `  "temporal": "ISO-8601 timestamp or descriptive time reference",\n` +
-              `  "entities": ["entity1", "entity2"],\n` +
-              `  "relations": [{"source": "entity1", "target": "entity2", "type": "CAUSAL|INVOLVES|TEMPORAL_FOLLOW", "description": "..."}],\n` +
-              `  "eventType": "fact|action|state_change|interaction"\n` +
-              `}`,
-          },
-        ]);
+        const { messages } = loadAndRender("structmem/dual_perspective", {
+          content: unit.content.substring(0, 600),
+        });
+
+        const resp = await llm.invoke(messages);
 
         const text =
           typeof resp.content === "string" ? resp.content : "";

@@ -1,0 +1,19 @@
+[meta]
+name = "deduplication"
+version = "1.0"
+description = "Entity deduplication"
+module = "MemgraphGraph"
+
+[config]
+temperature = 0.0
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+Determine which of these entity names refer to the same real-world entity. Group them.
+
+Entities: {{entity_list}}
+
+Output JSON array of groups: [["Entity A", "Entity A variant"], ["Entity B"]]"""
+

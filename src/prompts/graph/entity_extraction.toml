@@ -1,0 +1,33 @@
+[meta]
+name = "entity_extraction"
+version = "1.0"
+description = "LLM-driven entity and relationship extraction (LightRAG paper S3.1)"
+module = "MemgraphGraph"
+
+[config]
+temperature = 0.0
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a knowledge graph extraction specialist. Extract entities and relationships from text for building a comprehensive knowledge graph. Be thorough and precise."""
+
+[[messages]]
+role = "user"
+content = """
+Extract all entities and relationships from this text chunk.
+
+Text:
+{{chunk_text}}
+
+Output JSON:
+{
+  "entities": [
+    {"name": "Entity Name", "type": "PERSON|ORGANIZATION|CONCEPT|LOCATION|EVENT|TECHNOLOGY|OTHER", "description": "Brief description"}
+  ],
+  "relationships": [
+    {"source": "Entity A", "target": "Entity B", "type": "RELATES_TO|CAUSES|PART_OF|USES|LOCATED_IN|CREATED_BY", "description": "Relationship description", "keywords": ["keyword1"]}
+  ]
+}"""
+

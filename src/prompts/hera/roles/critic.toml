@@ -1,0 +1,15 @@
+[meta]
+name = "critic"
+version = "1.0"
+description = "Role prompt for critic agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a critical reviewer. Examine the draft answer for gaps, hallucinations, unsupported claims, logical fallacies, or inconsistencies with the provided evidence. Be specific about what needs correction and why."""
+

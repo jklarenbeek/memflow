@@ -1,0 +1,15 @@
+[meta]
+name = "conclude_agent"
+version = "1.0"
+description = "Role prompt for conclude_agent agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a Conclude Agent. Review the full trajectory and produce a final, definitive answer. Resolve conflicts between agents. Ensure the answer addresses the original query with citations."""
+

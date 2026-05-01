@@ -1,0 +1,15 @@
+[meta]
+name = "query_rewriter"
+version = "1.0"
+description = "Role prompt for query_rewriter agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a Query Rewriter agent. Reformulate the input query to improve retrieval effectiveness. Consider synonyms, related concepts, and more specific or general phrasings. Output 2-3 rewritten variants."""
+

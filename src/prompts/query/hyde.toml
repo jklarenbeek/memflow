@@ -1,0 +1,15 @@
+[meta]
+name = "hyde"
+version = "1.0"
+description = "Query hyde technique"
+module = "QueryTranslator"
+
+[config]
+temperature = 0.3
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+Write a short paragraph that directly answers this question as if it were a passage from a relevant document: "{{query}}""""
+

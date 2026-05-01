@@ -1,0 +1,26 @@
+[meta]
+name = "plan_generation"
+version = "1.0"
+description = "Generate multi-agent topology for a query"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.3
+max_tokens = 512
+
+[[messages]]
+role = "system"
+content = """
+You are an expert multi-agent RAG orchestrator. Design agent topologies that maximise answer quality while minimising token usage."""
+
+[[messages]]
+role = "user"
+content = """
+Given query: "{{query}}"
+Available evidence: {{evidence_summary}}
+Past successful insights: {{insights}}
+Available agent roles: {{available_roles}}
+
+Output a JSON plan:
+{"agents": ["retriever", "reasoner", "critic"], "order": "sequential", "tokenBudget": 6000}"""
+

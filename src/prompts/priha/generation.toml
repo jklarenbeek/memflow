@@ -1,0 +1,19 @@
+[meta]
+name = "generation"
+version = "1.0"
+description = "Answer generation with context"
+module = "PriHAFusion"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "user"
+content = """
+Answer the query using ONLY the provided context. Cite sources inline as [1], [2]. Be precise.
+
+Query: {{query}}
+
+Context: {{context}}"""
+

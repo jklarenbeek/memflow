@@ -1,0 +1,27 @@
+[meta]
+name = "consolidation_synthesis"
+version = "1.0"
+description = "Cross-event consolidation synthesis (paper S3.2)"
+module = "StructMem"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a memory consolidation specialist. Given a set of temporally-ordered memory events and their seed context, synthesize higher-level relational connections between them. Preserve causal chains and temporal ordering."""
+
+[[messages]]
+role = "user"
+content = """
+Buffered events (temporally sorted):
+{{buffered_events}}
+
+Seed context from long-term memory:
+{{seed_context}}
+
+Synthesize cross-event connections. For each connection, output JSON:
+[{"source_id": "...", "target_id": "...", "relation": "CAUSAL|TEMPORAL_FOLLOW|INVOLVES|ELABORATES", "weight": 0.8, "reasoning": "..."}]"""
+

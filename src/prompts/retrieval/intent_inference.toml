@@ -1,0 +1,16 @@
+[meta]
+name = "intent_inference"
+version = "1.0"
+description = "Infer query intent and search scope"
+module = "LightRAGRetriever"
+
+[config]
+temperature = 0.0
+max_tokens = 256
+
+[[messages]]
+role = "user"
+content = """
+Analyze the user query and output JSON: {"type": "fact|comparison|timeline|howto|multi-hop", "scope": "recent|full|entity-specific"}
+Query: {{query}}"""
+

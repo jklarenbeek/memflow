@@ -1,0 +1,16 @@
+[meta]
+name = "reflection_single"
+version = "1.0"
+description = "Self-reflection on a single trajectory"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.3
+max_tokens = 1024
+
+[[messages]]
+role = "user"
+content = """
+Analyze this single agent trajectory and extract 2-3 insights about what worked well and what could be improved.
+Trajectory: {{trajectory}}"""
+

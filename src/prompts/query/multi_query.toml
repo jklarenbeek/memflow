@@ -1,0 +1,15 @@
+[meta]
+name = "multi_query"
+version = "1.0"
+description = "Query multi_query technique"
+module = "QueryTranslator"
+
+[config]
+temperature = 0.3
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+Generate 2 alternative search queries for: "{{query}}". Output as JSON array: ["query1", "query2"]"""
+

@@ -1,0 +1,21 @@
+[meta]
+name = "topology_mutation"
+version = "1.0"
+description = "Topology mutation (paper S3.5)"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.3
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+The current agent topology [{{current_roles}}] has failed {{failure_count}} times.
+
+Available alternative roles: [{{unused_roles}}]
+Recent reward: {{reward}}
+
+Suggest a topology mutation. Output JSON:
+{"action": "replace|augment", "removeAgent": "agent_to_remove", "addAgent": "agent_to_add", "reason": "..."}"""
+

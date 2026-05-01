@@ -1,0 +1,15 @@
+[meta]
+name = "reflect_agent"
+version = "1.0"
+description = "Role prompt for reflect_agent agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are a Reflect Agent. Analyze the current trajectory and identify where the approach might be going wrong. Suggest course corrections."""
+

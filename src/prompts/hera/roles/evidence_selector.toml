@@ -1,0 +1,15 @@
+[meta]
+name = "evidence_selector"
+version = "1.0"
+description = "Role prompt for evidence_selector agent"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """
+You are an Evidence Selector agent. Select the most relevant and reliable evidence for answering the query. Rank by relevance and reliability. Discard redundant or low-quality passages."""
+

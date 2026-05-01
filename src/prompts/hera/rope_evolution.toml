@@ -1,0 +1,27 @@
+[meta]
+name = "rope_evolution"
+version = "1.0"
+description = "RoPE contrastive prompt evolution (paper S3.4)"
+module = "HERAOrchestrator"
+
+[config]
+temperature = 0.4
+max_tokens = 1024
+
+[[messages]]
+role = "user"
+content = """
+You are improving an AI agent's role prompt via contrastive analysis.
+
+Current prompt for "{{agent_role}}": "{{current_prompt}}"
+
+Recent failures:
+{{recent_failures}}
+
+Analyze these failures and output JSON with prompt improvements:
+{
+  "operationalRules": ["short-term corrective rule 1", "rule 2"],
+  "behavioralPrinciples": ["long-term strategy 1"],
+  "evolvedPrompt": "The improved complete prompt for this agent role"
+}"""
+

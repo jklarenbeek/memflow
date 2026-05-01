@@ -1,0 +1,19 @@
+[meta]
+name = "refinement"
+version = "1.0"
+description = "Refine draft answer against context"
+module = "PriHAFusion"
+
+[config]
+temperature = 0.2
+max_tokens = 2048
+
+[[messages]]
+role = "user"
+content = """
+Refine and validate this draft using the context. Add missing citations and fix inaccuracies.
+
+Draft: {{draft}}
+
+Context: {{context}}"""
+

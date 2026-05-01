@@ -4,13 +4,16 @@
  * Adapted from HRW's MultiMemBuilder (extractMemoryUnits + synthesizeOnline).
  * Implements the SimpleMem paper's core contributions:
  *
- *  1. De-linearisation: LLM extracts 1-3 atomic facts per chunk, resolves
+ *  1. Semantic Density Gating (paper Eq. 1): filters low-density windows
+ *  2. De-linearisation: LLM extracts 1-3 atomic facts per chunk, resolves
  *     pronouns, adds absolute timestamps
- *  2. Online Semantic Synthesis: merges chunks with >0.82 cosine similarity
+ *  3. Online Semantic Synthesis: merges chunks with >0.82 cosine similarity
  *     into higher-level abstractions (intra-session)
  *
  * This is the first stage of the 3-module memory pipeline:
  *   SimpleMem → LightMem → StructMem
+ *
+ * All LLM prompts are loaded from TOML files in src/prompts/simplemem/.
  */
 
 import { z } from "zod";
@@ -24,6 +27,7 @@ import type {
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { cosineSimilarity } from "../../utils/similarity.js";
+import { loadAndRender } from "../../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -42,6 +46,8 @@ const ConfigSchema = z.object({
   windowSize: z.number().min(1).default(5),
   /** Overlap between adjacent windows */
   windowOverlap: z.number().min(0).default(2),
+  /** Enable semantic density gating (paper Eq. 1) */
+  enableDensityGating: z.boolean().default(true),
 });
 
 type SimpleMemConfig = z.infer<typeof ConfigSchema>;
@@ -52,7 +58,7 @@ type SimpleMemConfig = z.infer<typeof ConfigSchema>;
 
 export class SimpleMemModule implements BaseModule<SimpleMemConfig> {
   readonly name = "SimpleMem";
-  readonly version = "3.0.0";
+  readonly version = "0.2.0";
   private config: SimpleMemConfig;
   private ctx?: WorkflowContext;
 
@@ -85,9 +91,21 @@ export class SimpleMemModule implements BaseModule<SimpleMemConfig> {
     ctx.logger.debug(`SimpleMem: Created ${windows.length} sliding windows from ${chunks.length} chunks`);
 
     // 2. De-linearise: extract atomic memory units from each window
+    //    Applies semantic density gating (paper Eq. 1) before extraction
     for (const window of windows) {
       // Combine window chunks into a single context block
       const combinedText = window.map((c) => c.pageContent ?? "").join("\n---\n");
+
+      // Semantic density gating: Φ_gate(W) → {mk} | |{mk}| ≥ 0
+      // Empty set signifies a low-density window, effectively discarding it
+      if (this.config.enableDensityGating) {
+        const isDense = await this.semanticDensityGate(combinedText, existing, ctx);
+        if (!isDense) {
+          ctx.logger.debug(`SimpleMem: Skipping low-density window (density gating)`);
+          continue;
+        }
+      }
+
       const combinedChunk = new Document({
         pageContent: combinedText,
         metadata: { ...window[0]?.metadata, windowSize: window.length },
@@ -121,6 +139,51 @@ export class SimpleMemModule implements BaseModule<SimpleMemConfig> {
   }
 
   // -----------------------------------------------------------------------
+  // Semantic Density Gating (paper Eq. 1)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Implements Φ_gate(W) → {mk} s.t. |{mk}| ≥ 0
+   *
+   * Uses the LLM's semantic understanding to filter low-density windows
+   * (greetings, phatic chitchat, filler). The generation of an empty set
+   * signifies a low-density window, effectively discarding it without
+   * explicit threshold tuning.
+   */
+  private async semanticDensityGate(
+    windowText: string,
+    history: MemoryUnit[],
+    ctx: WorkflowContext,
+  ): Promise<boolean> {
+    const llm = ctx.getLLM();
+    const historyContext = history
+      .slice(-5)
+      .map((h) => h.content)
+      .join(" | ")
+      .substring(0, 500);
+
+    const { messages } = loadAndRender("simplemem/density_gating", {
+      window_text: windowText.substring(0, 1000),
+      history: historyContext || "No prior history",
+    });
+
+    try {
+      const response = await llm.invoke(messages);
+      const text =
+        typeof response.content === "string" ? response.content : "";
+      const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+      const isDense = json.dense !== false;
+      if (!isDense) {
+        ctx.logger.debug(`Density gate: filtered — ${json.reason ?? "low density"}`);
+      }
+      return isDense;
+    } catch {
+      // On failure, assume dense (don't drop data)
+      return true;
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // De-linearisation (SimpleMem F_theta)
   // -----------------------------------------------------------------------
 
@@ -134,15 +197,14 @@ export class SimpleMemModule implements BaseModule<SimpleMemConfig> {
     const llm = ctx.getLLM();
     const embeddings = ctx.getEmbeddings();
 
-    const prompt = `Extract 1-3 self-contained factual memory units from the following text. For each:
-- Resolve pronouns to actual names
-- Add absolute timestamps if relative times are mentioned
-- Format as JSON array: [{"content": "...", "type": "fact|event|summary", "confidence": 0.9}]
-
-Text: ${text}`;
+    // Load prompt from TOML
+    const { messages } = loadAndRender("simplemem/extraction", {
+      text,
+      max_results: 3,
+    });
 
     try {
-      const response = await llm.invoke([{ role: "user", content: prompt }]);
+      const response = await llm.invoke(messages);
       const responseText =
         typeof response.content === "string"
           ? response.content

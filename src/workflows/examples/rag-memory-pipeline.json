@@ -23,7 +23,7 @@
       "id": "chunk",
       "module": "S2Chunker",
       "config": {
-        "maxTokenLength": 512,
+        "chunkSize": 512,
         "alpha": 0.5
       },
       "next": "embed"

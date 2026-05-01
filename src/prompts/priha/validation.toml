@@ -1,0 +1,17 @@
+[meta]
+name = "validation"
+version = "1.0"
+description = "Hallucination validation"
+module = "PriHAFusion"
+
+[config]
+temperature = 0.0
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+Validate this answer against the context. Flag any unsupported claims. Output: "VALID" or "ISSUES: list"
+Answer: {{answer}}
+Context: {{context}}"""
+

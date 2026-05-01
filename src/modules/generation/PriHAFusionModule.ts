@@ -19,6 +19,7 @@ import type {
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { truncateToTokens } from "../../utils/tokens.js";
+import { loadAndRender } from "../../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -45,7 +46,7 @@ type PriHAConfig = z.infer<typeof ConfigSchema>;
 
 export class PriHAFusionModule implements BaseModule<PriHAConfig> {
   readonly name = "PriHAFusion";
-  readonly version = "1.0.0";
+  readonly version = "0.2.0";
   private config: PriHAConfig;
   private ctx?: WorkflowContext;
 
@@ -79,14 +80,12 @@ export class PriHAFusionModule implements BaseModule<PriHAConfig> {
     if (this.config.enableTriage && this.isFuzzyQuery(query)) {
       for (let depth = 0; depth < this.config.maxClarificationDepth; depth++) {
         try {
-          const resp = await llm.invoke([
-            {
-              role: "user",
-              content: `The user asked: "${workingQuery}". ${depth === 0 ? "This is ambiguous." : "The previous decomposition needs refinement."}
-Decompose into ${this.config.maxSubQueries} specific, self-contained sub-queries.
-Output JSON: {"clarifications": ["what is missing"], "subqueries": ["specific query 1", "specific query 2"]}`,
-            },
-          ]);
+          const { messages } = loadAndRender("priha/clarification", {
+            query: workingQuery,
+            context: depth === 0 ? "This is ambiguous." : "The previous decomposition needs refinement.",
+            max_sub_queries: this.config.maxSubQueries,
+          });
+          const resp = await llm.invoke(messages);
           const text =
             typeof resp.content === "string" ? resp.content : "";
           const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
@@ -135,10 +134,16 @@ Output JSON: {"clarifications": ["what is missing"], "subqueries": ["specific qu
 
     // 3. Generate or refine answer
     const genPrompt = draftAnswer
-      ? `Refine and validate this draft using the context. Add missing citations and fix inaccuracies.\n\nDraft: ${draftAnswer}\n\nContext: ${fusedContext}`
-      : `Answer the query using ONLY the provided context. Cite sources inline as [1], [2]. Be precise.\n\nQuery: ${workingQuery}\n\nContext: ${fusedContext}`;
+      ? loadAndRender("priha/refinement", {
+          draft: draftAnswer,
+          context: fusedContext,
+        })
+      : loadAndRender("priha/generation", {
+          query: workingQuery,
+          context: fusedContext,
+        });
 
-    const response = await llm.invoke([{ role: "user", content: genPrompt }]);
+    const response = await llm.invoke(genPrompt.messages);
     let answer =
       typeof response.content === "string"
         ? response.content
@@ -192,12 +197,11 @@ Output JSON: {"clarifications": ["what is missing"], "subqueries": ["specific qu
   ): Promise<string> {
     try {
       const llm = ctx.getLLM();
-      const resp = await llm.invoke([
-        {
-          role: "user",
-          content: `Validate this answer against the context. Flag any unsupported claims. Output: "VALID" or "ISSUES: list"\nAnswer: ${answer.substring(0, 2000)}\nContext: ${context.substring(0, 3000)}`,
-        },
-      ]);
+      const { messages } = loadAndRender("priha/validation", {
+        answer: answer.substring(0, 2000),
+        context: context.substring(0, 3000),
+      });
+      const resp = await llm.invoke(messages);
       const valText =
         typeof resp.content === "string" ? resp.content : "";
       if (!valText.includes("VALID")) {

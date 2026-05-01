@@ -28,6 +28,7 @@ import type {
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { estimateTokens } from "../../utils/tokens.js";
+import { loadAndRender } from "../../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -70,7 +71,7 @@ interface ScoredCandidate {
 
 export class LightRAGRetrieverModule implements BaseModule<RetrieverConfig> {
   readonly name = "LightRAGRetriever";
-  readonly version = "2.0.0";
+  readonly version = "0.2.0";
   private config: RetrieverConfig;
   private ctx?: WorkflowContext;
 
@@ -242,12 +243,8 @@ export class LightRAGRetrieverModule implements BaseModule<RetrieverConfig> {
   ): Promise<string> {
     try {
       const llm = ctx.getLLM();
-      const resp = await llm.invoke([
-        {
-          role: "user",
-          content: `Analyze the user query and output JSON: {"type": "fact|comparison|timeline|howto|multi-hop", "scope": "recent|full|entity-specific"}\nQuery: ${query}`,
-        },
-      ]);
+      const { messages } = loadAndRender("retrieval/intent_inference", { query });
+      const resp = await llm.invoke(messages);
       const text =
         typeof resp.content === "string" ? resp.content : "";
       const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");

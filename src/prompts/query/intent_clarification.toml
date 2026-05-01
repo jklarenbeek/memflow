@@ -1,0 +1,15 @@
+[meta]
+name = "intent_clarification"
+version = "1.0"
+description = "Query intent_clarification technique"
+module = "QueryTranslator"
+
+[config]
+temperature = 0.3
+max_tokens = 512
+
+[[messages]]
+role = "user"
+content = """
+What is the user really asking with: "{{query}}"? Rephrase as a clear, unambiguous query."""
+

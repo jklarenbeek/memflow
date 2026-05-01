@@ -14,6 +14,7 @@ MemFlow is **modular, typed, and self-improving**:
 - **WorkflowContext** provides dependency injection — shared Memgraph client, cached LLM/Embedding providers with per-module overrides, and Winston structured logging.
 - **Memgraph + MAGE** is the persistence layer for graphs, vectors, and memory units.
 - S2Chunker extends LangChain's **real `TextSplitter`** class — drop-in compatible with any LCEL pipeline.
+- All LLM prompts are externalised as **TOML files** (`src/prompts/`), with configurable temperature, token limits, and `{{variable}}` template rendering. This enables prompt tuning without code changes.
 
 ## High-Level Architecture
 
@@ -81,9 +82,9 @@ Singleton factory with lazy dynamic imports, instance caching by `module::stageI
 - Companion: `MarkdownSpatialParser` (367L) converts Markdown → spatial elements
 
 ### Memory Pipeline (SimpleMem → LightMem → StructMem)
-- **SimpleMem**: LLM de-linearisation (atomic fact extraction, coreference resolution) + online semantic synthesis (merge > 0.82 strictly greater than, not ≥) + sliding window grouping (overlapping windows for temporal context) + multi-view structured indexing (semantic/lexical/symbolic layers)
-- **LightMem**: Three-tier hierarchical memory (Sensory → STM → LTM). Sensory buffer filters by novelty gating (cosine threshold). Topic segmentation detects topic boundaries via similarity drops between adjacent units. STM accumulates topic-segmented units with capacity triggers. LTM stores sleep-time consolidated abstractions via parallel LLM summarization.
-- **StructMem**: Dual-perspective event binding + temporal anchoring + buffered cross-event consolidation (Cbuf = Sortτ{x ∈ Mbuffer}). Events accumulate in an internal buffer; consolidation triggers when buffer exceeds size threshold or time since last consolidation exceeds interval. Persists to Memgraph.
+- **SimpleMem**: Semantic density gating (Φ_gate, configurable via `enableDensityGating`) + LLM de-linearisation (atomic fact extraction, coreference resolution) + online semantic synthesis (merge > 0.82 strictly greater than, not ≥) + sliding window grouping (overlapping windows for temporal context) + multi-view structured indexing (semantic/lexical/symbolic layers)
+- **LightMem**: Three-tier hierarchical memory (Sensory → STM → LTM). Sensory buffer filters by novelty gating (cosine threshold). **Hybrid B1∩B2 topic segmentation** (paper §3.1): B1 = attention-based local maxima in embedding distance; B2 = similarity drops below threshold τ; final boundaries = B1∩B2 with B2 fallback. STM accumulates topic-segmented units. **LTM soft-update** (paper §3.3): Q(ei) = Topk(ej, sim(vi,vj)) | tj ≥ ti — timestamp-constrained similarity updates existing entries in-place. Parallel sleep-time consolidation via LLM.
+- **StructMem**: Dual-perspective event binding + temporal anchoring + **full cross-event consolidation** (paper §3.2): Cbuf = Sortτ{x ∈ Mbuffer} → aggregated query → retrieve seed entries from consolidated history → LLM synthesizes cross-event connections. Fallback: pairwise cosine binding. Persists to Memgraph.
 
 ### LightRAGRetriever (`modules/retrieval/LightRAGRetrieverModule.ts`)
 - **Paper**: LightRAG (arXiv:2410.05779)
@@ -98,7 +99,8 @@ Singleton factory with lazy dynamic imports, instance caching by `module::stageI
 - LLM-generated agent topologies (retriever/reasoner/critic/synthesizer/verifier/decomposer)
 - Multi-agent trajectory execution with accumulated context
 - **RoPE (Role-aware Prompt Evolution, §3.4)**: Tracks per-agent failed trajectories. Contrastive analysis extracts operational rules (short-term corrections) + behavioral principles (long-term strategies). Evolved prompts are consolidated and used in subsequent trajectory executions.
-- **Topology Mutation (§3.5)**: When trajectories consistently fail below `mutationThreshold` for `mutationTriggerCount` consecutive runs, the orchestrator replaces failing agents or augments the topology with alternatives.
+- **Topology Mutation (§3.5)**: When trajectories consistently fail below `mutationThreshold` for `mutationTriggerCount` consecutive runs, the orchestrator replaces failing agents or augments the topology with alternatives. **Mutations are persisted structurally** — the `mutatedTopology` state ensures subsequent `generatePlan()` calls incorporate previous mutations.
+- Agent role prompts (retriever, reasoner, critic, synthesizer, verifier, decomposer, query_decomposer, answer_generator, query_rewriter, evidence_selector, context_validator, reflect_agent, conclude_agent) are loaded from TOML files in `src/prompts/hera/roles/`.
 
 ### PriHAFusion (`modules/generation/PriHAFusionModule.ts`)
 - **Paper**: PriHA (arXiv:2604.14215)
@@ -112,10 +114,17 @@ Singleton factory with lazy dynamic imports, instance caching by `module::stageI
 
 - **:Chunk** — S2 output (text, embedding, source)
 - **:MemoryUnit** — atomic facts/events/summaries (content, embedding, type, timestamp, confidence)
-- **:Entity** — extracted from memory pipeline
+- **:Entity** — LLM-extracted entities with type, description, profileSummary, keyThemes
 - **:Element** — raw layout elements from document parser
-- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`
+- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords)
 - **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`
+
+### MemgraphGraph Module
+Implements the LightRAG paper's graph-based text indexing (§3.1):
+1. **Entity & Relationship Extraction**: LLM-driven, prompt from `graph/entity_extraction.toml`
+2. **Entity Profiling**: key-value pair generation via `graph/entity_profiling.toml`
+3. **Deduplication**: LLM groups equivalent entity names via `graph/deduplication.toml`
+4. **Community Detection**: MAGE Leiden algorithm on entity relation graph
 
 ## HTTP API (Hono)
 
@@ -147,7 +156,26 @@ The `WorkflowData` interface provides typed fields for all inter-module data:
 - API keys via env only
 - Memgraph auth + network isolation recommended in prod
 - CORS middleware on HTTP server
-- **Dual-runtime**: Server auto-detects Bun vs Node.js via `globalThis.Bun`. Bun uses native `Bun.serve()`, Node.js uses `@hono/node-server` with raw `node:http` fallback.
+- **Dual-runtime**: Server auto-detects Bun vs Node.js via `globalThis.Bun`. Bun uses native `Bun.serve()`, Node.js uses `@hono/node-server` (listed in dependencies) with raw `node:http` fallback.
+
+## Prompt System (TOML)
+
+All LLM prompts are externalised in `src/prompts/` as TOML files:
+
+```
+src/prompts/
+  simplemem/     extraction.toml, density_gating.toml
+  lightmem/      consolidation.toml
+  structmem/     dual_perspective.toml, consolidation_synthesis.toml
+  retrieval/     intent_inference.toml
+  hera/          plan_generation.toml, reflection.toml, synthesis.toml, rope_evolution.toml, topology_mutation.toml
+  hera/roles/    13 role-specific agent prompts
+  priha/         clarification.toml, generation.toml, refinement.toml, validation.toml
+  query/         hyde.toml, multi_query.toml, step_back.toml, query_rewriting.toml, intent_clarification.toml
+  graph/         entity_extraction.toml, entity_profiling.toml, deduplication.toml
+```
+
+Each TOML file contains `[meta]` (name, version), `[config]` (temperature, max_tokens, custom knobs), and `[[messages]]` with `{{variable}}` template placeholders. Loaded via `src/utils/promptLoader.ts`.
 
 ## Workflow Examples
 

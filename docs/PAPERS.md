@@ -48,4 +48,4 @@
 - **OMNI-SIMPLEMEM: Autoresearch-Guided Discovery of Life-long Multimodal Agent Memory** (arXiv:2604.01007v2, Liu et al., Apr 2026)
   - 411% / 214% F1 gains via autonomous experiment loop — directly inspires our learning layer
 
-All papers are in `/home/workdir/attachments/`. The MemFlow design is a faithful modular synthesis that lets practitioners mix-and-match the best components while maintaining LangChain compatibility and Memgraph persistence.
+The MemFlow design is a faithful modular synthesis that lets practitioners mix-and-match the best components while maintaining LangChain compatibility and Memgraph persistence.
