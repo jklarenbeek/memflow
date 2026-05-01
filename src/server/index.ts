@@ -2,13 +2,17 @@
  * MemFlow HTTP Server
  *
  * Hono-based API server ported from HRW's pattern. Provides:
- *  - GET  /health     — service health + registered modules
- *  - POST /workflow/run — execute a workflow from JSON config + input
- *  - GET  /modules    — list available modules with schemas
+ *  - GET  /health               — service health + registered modules
+ *  - POST /workflow/run          — execute a workflow from JSON config + input
+ *  - POST /workflow/run/stream   — execute with SSE streaming (Improvement #9)
+ *  - GET  /modules              — list available modules with schemas
+ *  - GET  /prompts/validate     — validate TOML prompt references
+ *  - POST /prompts/reload       — invalidate TOML prompt cache
  */
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { streamSSE } from "hono/streaming";
 import { WorkflowEngine } from "../core/WorkflowEngine.js";
 import { ModuleRegistry } from "../core/ModuleRegistry.js";
 import type { WorkflowConfig, GlobalConfig } from "../core/types.js";
@@ -128,6 +132,91 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
         500,
       );
     }
+  });
+
+  // -----------------------------------------------------------------------
+  // Improvement #9: Streaming workflow execution via SSE
+  // -----------------------------------------------------------------------
+
+  app.post("/workflow/run/stream", async (c) => {
+    // Parse the request body BEFORE entering the stream callback
+    // (Hono's streamSSE doesn't allow async body reads inside the callback)
+    let body: { workflow: WorkflowConfig; input?: Record<string, unknown> };
+    try {
+      body = await c.req.json<{
+        workflow: WorkflowConfig;
+        input?: Record<string, unknown>;
+      }>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.workflow) {
+      return c.json({ error: "Missing 'workflow' in request body" }, 400);
+    }
+
+    // Disable proxy buffering for real-time streaming
+    c.header("X-Accel-Buffering", "no");
+    c.header("Cache-Control", "no-cache");
+
+    let engine: WorkflowEngine | null = null;
+
+    return streamSSE(c, async (stream) => {
+      let eventId = 0;
+
+      try {
+        engine = new WorkflowEngine(body.workflow);
+        await engine.initialize(globalConfig);
+
+        // Create an AbortController for client disconnect handling
+        const abortController = new AbortController();
+        stream.onAbort(() => {
+          abortController.abort();
+        });
+
+        // Consume the AsyncGenerator and write each event as SSE
+        const generator = engine.runStream(
+          body.input ?? {},
+          abortController.signal,
+        );
+
+        let result = await generator.next();
+        while (!result.done) {
+          if (stream.aborted) break;
+
+          const event = result.value;
+          await stream.writeSSE({
+            id: String(eventId++),
+            event: event.type,
+            data: JSON.stringify(event),
+          });
+
+          result = await generator.next();
+        }
+
+        // If the generator returned a final state (workflow:complete path)
+        // the events are already emitted via the generator
+      } catch (err) {
+        // Emit an error event for unexpected failures
+        if (!stream.aborted) {
+          await stream.writeSSE({
+            id: String(eventId++),
+            event: "workflow:error",
+            data: JSON.stringify({
+              type: "workflow:error",
+              workflowId: "unknown",
+              error: (err as Error).message,
+              timestamp: new Date().toISOString(),
+            }),
+          });
+        }
+      } finally {
+        // Always shut down the engine
+        if (engine) {
+          await engine.shutdown();
+        }
+      }
+    });
   });
 
   return app;

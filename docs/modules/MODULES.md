@@ -478,11 +478,14 @@ After N consecutive failures, LLM recommends structural changes (replace/augment
 | | |
 |---|---|
 | **File** | `modules/agents/FinalSynthesizerModule.ts` |
-| **Paper** | HERA |
+| **Paper** | HERA §3.3 |
 | **Input** | `trajectory` |
-| **Output** | `finalAnswer` |
+| **Output** | `finalAnswer`, `trajectory` (enriched) |
+| **Config** | `maxStepChars` (400) |
+| **Version** | 0.4.0 |
+| **Streaming** | ✅ `processStream()` — yields token-by-token via LangChain `.stream()` |
 
-LLM synthesis of accumulated agent outputs into a coherent final answer. Falls back to last step's output if synthesis fails.
+Synthesizes accumulated agent trajectory steps into a polished, coherent answer. Fallback: returns last step result if LLM synthesis fails. **Implements `StreamableModule`** for real-time token streaming via SSE (Improvement #9).
 
 ---
 
@@ -570,9 +573,14 @@ Iterative query decomposition and optimization.
 | | |
 |---|---|
 | **File** | `modules/generation/AnswerGeneratorModule.ts` |
-| **Paper** | PriHA |
-| **Input** | `query`, `retrievalResult` |
-| **Output** | `finalAnswer` |
+| **Paper** | PriHA §3.4 |
+| **Input** | `query`, `retrievalResult`, `finalAnswer` (optional draft) |
+| **Output** | `finalAnswer`, `sources`, `confidence` |
+| **Config** | `enableDualSource` (true), `maxContextTokens` (7000) |
+| **Version** | 0.4.0 |
+| **Streaming** | ✅ `processStream()` — yields token-by-token via LangChain `.stream()` |
+
+Dual-source fusion (official guidelines + dynamic context) → LLM generation. Supports draft refinement mode when `finalAnswer` is already set. **Implements `StreamableModule`** for real-time token streaming via SSE (Improvement #9).
 
 ### HallucinationValidator
 

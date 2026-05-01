@@ -10,6 +10,7 @@
 | 6 | Proper error boundaries | ✅ Completed | v0.3.0 |
 | 7 | MemoryUnit field propagation | ✅ Completed | v0.3.0 |
 | 8 | TOML prompt coverage | ✅ Completed | v0.4.0 |
+| 9 | Streaming support (SSE) | ✅ Completed | v0.4.0 |
 | 10 | Module-level telemetry | ✅ Completed | v0.3.0 |
 | 11 | Config validation at load time | ✅ Completed | v0.3.0 |
 | 12 | Decouple AutonomousLoop | ✅ Completed | v0.3.0 |
@@ -18,7 +19,7 @@
 | 15 | Hot-reload for TOML prompts | ✅ Completed | v0.4.0 |
 | 16 | Workflow versioning and migration | ✅ Completed | v0.4.0 |
 
-> **12 of 22 items completed** (4 P0 critical, 3 P1 high remain open)
+> **13 of 22 items completed** (4 P0 critical, 2 P1 high remain open)
 
 ---
 
@@ -118,14 +119,24 @@
 - Added `GET /prompts/validate` API endpoint for runtime validation
 - All referenced TOML files verified to exist on disk
 
-### 9. Streaming support
+### 9. ~~Streaming support~~ ✅ COMPLETED
 
-**Problem**: All modules return complete results. For large documents or long-running agent pipelines, users see no output until the entire pipeline completes.
+**Problem**: `POST /workflow/run` returns only after the entire pipeline completes. For 10-60 second pipelines, the user sees nothing — creating perceived latency, no abort opportunity, and no partial-value delivery.
 
-**Action**:
-- Add `processStream()` to the `BaseModule` interface (optional method)
-- Implement streaming in `AnswerGenerator` and `FinalSynthesizer` for real-time token output
-- Expose SSE (Server-Sent Events) on the Hono HTTP server for `/workflow/run` responses
+**Implemented**:
+- Added `StreamEvent` discriminated union (7 event types) and `StreamableModule<T>` interface to `types.ts` — **100% additive, zero breaking changes**
+- Added `WorkflowEngine.runStream()` AsyncGenerator that yields events as stages execute
+- Added `executeDAGStreaming()` and `executeStageStreaming()` with runtime `processStream()` detection
+- Added `POST /workflow/run/stream` SSE endpoint using Hono's `streamSSE()` helper with abort handling
+- Implemented `processStream()` on `AnswerGenerator` and `FinalSynthesizer` using LangChain `.stream()` for token-level output
+- Added `generatePreview()` for stage:complete events (auto-summarizes output for UI display)
+- Non-streaming `run()` path completely unmodified — streaming is a parallel execution path
+- Bun/Node server banners updated with new endpoint
+
+**Non-breaking design**:
+- `BaseModule.process()` is unchanged. `StreamableModule.processStream()` is optional.
+- Modules without `processStream()` automatically fall back to `process()` + single `stage:complete`
+- Existing `POST /workflow/run` works identically
 
 ### 10. ~~Module-level telemetry~~ ✅ COMPLETED
 

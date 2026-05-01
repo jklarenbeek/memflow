@@ -16,7 +16,7 @@ export async function startNodeServer(
 
   console.log(`
 ╔══════════════════════════════════════╗
-║         MemFlow v0.2.0               ║
+║         MemFlow v0.4.0               ║
 ║  Self-Improving RAG Workflow Engine  ║
 ║  Runtime: Node.js                    ║
 ╚══════════════════════════════════════╝
@@ -25,6 +25,7 @@ export async function startNodeServer(
   Health:       http://localhost:${port}/health
   Modules:      http://localhost:${port}/modules
   Run workflow:  POST http://localhost:${port}/workflow/run
+  Run (stream):  POST http://localhost:${port}/workflow/run/stream
 `);
 
   try {

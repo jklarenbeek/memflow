@@ -22,6 +22,9 @@ import {
   ModuleOutput,
   BaseModule,
   GlobalConfig,
+  StreamEvent,
+  StreamableModule,
+  StageProgress,
 } from "./types.js";
 import { ModuleRegistry } from "./ModuleRegistry.js";
 import { WorkflowContext } from "./WorkflowContext.js";
@@ -255,6 +258,80 @@ export class WorkflowEngine {
     return this.state;
   }
 
+  // -----------------------------------------------------------------------
+  // Streaming execution (Improvement #9: SSE support)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Execute the workflow with SSE streaming support.
+   *
+   * This is the streaming counterpart of `run()`. It yields `StreamEvent`
+   * objects as stages execute, enabling real-time UI updates via SSE.
+   *
+   * - Non-streaming modules: `process()` → single `stage:complete` event
+   * - Streaming modules: `processStream()` → `stage:progress` tokens + `stage:complete`
+   *
+   * The non-streaming `run()` path is COMPLETELY UNMODIFIED — this is
+   * a parallel execution path that shares initialization and shutdown.
+   *
+   * @param initialInput — optional initial data to merge into state
+   * @param abortSignal — optional AbortSignal for client disconnect handling
+   */
+  async *runStream(
+    initialInput: Partial<WorkflowData> = {},
+    abortSignal?: AbortSignal,
+  ): AsyncGenerator<StreamEvent, WorkflowState, undefined> {
+    if (!this.initialized || !this.context) {
+      throw new WorkflowConfigError(
+        "Engine not initialized. Call initialize() first.",
+      );
+    }
+
+    this.state.data = { ...this.state.data, ...initialInput };
+
+    // Emit workflow:start
+    yield {
+      type: "workflow:start",
+      workflowId: this.state.id,
+      name: this.config.name,
+      stages: this.config.stages.map((s) => s.id),
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      // Execute the DAG, yielding events for each stage
+      yield* this.executeDAGStreaming(abortSignal);
+
+      // Finalize metadata
+      this.state.metadata.endTime = new Date().toISOString();
+      this.state.metadata.totalDurationMs =
+        new Date(this.state.metadata.endTime).getTime() -
+        new Date(this.state.metadata.startTime).getTime();
+
+      // Emit workflow:complete
+      yield {
+        type: "workflow:complete",
+        workflowId: this.state.id,
+        totalDurationMs: this.state.metadata.totalDurationMs,
+        finalAnswer: this.state.data.finalAnswer as string | undefined,
+        confidence: this.state.data.confidence as number | undefined,
+        sources: this.state.data.sources as string[] | undefined,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (err) {
+      // Emit workflow:error
+      yield {
+        type: "workflow:error",
+        workflowId: this.state.id,
+        error: (err as Error).message,
+        stage: this.state.currentStage,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return this.state;
+  }
+
   /** Tear down all modules and the context. */
   async shutdown(): Promise<void> {
     for (const mod of this.modules.values()) {
@@ -424,6 +501,258 @@ export class WorkflowEngine {
       lastError!,
       maxAttempts,
     );
+  }
+
+  // -----------------------------------------------------------------------
+  // Streaming DAG execution (Improvement #9)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Streaming variant of executeDAG().
+   *
+   * Mirrors the same topological ordering and parallel branch logic,
+   * but yields StreamEvent objects for each stage transition.
+   */
+  private async *executeDAGStreaming(
+    abortSignal?: AbortSignal,
+  ): AsyncGenerator<StreamEvent, void, undefined> {
+    const completed = new Set<string>();
+    const stageMap = new Map(this.config.stages.map((s) => [s.id, s]));
+    const totalStages = this.config.stages.length;
+
+    // Linearize for streaming: execute stages sequentially following DAG order
+    // This ensures events are emitted in a predictable order for the client
+    const pending = new Set<string>([this.config.entry]);
+    const visited = new Set<string>();
+
+    while (pending.size > 0) {
+      // Check for client disconnect
+      if (abortSignal?.aborted) {
+        this.context!.logger.info("Stream aborted by client");
+        return;
+      }
+
+      // Find next stage whose dependencies are all completed
+      let nextStageId: string | undefined;
+      for (const id of pending) {
+        const stage = stageMap.get(id);
+        if (!stage) { pending.delete(id); continue; }
+        const deps = stage.dependsOn ?? [];
+        if (deps.every((d) => completed.has(d))) {
+          nextStageId = id;
+          break;
+        }
+      }
+
+      if (!nextStageId) break; // Deadlock or all done
+
+      pending.delete(nextStageId);
+      if (visited.has(nextStageId)) continue;
+      visited.add(nextStageId);
+
+      const stage = stageMap.get(nextStageId)!;
+
+      // Yield all events from this stage's execution
+      yield* this.executeStageStreaming(stage, completed.size, totalStages);
+
+      completed.add(nextStageId);
+
+      // Enqueue next stages
+      const nextIds = this.resolveNext(stage, completed);
+      for (const nid of nextIds) {
+        if (!completed.has(nid) && !visited.has(nid)) {
+          pending.add(nid);
+        }
+      }
+    }
+  }
+
+  /**
+   * Execute a single stage with streaming support.
+   *
+   * If the module implements `processStream()` (StreamableModule), yields
+   * token-level `stage:progress` events. Otherwise, falls back to `process()`
+   * and emits a single `stage:complete` event.
+   *
+   * Retry logic mirrors `executeStage()` — retries emit `stage:error` events
+   * with `willRetry: true` so the client can show retry state.
+   */
+  private async *executeStageStreaming(
+    stage: WorkflowStage,
+    completedCount: number,
+    totalStages: number,
+  ): AsyncGenerator<StreamEvent, void, undefined> {
+    const mod = this.modules.get(stage.id);
+    if (!mod) return;
+
+    const maxAttempts = (stage.retry ?? 0) + 1;
+    const baseDelay = stage.retryDelayMs ?? 1000;
+    let lastError: Error | undefined;
+
+    const progress: StageProgress = {
+      completed: completedCount,
+      total: totalStages,
+    };
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // Emit stage:start
+      yield {
+        type: "stage:start" as const,
+        stageId: stage.id,
+        module: stage.module,
+        attempt,
+        progress,
+        timestamp: new Date().toISOString(),
+      };
+
+      try {
+        const startTime = Date.now();
+        this.context!.logger.info(
+          `[stream] Executing stage "${stage.id}" (${stage.module})`,
+          { attempt, maxAttempts },
+        );
+
+        const input: ModuleInput = {
+          data: this.state.data,
+          config: stage.config as Record<string, unknown>,
+        };
+
+        let output: ModuleOutput;
+
+        // Check if module supports streaming
+        const isStreamable = "processStream" in mod &&
+          typeof (mod as StreamableModule).processStream === "function";
+
+        if (isStreamable) {
+          // Streaming path: yield individual tokens
+          const streamMod = mod as StreamableModule;
+          const generator = streamMod.processStream(input, this.context!);
+
+          let result = await generator.next();
+          while (!result.done) {
+            const event = result.value;
+            yield event;
+            result = await generator.next();
+          }
+
+          // The generator's return value is the final ModuleOutput
+          output = result.value;
+        } else {
+          // Non-streaming path: execute normally
+          output = await mod.process(input, this.context!);
+        }
+
+        const durationMs = Date.now() - startTime;
+
+        // Merge output into state (same as non-streaming path)
+        this.state.data = { ...this.state.data, ...output.data };
+        if (output.metrics) {
+          this.state.data.metrics = {
+            ...(this.state.data.metrics ?? {}),
+            ...output.metrics,
+          };
+        }
+
+        // Record history
+        this.state.history.push({
+          stage: stage.id,
+          output: output.data,
+          timestamp: new Date().toISOString(),
+          durationMs,
+        });
+
+        // Record trace
+        this.context!.addTrace(stage.id, input.data, output.data, durationMs);
+
+        // Generate preview for the stage:complete event
+        const preview = this.generatePreview(output);
+
+        // Emit stage:complete
+        yield {
+          type: "stage:complete" as const,
+          stageId: stage.id,
+          module: stage.module,
+          durationMs,
+          metrics: output.metrics,
+          preview,
+          progress: { completed: completedCount + 1, total: totalStages },
+          timestamp: new Date().toISOString(),
+        };
+
+        return; // Success
+      } catch (err) {
+        lastError = err as Error;
+        this.state.errors.push({
+          stage: stage.id,
+          error: lastError.message,
+          attempt,
+          timestamp: new Date().toISOString(),
+        });
+
+        const willRetry = attempt < maxAttempts;
+
+        // Emit stage:error
+        yield {
+          type: "stage:error" as const,
+          stageId: stage.id,
+          module: stage.module,
+          error: lastError.message,
+          attempt,
+          maxAttempts,
+          willRetry,
+          timestamp: new Date().toISOString(),
+        };
+
+        if (willRetry) {
+          const delay = Math.min(baseDelay * 2 ** (attempt - 1), 30_000);
+          this.context!.logger.warn(
+            `[stream] Stage "${stage.id}" failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms`,
+            { error: lastError.message },
+          );
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      }
+    }
+
+    // All retries exhausted
+    throw new WorkflowStageError(
+      stage.id,
+      stage.module,
+      lastError!,
+      maxAttempts,
+    );
+  }
+
+  /**
+   * Generate a short preview string from module output for SSE display.
+   * Truncates to 200 chars for bandwidth efficiency.
+   */
+  private generatePreview(output: ModuleOutput): string {
+    const data = output.data;
+
+    // Prioritize human-readable fields
+    if (data.finalAnswer && typeof data.finalAnswer === "string") {
+      return data.finalAnswer.substring(0, 200);
+    }
+    if (data.query && typeof data.query === "string") {
+      return `Query: ${(data.query as string).substring(0, 200)}`;
+    }
+    if (data.candidates && Array.isArray(data.candidates)) {
+      return `${data.candidates.length} candidates retrieved`;
+    }
+    if (data.memoryUnits && Array.isArray(data.memoryUnits)) {
+      return `${data.memoryUnits.length} memory units`;
+    }
+    if (data.chunks && Array.isArray(data.chunks)) {
+      return `${data.chunks.length} chunks`;
+    }
+    if (data.entities && Array.isArray(data.entities)) {
+      return `${data.entities.length} entities extracted`;
+    }
+
+    // Fallback: stringify keys
+    const keys = Object.keys(data).filter((k) => data[k] !== undefined);
+    return `Output: ${keys.join(", ")}`;
   }
 
   // -----------------------------------------------------------------------

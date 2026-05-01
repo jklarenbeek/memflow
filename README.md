@@ -11,6 +11,7 @@ MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a compos
 - **Configurable similarity completed** — `CrossEventConsolidation` and `SleepConsolidation` now support the `similarityFunction` strategy pattern (all 5 modules covered)
 - **Hot-reload for TOML prompts** — `fs.watch`-based watcher + `POST /prompts/reload` endpoint eliminates server restarts during prompt engineering
 - **Workflow versioning** — `SUPPORTED_VERSIONS` compatibility checks reject unsupported versions and warn on deprecated ones
+- **SSE streaming** — `POST /workflow/run/stream` endpoint streams stage-level progress events and token-by-token LLM output via Server-Sent Events
 
 ### v0.3.0 Highlights
 
@@ -88,7 +89,12 @@ curl http://localhost:3000/prompts/validate
 # Reload TOML prompt cache (Improvement #15)
 curl -X POST http://localhost:3000/prompts/reload
 
-# Run a workflow
+# Run a workflow (streaming via SSE)
+curl -N -X POST http://localhost:3000/workflow/run/stream \
+  -H "Content-Type: application/json" \
+  -d '{"workflow": {...}, "input": {...}}'
+
+# Run a workflow (non-streaming)
 curl -X POST http://localhost:3000/workflow/run \
   -H "Content-Type: application/json" \
   -d '{"workflow": {...}, "input": {"query": "..."}}'

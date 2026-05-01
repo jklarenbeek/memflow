@@ -328,3 +328,144 @@ export interface ExperienceEntry {
   /** Utility score — reinforced or decayed over time */
   utility: number;
 }
+
+// ---------------------------------------------------------------------------
+// Streaming Types (Improvement #9: SSE support)
+// ---------------------------------------------------------------------------
+
+/**
+ * Progress information included in stage events, letting clients
+ * render progress bars / stage indicators.
+ */
+export interface StageProgress {
+  /** Number of completed stages so far */
+  completed: number;
+  /** Total number of stages in the workflow */
+  total: number;
+}
+
+/**
+ * SSE event types emitted during streaming workflow execution.
+ *
+ * Design principle: discriminated union on `type` field so clients
+ * can switch/case on the event type and get full type narrowing.
+ *
+ * The `type` field maps directly to the SSE `event:` line, e.g.:
+ *   event: stage:progress
+ *   data: {"stageId":"generate","token":"The",...}
+ */
+export type StreamEvent =
+  | StreamEventWorkflowStart
+  | StreamEventStageStart
+  | StreamEventStageProgress
+  | StreamEventStageComplete
+  | StreamEventStageError
+  | StreamEventWorkflowComplete
+  | StreamEventWorkflowError;
+
+export interface StreamEventWorkflowStart {
+  type: "workflow:start";
+  workflowId: string;
+  name: string;
+  stages: string[];
+  timestamp: string;
+}
+
+export interface StreamEventStageStart {
+  type: "stage:start";
+  stageId: string;
+  module: string;
+  attempt: number;
+  progress: StageProgress;
+  timestamp: string;
+}
+
+export interface StreamEventStageProgress {
+  type: "stage:progress";
+  stageId: string;
+  module: string;
+  /** Streamed token from LLM output */
+  token: string;
+  /** Token index within the current stage's output */
+  tokenIndex: number;
+  timestamp: string;
+}
+
+export interface StreamEventStageComplete {
+  type: "stage:complete";
+  stageId: string;
+  module: string;
+  durationMs: number;
+  metrics?: ModuleMetrics;
+  /** Short preview of the output for UI display */
+  preview?: string;
+  progress: StageProgress;
+  timestamp: string;
+}
+
+export interface StreamEventStageError {
+  type: "stage:error";
+  stageId: string;
+  module: string;
+  error: string;
+  attempt: number;
+  maxAttempts: number;
+  willRetry: boolean;
+  timestamp: string;
+}
+
+export interface StreamEventWorkflowComplete {
+  type: "workflow:complete";
+  workflowId: string;
+  totalDurationMs: number;
+  finalAnswer?: string;
+  confidence?: number;
+  sources?: string[];
+  timestamp: string;
+}
+
+export interface StreamEventWorkflowError {
+  type: "workflow:error";
+  workflowId: string;
+  error: string;
+  stage?: string;
+  timestamp: string;
+}
+
+// ---------------------------------------------------------------------------
+// Streamable Module Interface (Improvement #9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extended module interface that supports token-level streaming.
+ *
+ * Modules implement this interface INSTEAD OF (or IN ADDITION TO) BaseModule
+ * when they can produce incremental output — typically LLM-backed generation
+ * modules like AnswerGenerator and FinalSynthesizer.
+ *
+ * The engine detects `processStream` at runtime and falls back to `process()`
+ * for modules that don't implement it. This means:
+ *  - Existing modules need ZERO changes
+ *  - Streaming is opt-in per module
+ *  - The non-streaming `run()` path is completely unaffected
+ */
+export interface StreamableModule<TConfig = Record<string, unknown>>
+  extends BaseModule<TConfig> {
+  /**
+   * Streaming variant of `process()`.
+   *
+   * Yields `StreamEvent` objects (typically `stage:progress` with tokens)
+   * during execution. The LAST yielded event MUST be a `stage:complete`
+   * containing the final `ModuleOutput` data in its metrics/preview.
+   *
+   * The engine collects all yielded events and also extracts the final
+   * ModuleOutput from the return value for state merging.
+   *
+   * @returns An AsyncGenerator that yields StreamEvents, and returns
+   *          the final ModuleOutput when done.
+   */
+  processStream(
+    input: ModuleInput<TConfig>,
+    context: unknown,
+  ): AsyncGenerator<StreamEvent, ModuleOutput, undefined>;
+}
