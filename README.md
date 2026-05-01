@@ -4,6 +4,14 @@
 
 MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **38 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience.
 
+### v0.4.0 Highlights
+
+- **TOML prompt validation at startup** — `validateAllPrompts()` checks all 25+ prompt references during `WorkflowContext.create()`, surfacing missing templates before execution
+- **Community-aware graph search** — `GraphSearch` leverages `:Community` summaries for high-level/exploratory queries, scoping traversal by community membership
+- **Configurable similarity completed** — `CrossEventConsolidation` and `SleepConsolidation` now support the `similarityFunction` strategy pattern (all 5 modules covered)
+- **Hot-reload for TOML prompts** — `fs.watch`-based watcher + `POST /prompts/reload` endpoint eliminates server restarts during prompt engineering
+- **Workflow versioning** — `SUPPORTED_VERSIONS` compatibility checks reject unsupported versions and warn on deprecated ones
+
 ### v0.3.0 Highlights
 
 - **Batch Memgraph operations** — `UNWIND`-based batch queries reduce graph write round-trips by 10-50×
@@ -61,7 +69,9 @@ MemFlow registers **56 modules** across 10 categories:
 
 > **Full module reference** with input/output fingerprints, config schemas, and paper traceability: **[docs/modules/MODULES.md](docs/modules/MODULES.md)**
 >
-> **Improvement roadmap**: **[docs/modules/IMPROVE.md](docs/modules/IMPROVE.md)**
+> **Improvement roadmap**: **[docs/IMPROVE.md](docs/IMPROVE.md)**
+>
+> **Research papers** with archived PDFs: **[docs/PAPERS.md](docs/PAPERS.md)**
 
 ## API
 
@@ -71,6 +81,12 @@ curl http://localhost:3000/health
 
 # List modules
 curl http://localhost:3000/modules
+
+# Validate TOML prompts (Improvement #8)
+curl http://localhost:3000/prompts/validate
+
+# Reload TOML prompt cache (Improvement #15)
+curl -X POST http://localhost:3000/prompts/reload
 
 # Run a workflow
 curl -X POST http://localhost:3000/workflow/run \

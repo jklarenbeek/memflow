@@ -6,7 +6,11 @@
  *  2. Compute aggregated query from buffered entries
  *  3. Retrieve seed entries from previously consolidated memory
  *  4. Synthesize cross-event connections via LLM
- *  5. Fallback: pairwise cosine binding if LLM fails
+ *  5. Fallback: pairwise similarity binding if LLM fails
+ *
+ * === Improvement #14 (completion): Configurable similarity function ===
+ * Uses the `similarity()` strategy dispatcher instead of direct
+ * `cosineSimilarity()`. Supports cosine, euclidean, and dotProduct.
  *
  * Reads:  memoryUnits (MemoryUnit[])
  * Writes: memoryUnits (MemoryUnit[]) — with cross-event relations
@@ -20,11 +24,11 @@ import type {
   MemoryUnit,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { cosineSimilarity } from "../../utils/similarity.js";
+import { similarity, type SimilarityFunction } from "../../utils/similarity.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
 
 const ConfigSchema = z.object({
-  /** Cosine threshold for pairwise relation binding (fallback) */
+  /** Similarity threshold for pairwise relation binding (fallback) */
   relationThreshold: z.number().min(0).max(1).default(0.7),
   /** Number of seed entries to retrieve from consolidated history */
   seedCount: z.number().default(5),
@@ -32,13 +36,15 @@ const ConfigSchema = z.object({
   timeWindowMs: z.number().default(3600000), // 1 hour default
   /** Number of past consolidation windows to search for seeds (efficiency bound) */
   seedSearchWindow: z.number().default(10),
+  /** Improvement #14: Similarity function strategy (cosine, euclidean, dotProduct) */
+  similarityFunction: z.enum(["cosine", "euclidean", "dotProduct"]).default("cosine"),
 });
 
 type CrossEventConfig = z.infer<typeof ConfigSchema>;
 
 export class CrossEventConsolidationModule implements BaseModule<CrossEventConfig> {
   readonly name = "CrossEventConsolidation";
-  readonly version = "0.2.0";
+  readonly version = "0.4.0";
   private config: CrossEventConfig;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -98,7 +104,7 @@ export class CrossEventConsolidationModule implements BaseModule<CrossEventConfi
       const seeds = recentUnits
         .map((u) => ({
           unit: u,
-          sim: cosineSimilarity(avgEmb, u.embedding),
+          sim: similarity(avgEmb, u.embedding, this.config.similarityFunction as SimilarityFunction),
           timeDelta: Math.abs(new Date(u.timestamp).getTime() - latestTs),
         }))
         .filter((s) => s.timeDelta <= this.config.timeWindowMs * this.config.seedSearchWindow)
@@ -159,7 +165,7 @@ export class CrossEventConsolidationModule implements BaseModule<CrossEventConfi
       if (units[i].embedding.length === 0) continue;
       for (let j = 0; j < units.length; j++) {
         if (i === j || units[j].embedding.length === 0) continue;
-        const sim = cosineSimilarity(units[i].embedding, units[j].embedding);
+        const sim = similarity(units[i].embedding, units[j].embedding, this.config.similarityFunction as SimilarityFunction);
         if (sim > this.config.relationThreshold) {
           units[i].relations = units[i].relations ?? [];
           if (!units[i].relations!.some((r) => r.targetId === units[j].id)) {

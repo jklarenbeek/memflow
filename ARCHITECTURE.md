@@ -138,16 +138,17 @@ Meta-module that wraps any sub-workflow in an iterative diagnosis → mutation �
 
 ### Key Algorithmic Behaviors
 
-- **SleepConsolidation**: Per-entry update queues `Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ)` with parallel `Promise.allSettled` execution (LightMem §3.3)
+- **SleepConsolidation**: Per-entry update queues `Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ)` with parallel `Promise.allSettled` execution (LightMem §3.3). **Configurable `similarityFunction`** (v0.4.0).
 - **RoPEEvolver**: Prompt consolidation via projection ΠC — merges, not overwrites. Integrates per-agent failure buffers from `HERAOrchestrator` (HERA §3.4)
 - **KeywordSearch**: Dual mode — basic Memgraph text index or MAGE BM25 with configurable k1/b parameters
 - **CommunityDetector**: Louvain (`community_detection.get()`) or Leiden (`leiden_community_detection.get()`) with LLM community summaries persisted as `:Community` nodes. Uses `batchQuery()` for N→1 label writes.
-- **CrossEventConsolidation**: Time-window–bounded seed retrieval with aggregated centroid query (StructMem §3.2)
+- **CrossEventConsolidation**: Time-window–bounded seed retrieval with aggregated centroid query (StructMem §3.2). **Configurable `similarityFunction`** (v0.4.0).
 - **EntityDeduplicator**: `checkExistingGraph` mode queries Memgraph before dedup for true incremental graph updates
 - **CitationInjector**: Persists `:Citation` nodes with `:CITES` edges for traceable source attribution. Uses `batchQuery()` UNWIND for N+1→2 round-trip reduction.
 - **TopicSegmenter**: Hybrid B1∩B2 boundary detection with configurable similarity function (`cosine`, `euclidean`, `dotProduct`). Derives `topicLabel` for each segment.
 - **NoveltyGate**: Cosine-based novelty filtering with configurable `similarityFunction` parameter.
 - **SemanticSynthesis**: LLM-based session-scoped consolidation with configurable `similarityFunction` for cluster detection.
+- **GraphSearch**: Entity-centric graph traversal. **Community-aware mode** (v0.4.0): when `communityScope: true` and `searchScope` is high-level, queries `:Community` summaries for theme-based retrieval.
 - **FactExtractor**: Populates `modelId` and `providerId` from `WorkflowContext.globalConfig` for provenance tracking. Emits telemetry counters (`embeddingCalls`, `tokenUsage`).
 - **ChunkIngestor**: Uses `batchQuery()` UNWIND for N→1 batch ingestion. Emits `memgraphQueries` telemetry.
 
@@ -180,6 +181,8 @@ Meta-module that wraps any sub-workflow in an iterative diagnosis → mutation �
 | `/health` | GET | Service health + registered modules |
 | `/modules` | GET | List available modules |
 | `/workflow/run` | POST | Execute workflow from JSON config + input. Returns aggregated `telemetry` (tokenUsage, memgraphQueries, embeddingCalls). |
+| `/prompts/validate` | GET | Validate all TOML prompt references (Improvement #8) |
+| `/prompts/reload` | POST | Manually invalidate the TOML prompt cache for hot-reload (Improvement #15) |
 
 ## Type Safety
 
@@ -231,6 +234,24 @@ src/prompts/
 ```
 
 Each TOML file contains `[meta]` (name, version), `[config]` (temperature, max_tokens, custom knobs), and `[[messages]]` with `{{variable}}` template placeholders. Loaded via `src/utils/promptLoader.ts`.
+
+### Startup Validation (Improvement #8)
+
+`WorkflowContext.create()` calls `validateAllPrompts()` which checks all 25+ known TOML prompt references against the file system. Missing or malformed prompts are logged as warnings for fail-fast error surfacing.
+
+### Hot-Reload (Improvement #15)
+
+`startPromptWatcher()` monitors `src/prompts/` via `fs.watch` with a 300ms debounce. When a TOML file changes on disk, the cached version is automatically invalidated. The `POST /prompts/reload` endpoint provides manual cache invalidation for CI/CD scenarios.
+
+## Workflow Versioning (Improvement #16)
+
+Workflow JSON configs include a `"version"` field (defaults to `"1.0"` for backward compatibility). The engine validates versions during construction:
+
+| Version | Status | Behavior |
+|---|---|---|
+| `1.0`, `1.1` | Current | Accepted silently |
+| `0.1`, `0.2` | Deprecated | Accepted with warning — migration recommended |
+| Other | Unsupported | Rejected with `WorkflowConfigError` |
 
 ## Sub-Workflow System
 

@@ -1,4 +1,4 @@
-# MemFlow Module Reference (v0.3.0)
+# MemFlow Module Reference (v0.4.0)
 
 > Canonical reference for all 56 registered modules. Each module is a self-contained unit with a strict input → output fingerprint on the shared `WorkflowData` bus.
 
@@ -253,9 +253,10 @@ Accumulates topic segments and promotes to LTM format when capacity is reached.
 | **Paper** | LightMem §3.3 |
 | **Input** | `topicSegments` |
 | **Output** | `memoryUnits` (LTM) |
-| **Config** | `ltmMaxSize`, `softUpdateThreshold`, `updateQueueSize`, `enableOfflineQueues` |
+| **Config** | `ltmMaxSize`, `softUpdateThreshold`, `updateQueueSize`, `enableOfflineQueues`, `similarityFunction` (`"cosine"` / `"euclidean"` / `"dotProduct"`, default `"cosine"`) |
+| **Version** | 0.4.0 |
 
-Parallel LLM summarization of topic segments. Per-entry update queues `Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ)` with `Promise.allSettled`. Soft-update LTM: `newTs >= existingTs` constraint. Legacy sequential mode available via `enableOfflineQueues: false`.
+Parallel LLM summarization of topic segments. Per-entry update queues `Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ)` with `Promise.allSettled`. Soft-update LTM: `newTs >= existingTs` constraint. Legacy sequential mode available via `enableOfflineQueues: false`. **Configurable similarity function** via strategy pattern (Improvement #14).
 
 ### 3.3 StructMem Pipeline
 
@@ -280,9 +281,10 @@ Enriches units with temporal anchoring (ISO timestamps from content) and entity 
 | **Paper** | StructMem §3.2 |
 | **Input** | `memoryUnits` |
 | **Output** | `memoryUnits` (with cross-event relations) |
-| **Config** | `relationThreshold`, `seedCount`, `timeWindowMs`, `seedSearchWindow` |
+| **Config** | `relationThreshold`, `seedCount`, `timeWindowMs`, `seedSearchWindow`, `similarityFunction` (`"cosine"` / `"euclidean"` / `"dotProduct"`, default `"cosine"`) |
+| **Version** | 0.4.0 |
 
-Full Cbuf = Sortτ pipeline: temporally sort buffer → compute aggregated centroid query → retrieve time-bounded seed entries → LLM synthesizes cross-event connections. Fallback: pairwise cosine binding with typed relation inference.
+Full Cbuf = Sortτ pipeline: temporally sort buffer → compute aggregated centroid query → retrieve time-bounded seed entries → LLM synthesizes cross-event connections. Fallback: pairwise similarity binding with typed relation inference. **Configurable similarity function** via strategy pattern (Improvement #14).
 
 #### GraphPersist
 
@@ -342,11 +344,12 @@ Memgraph vector index cosine search on `:Chunk` embeddings.
 |---|---|
 | **File** | `modules/retrieval/GraphSearchModule.ts` |
 | **Paper** | LightRAG |
-| **Input** | `query` |
-| **Output** | `candidates` (appended, `source="graph"`) |
-| **Config** | `topK`, `weight`, `maxHops` |
+| **Input** | `query`, `searchScope` |
+| **Output** | `candidates` (appended, `source="graph"` or `source="graph-community"`) |
+| **Config** | `topK`, `weight`, `maxHops`, `communityScope` (bool, default false), `maxCommunitySummaries` (5) |
+| **Version** | 0.4.0 |
 
-Entity-centric graph traversal via Memgraph — matches query entities, expands neighbourhood.
+Entity-centric graph traversal via Memgraph — matches query entities, expands neighbourhood. **Community-aware mode** (Improvement #13): when `communityScope: true` and `searchScope` is `high`/`exploratory`/`analytical`, queries `:Community` node summaries for theme-based retrieval, then retrieves member entity chunks scoped to each matching community.
 
 ### KeywordSearch
 

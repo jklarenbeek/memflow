@@ -5,6 +5,10 @@
  * into long-term memory summaries using LLM-based synthesis with
  * soft-update semantics (newTs >= existingTs).
  *
+ * === Improvement #14 (completion): Configurable similarity function ===
+ * Uses the `similarity()` strategy dispatcher instead of direct
+ * `cosineSimilarity()`. Supports cosine, euclidean, and dotProduct.
+ *
  * Reads:  topicSegments (MemoryUnit[][]), memoryUnits (MemoryUnit[])
  * Writes: memoryUnits (MemoryUnit[]) — consolidated LTM entries
  */
@@ -18,25 +22,27 @@ import type {
   MemoryUnit,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { cosineSimilarity } from "../../utils/similarity.js";
+import { similarity, type SimilarityFunction } from "../../utils/similarity.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
 
 const ConfigSchema = z.object({
   /** Maximum LTM entries to maintain */
   ltmMaxSize: z.number().default(1000),
-  /** Cosine threshold for soft-update matching */
+  /** Similarity threshold for soft-update matching */
   softUpdateThreshold: z.number().min(0).max(1).default(0.8),
   /** LightMem §3.3: Per-entry update queue size n */
   updateQueueSize: z.number().default(5),
   /** Enable per-entry offline parallel update queues (paper-aligned mode) */
   enableOfflineQueues: z.boolean().default(true),
+  /** Improvement #14: Similarity function strategy (cosine, euclidean, dotProduct) */
+  similarityFunction: z.enum(["cosine", "euclidean", "dotProduct"]).default("cosine"),
 });
 
 type SleepConsolidationConfig = z.infer<typeof ConfigSchema>;
 
 export class SleepConsolidationModule implements BaseModule<SleepConsolidationConfig> {
   readonly name = "SleepConsolidation";
-  readonly version = "0.2.0";
+  readonly version = "0.4.0";
   private config: SleepConsolidationConfig;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -134,7 +140,7 @@ export class SleepConsolidationModule implements BaseModule<SleepConsolidationCo
           )
           .map((other) => ({
             unit: other,
-            sim: cosineSimilarity(entry.embedding, other.embedding),
+            sim: similarity(entry.embedding, other.embedding, this.config.similarityFunction as SimilarityFunction),
           }))
           .filter((s) => s.sim >= this.config.softUpdateThreshold)
           .sort((a, b) => b.sim - a.sim)
@@ -176,7 +182,7 @@ export class SleepConsolidationModule implements BaseModule<SleepConsolidationCo
           (e) =>
             e.embedding.length > 0 &&
             newEntry.embedding.length > 0 &&
-            cosineSimilarity(e.embedding, newEntry.embedding) >= this.config.softUpdateThreshold,
+            similarity(e.embedding, newEntry.embedding, this.config.similarityFunction as SimilarityFunction) >= this.config.softUpdateThreshold,
         );
         if (!hasMatch) {
           ltm.push(newEntry);
@@ -194,7 +200,7 @@ export class SleepConsolidationModule implements BaseModule<SleepConsolidationCo
 
         for (let i = 0; i < ltm.length; i++) {
           if (ltm[i].embedding.length === 0 || newEntry.embedding.length === 0) continue;
-          const sim = cosineSimilarity(ltm[i].embedding, newEntry.embedding);
+          const sim = similarity(ltm[i].embedding, newEntry.embedding, this.config.similarityFunction as SimilarityFunction);
           if (sim >= this.config.softUpdateThreshold) {
             const existingTs = new Date(ltm[i].timestamp).getTime();
             if (newTs >= existingTs) {

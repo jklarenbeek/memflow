@@ -39,7 +39,7 @@ import { z } from "zod";
 
 const WorkflowConfigSchema = z.object({
   name: z.string(),
-  version: z.string(),
+  version: z.string().default("1.0"),
   description: z.string().optional(),
   entry: z.string(),
   stages: z.array(
@@ -82,6 +82,22 @@ const WorkflowConfigSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Improvement #16: Workflow versioning
+// ---------------------------------------------------------------------------
+
+/** Supported workflow config versions */
+const SUPPORTED_VERSIONS = {
+  current: ["1.0", "1.1"],
+  deprecated: ["0.1", "0.2"],
+};
+
+/** All accepted versions (current + deprecated) */
+const ALL_ACCEPTED = [
+  ...SUPPORTED_VERSIONS.current,
+  ...SUPPORTED_VERSIONS.deprecated,
+];
+
+// ---------------------------------------------------------------------------
 // Engine
 // ---------------------------------------------------------------------------
 
@@ -105,6 +121,7 @@ export class WorkflowEngine {
 
     this.state = this.createInitialState();
     this.validateDAG();
+    this.validateVersion();
   }
 
   // -----------------------------------------------------------------------
@@ -138,9 +155,19 @@ export class WorkflowEngine {
     }
 
     this.initialized = true;
+
+    // Improvement #16: Log deprecation warning for older workflow versions
+    if (SUPPORTED_VERSIONS.deprecated.includes(this.config.version)) {
+      this.context.logger.warn(
+        `Workflow "${this.config.name}" uses deprecated version "${this.config.version}". ` +
+          `Please migrate to version ${SUPPORTED_VERSIONS.current[SUPPORTED_VERSIONS.current.length - 1]}.`,
+      );
+    }
+
     this.context.logger.info(`Workflow "${this.config.name}" initialized`, {
       stages: this.config.stages.map((s) => s.id),
       modules: this.config.stages.map((s) => s.module),
+      version: this.config.version,
     });
   }
 
@@ -597,6 +624,35 @@ export class WorkflowEngine {
     if (unreachable.length > 0) {
       // Warn but don't throw — unreachable stages might be conditional targets
       // that are only reached via metric-based routing
+    }
+  }
+
+  /**
+   * Validate workflow version compatibility (Improvement #16).
+   *
+   * - Current versions: accepted silently
+   * - Deprecated versions: accepted with warning
+   * - Unknown versions: rejected with error
+   */
+  private validateVersion(): void {
+    const version = this.config.version;
+
+    if (SUPPORTED_VERSIONS.current.includes(version)) {
+      return; // Current version — all good
+    }
+
+    if (SUPPORTED_VERSIONS.deprecated.includes(version)) {
+      // Deprecated but still accepted — will warn during initialize()
+      // (can't log here since context isn't created yet)
+      return;
+    }
+
+    if (!ALL_ACCEPTED.includes(version)) {
+      throw new WorkflowConfigError(
+        `Unsupported workflow version "${version}". ` +
+          `Supported: ${SUPPORTED_VERSIONS.current.join(", ")}. ` +
+          `Deprecated (still accepted): ${SUPPORTED_VERSIONS.deprecated.join(", ")}.`,
+      );
     }
   }
 

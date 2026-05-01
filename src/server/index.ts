@@ -12,6 +12,7 @@ import { cors } from "hono/cors";
 import { WorkflowEngine } from "../core/WorkflowEngine.js";
 import { ModuleRegistry } from "../core/ModuleRegistry.js";
 import type { WorkflowConfig, GlobalConfig } from "../core/types.js";
+import { clearPromptCache, validateAllPrompts } from "../utils/promptLoader.js";
 
 export function createServer(globalConfig: GlobalConfig = {}): Hono {
   const app = new Hono();
@@ -24,7 +25,7 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
     c.json({
       status: "ok",
       service: "memflow",
-      version: "0.2.0",
+      version: "0.4.0",
       modules: registry.listModules(),
       timestamp: new Date().toISOString(),
     }),
@@ -36,6 +37,35 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
       modules: registry.listModules(),
     }),
   );
+
+  // Improvement #15: Manual prompt cache invalidation
+  app.post("/prompts/reload", (c) => {
+    clearPromptCache();
+    return c.json({
+      success: true,
+      message: "TOML prompt cache cleared. Next load will re-read from disk.",
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Improvement #8: Prompt validation endpoint
+  app.get("/prompts/validate", (c) => {
+    try {
+      const result = validateAllPrompts();
+      return c.json({
+        success: true,
+        valid: result.valid.length,
+        missing: result.missing,
+        parseErrors: result.parseErrors,
+        total: result.valid.length + result.missing.length + result.parseErrors.length,
+      });
+    } catch (err) {
+      return c.json(
+        { success: false, error: (err as Error).message },
+        500,
+      );
+    }
+  });
 
   // Run workflow
   app.post("/workflow/run", async (c) => {

@@ -26,6 +26,7 @@ import type { GlobalConfig } from "./types.js";
 import { MemgraphClient, type Logger } from "../providers/MemgraphClient.js";
 import { createLLM } from "../providers/LLMProvider.js";
 import { createEmbeddings } from "../providers/EmbeddingProvider.js";
+import { validateAllPrompts, startPromptWatcher } from "../utils/promptLoader.js";
 
 // ---------------------------------------------------------------------------
 // Trace entry for observability
@@ -96,6 +97,35 @@ export class WorkflowContext {
     // happens on the first invoke/embed call.
     ctx.getLLM();
     ctx.getEmbeddings();
+
+    // Improvement #8: Validate all TOML prompt references at startup
+    try {
+      const promptValidation = validateAllPrompts();
+      if (promptValidation.missing.length > 0) {
+        logger.warn(
+          `Missing TOML prompt templates: ${promptValidation.missing.join(", ")}`,
+          { missing: promptValidation.missing },
+        );
+      }
+      if (promptValidation.parseErrors.length > 0) {
+        logger.warn(
+          `TOML prompt parse errors: ${promptValidation.parseErrors.map((e) => `${e.path}: ${e.error}`).join("; ")}`,
+          { parseErrors: promptValidation.parseErrors },
+        );
+      }
+      if (promptValidation.valid.length > 0) {
+        logger.info(
+          `TOML prompt validation: ${promptValidation.valid.length} valid, ${promptValidation.missing.length} missing, ${promptValidation.parseErrors.length} errors`,
+        );
+      }
+    } catch {
+      logger.debug("Prompt validation skipped (prompts directory not found)");
+    }
+
+    // Improvement #15: Start hot-reload file watcher for TOML prompts
+    startPromptWatcher((changedPath) => {
+      logger.info(`TOML prompt reloaded: ${changedPath}`);
+    });
 
     logger.info("WorkflowContext created", { workflowId: ctx.workflowId });
     return ctx;

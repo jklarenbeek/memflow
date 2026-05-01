@@ -9,6 +9,15 @@
  *
  * Template variables in message `content` fields are rendered at call-time
  * via `renderMessages(prompt, { key: value })`.
+ *
+ * === Improvement #8: Startup validation ===
+ * `validateAllPrompts()` scans the prompts directory and verifies all
+ * referenced TOML files parse correctly, surfacing errors at startup.
+ *
+ * === Improvement #15: Hot-reload ===
+ * `startPromptWatcher()` uses `fs.watch` with debounce to invalidate
+ * the prompt cache when TOML files are modified on disk. This eliminates
+ * server restarts during prompt-engineering loops.
  */
 
 import { parse as parseToml } from "smol-toml";
@@ -150,6 +159,141 @@ export function loadRolePrompt(roleName: string): string {
  */
 export function clearPromptCache(): void {
   cache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Improvement #8: Startup prompt validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Known prompt references used by modules across the codebase.
+ * Any `loadAndRender("...")` call in a module should have its key listed here.
+ */
+const KNOWN_PROMPT_REFS: string[] = [
+  // SimpleMem
+  "simplemem/extraction",
+  "simplemem/density_gating",
+  "simplemem/synthesis",
+  "simplemem/intent_aware_planning",
+  // LightMem
+  "lightmem/consolidation",
+  "lightmem/pre_compression",
+  // StructMem
+  "structmem/dual_perspective",
+  "structmem/consolidation_synthesis",
+  // Retrieval
+  "retrieval/intent_inference",
+  // HERA
+  "hera/plan_generation",
+  "hera/reflection",
+  "hera/reflection_single",
+  "hera/synthesis",
+  "hera/rope_evolution",
+  "hera/topology_mutation",
+  // PriHA
+  "priha/clarification",
+  "priha/generation",
+  "priha/refinement",
+  "priha/validation",
+  // Query
+  "query/hyde",
+  "query/multi_query",
+  "query/step_back",
+  "query/query_rewriting",
+  "query/intent_clarification",
+  // Graph
+  "graph/entity_extraction",
+  "graph/entity_profiling",
+  "graph/deduplication",
+];
+
+export interface PromptValidationResult {
+  valid: string[];
+  missing: string[];
+  parseErrors: Array<{ path: string; error: string }>;
+}
+
+/**
+ * Validate that all known TOML prompt references exist and parse correctly.
+ *
+ * Returns a structured result with valid, missing, and errored prompts.
+ * Designed to be called during `WorkflowContext.create()` for fail-fast
+ * error surfacing (Improvement #8).
+ */
+export function validateAllPrompts(): PromptValidationResult {
+  const result: PromptValidationResult = {
+    valid: [],
+    missing: [],
+    parseErrors: [],
+  };
+
+  for (const ref of KNOWN_PROMPT_REFS) {
+    const filePath = path.join(promptsRoot(), `${ref}.toml`);
+    if (!fs.existsSync(filePath)) {
+      result.missing.push(ref);
+      continue;
+    }
+    try {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      parseToml(raw);
+      result.valid.push(ref);
+    } catch (err) {
+      result.parseErrors.push({
+        path: ref,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Improvement #15: Hot-reload file watcher
+// ---------------------------------------------------------------------------
+
+let watcher: fs.FSWatcher | null = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Start watching `src/prompts/` for TOML file changes.
+ *
+ * On any change, the prompt cache is invalidated after a short debounce
+ * (300ms) to avoid rapid successive reloads. This eliminates server
+ * restarts during prompt-engineering loops.
+ *
+ * @param onChange — optional callback invoked after cache invalidation
+ */
+export function startPromptWatcher(
+  onChange?: (path: string) => void,
+): void {
+  if (watcher) return; // Already watching
+
+  const root = promptsRoot();
+  try {
+    watcher = fs.watch(root, { recursive: true }, (_event, filename) => {
+      if (!filename || !filename.endsWith(".toml")) return;
+
+      // Debounce: wait 300ms after last change before invalidating
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const changedPath = filename.replace(/\.toml$/, "").replace(/\\/g, "/");
+        cache.delete(changedPath);
+        onChange?.(changedPath);
+      }, 300);
+    });
+  } catch {
+    // fs.watch may not be available on all platforms
+  }
+}
+
+/**
+ * Stop the TOML prompt file watcher.
+ */
+export function stopPromptWatcher(): void {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  watcher?.close();
+  watcher = null;
 }
 
 // ---------------------------------------------------------------------------

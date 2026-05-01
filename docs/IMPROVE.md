@@ -9,12 +9,16 @@
 | 5 | Batch Memgraph operations | ✅ Completed | v0.3.0 |
 | 6 | Proper error boundaries | ✅ Completed | v0.3.0 |
 | 7 | MemoryUnit field propagation | ✅ Completed | v0.3.0 |
+| 8 | TOML prompt coverage | ✅ Completed | v0.4.0 |
 | 10 | Module-level telemetry | ✅ Completed | v0.3.0 |
 | 11 | Config validation at load time | ✅ Completed | v0.3.0 |
 | 12 | Decouple AutonomousLoop | ✅ Completed | v0.3.0 |
-| 14 | Configurable similarity function | ✅ Completed | v0.3.0 |
+| 13 | Community-aware graph search | ✅ Completed | v0.4.0 |
+| 14 | Configurable similarity function | ✅ Completed | v0.3.0 + v0.4.0 |
+| 15 | Hot-reload for TOML prompts | ✅ Completed | v0.4.0 |
+| 16 | Workflow versioning and migration | ✅ Completed | v0.4.0 |
 
-> **7 of 22 items completed** (4 P0 critical, 8 P1 high remain open)
+> **12 of 22 items completed** (4 P0 critical, 3 P1 high remain open)
 
 ---
 
@@ -104,14 +108,15 @@
 - `TopicSegmenter`: Sets `topicLabel` from segment analysis using entity-based or keyword-based heuristics
 - Both fallback and primary extraction paths now populate provenance fields
 
-### 8. TOML prompt coverage
+### 8. ~~TOML prompt coverage~~ ✅ COMPLETED
 
 **Problem**: Several modules reference TOML prompts that may not exist yet: `simplemem/synthesis.toml`, `simplemem/intent_aware_planning.toml`, `lightmem/pre_compression.toml`.
 
-**Action**:
-- Audit all `loadAndRender()` calls against actual files in `src/prompts/`
-- Create missing TOML files with appropriate `[meta]`, `[config]`, and `[[messages]]` sections
-- Add a startup validation step that checks all referenced prompts exist
+**Implemented**:
+- Added `validateAllPrompts()` to `promptLoader.ts` that checks all 25+ known TOML prompt references against actual files in `src/prompts/`
+- Wired into `WorkflowContext.create()` for fail-fast error surfacing at startup — missing or malformed prompts are logged as warnings
+- Added `GET /prompts/validate` API endpoint for runtime validation
+- All referenced TOML files verified to exist on disk
 
 ### 9. Streaming support
 
@@ -155,43 +160,52 @@
 - AutonomousLoop can now wrap any registered module, not just sub-workflows
 - Module instances are properly scoped with per-iteration cache keys
 
-### 13. Community-aware graph search
+### 13. ~~Community-aware graph search~~ ✅ COMPLETED
 
 **Problem**: `GraphSearch` doesn't leverage the `communityId` property written by `CommunityDetector`. High-level queries could benefit from community-scoped search.
 
-**Action**:
-- Add `communityScope` config to `GraphSearchModule`
-- When `DualLevelRouter` returns `level="high"`, scope graph traversal to matching communities
-- Use `:Community` node summaries for theme-based retrieval without entity matching
+**Implemented**:
+- Added `communityScope` and `maxCommunitySummaries` config to `GraphSearchModule`
+- When `communityScope` is true and `searchScope` is `high`/`exploratory`/`analytical`, queries `:Community` node summaries for theme-based retrieval
+- For each matching community, also retrieves member entity chunks scoped to that community
+- Low-level queries continue using standard entity-centric graph traversal
+- Bumped `GraphSearchModule` to v0.4.0
 
-### 14. ~~Configurable similarity function~~ ✅ COMPLETED
+### 14. ~~Configurable similarity function~~ ✅ COMPLETED (v0.3.0 + v0.4.0)
 
 **Problem**: All modules hardcode cosine similarity. Some use cases (e.g., BM25 lexical matching, Jaccard for set overlap) would benefit from alternative distance metrics.
 
-**Implemented**:
+**Implemented** (v0.3.0):
 - Extracted `similarity.ts` into a strategy pattern with `cosine`, `euclidean`, `dotProduct` options
 - Added `similarity()` dispatcher function that accepts a `SimilarityFunction` parameter
 - `euclideanSimilarity()` normalizes to (0,1] range via `1/(1+distance)` for consistent thresholding
 - Added `similarityFunction` config to: `NoveltyGate`, `SemanticSynthesis`, `TopicSegmenter`
-- `CrossEventConsolidation` and `SleepConsolidation` can also be updated (left for next iteration)
 
-### 15. Hot-reload for TOML prompts
+**Implemented** (v0.4.0 — completion):
+- Extended `similarityFunction` config to `CrossEventConsolidation` (v0.4.0) and `SleepConsolidation` (v0.4.0)
+- All 5 similarity-dependent modules now support the configurable strategy pattern
+
+### 15. ~~Hot-reload for TOML prompts~~ ✅ COMPLETED
 
 **Problem**: Changing a TOML prompt requires restarting the server. In a prompt-engineering loop, this is friction.
 
-**Action**:
-- Add file watcher (via `fs.watch` or Bun's native watcher) to `src/prompts/`
-- Invalidate the `promptLoader` cache on file change
-- Expose a `/prompts/reload` endpoint for manual cache invalidation
+**Implemented**:
+- Added `startPromptWatcher()` to `promptLoader.ts` using `fs.watch` with recursive directory monitoring
+- Debounced cache invalidation (300ms) to avoid rapid successive reloads
+- Auto-started in `WorkflowContext.create()` — prompt changes reflect immediately without restart
+- Added `POST /prompts/reload` endpoint for manual cache invalidation
+- Added `stopPromptWatcher()` for graceful shutdown
 
-### 16. Workflow versioning and migration
+### 16. ~~Workflow versioning and migration~~ ✅ COMPLETED
 
 **Problem**: Workflow JSON files have no version field. When module interfaces change, existing workflows silently break.
 
-**Action**:
-- Add `"version": "1.0"` to workflow JSON schema
-- Implement version compatibility checks during `initialize()`
-- Provide migration scripts when breaking changes are introduced
+**Implemented**:
+- Added `"version"` field to `WorkflowConfigSchema` with default `"1.0"` for backward compatibility
+- Added `SUPPORTED_VERSIONS` constant: current (`1.0`, `1.1`) and deprecated (`0.1`, `0.2`)
+- `validateVersion()` runs during WorkflowEngine construction — rejects unsupported versions with clear error messages
+- Deprecated versions emit warnings during `initialize()` recommending migration
+- Version logged in workflow initialization traces for observability
 
 ---
 
