@@ -37,8 +37,8 @@ graph TD
     MR --> SUB["SubWorkflow"]
     
     subgraph "Atomic Modules"
-        MR --> M_MEM["Memory: SlidingWindow, DensityGate, FactExtractor, SemanticSynthesis, NoveltyGate, TopicSegmenter, SleepConsolidation, DualPerspective, CrossEventConsolidation, GraphPersist"]
-        MR --> M_AGT["Agents: PlanGenerator, TrajectoryExecutor, RewardComputer, ExperienceReflector, RoPEEvolver, TopologyMutator"]
+        MR --> M_MEM["Memory: SlidingWindow, DensityGate, FactExtractor, SemanticSynthesis, NoveltyGate, TopicSegmenter, SleepConsolidation, DualPerspective, CrossEventConsolidation, GraphPersist, StructuredIndex"]
+        MR --> M_AGT["Agents: PlanGenerator, TrajectoryExecutor, RewardComputer, ExperienceReflector, RoPEEvolver, TopologyMutator, FinalSynthesizer"]
         MR --> M_RET["Retrieval: IntentClassifier, VectorSearch, GraphSearch, KeywordSearch, ResultRanker"]
         MR --> M_GRF["Graph: ChunkIngestor, EntityExtractor, EntityDeduplicator, EntityProfiler, CommunityDetector"]
         MR --> M_GEN["Generation: QueryClarifier, AnswerGenerator, HallucinationValidator, CitationInjector"]
@@ -98,7 +98,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, and runtime plugin registration. Registers 38 built-in modules: 12 composite wrappers, 25 atomic modules, and 1 SubWorkflow engine module.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, and runtime plugin registration. Registers 40 built-in modules: 12 composite wrappers (now thin delegation layers), 27 atomic modules, and 1 SubWorkflow engine module.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -111,7 +111,7 @@ Enables workflows-within-workflows:
 
 ### Atomic Modules — Memory Pipeline
 
-#### SimpleMem Decomposition (4 atomic modules)
+#### SimpleMem Decomposition (5 atomic modules)
 
 | Module | Paper Ref | Reads → Writes |
 |---|---|---|
@@ -119,13 +119,15 @@ Enables workflows-within-workflows:
 | **DensityGate** | SimpleMem Eq.1 | `windowedChunks` → `filteredChunks` |
 | **FactExtractor** | SimpleMem §2 | `filteredChunks` → `memoryUnits` |
 | **SemanticSynthesis** | SimpleMem §2 | `memoryUnits` → `memoryUnits` (merged) |
+| **StructuredIndex** | SimpleMem §2 | `memoryUnits` → `memoryUnits` (enriched) |
 
-Sub-workflow: `workflows/sub/simplemem-pipeline.json` — `Window → Gate → Extract → Synthesize`
+Sub-workflow: `workflows/sub/simplemem-pipeline.json` — `Window → Gate → Extract → Synthesize → Index`
 
 - **SlidingWindow**: Groups chunks into overlapping windows (configurable `windowSize`, `windowOverlap`) for temporal context.
 - **DensityGate**: Implements Φ_gate(W) from the paper — LLM-based semantic density evaluation with heuristic fallback. Only windows with `≥ minFactCount` distinct facts pass through.
 - **FactExtractor**: LLM de-linearisation of text into typed MemoryUnit objects with batch embedding. Supports coreference resolution via the extraction prompt.
 - **SemanticSynthesis**: Cosine-based merge of highly similar units (strictly `> synthesisThreshold`, default 0.82). Averages embeddings and combines content.
+- **StructuredIndex**: Multi-view indexing — enriches each unit with TF-based lexical keywords and structured symbolic metadata (type, timestamp, confidence) for complementary retrieval paths.
 
 #### LightMem Decomposition (3 atomic modules)
 
@@ -165,8 +167,9 @@ Sub-workflow: `workflows/sub/structmem-pipeline.json` — `DualPersp → Consoli
 | **ExperienceReflector** | HERA | `trajectory` → `insights`, `experienceLibrary` |
 | **RoPEEvolver** | HERA §3.4 | `trajectory` → `evolvedRolePrompts` |
 | **TopologyMutator** | HERA §3.5 | `trajectory` → `mutatedTopology` |
+| **FinalSynthesizer** | HERA | `trajectory` → `finalAnswer` |
 
-Sub-workflow: `workflows/sub/hera-orchestration.json` — `Plan → Execute → Reward → Reflect → [RoPE] → [Mutate]`
+Sub-workflow: `workflows/sub/hera-orchestration.json` — `Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] → Synthesize`
 
 - **PlanGenerator**: LLM generates query-specific agent topology from available roles, informed by experience library insights and persisted topology mutations.
 - **TrajectoryExecutor**: Sequential multi-agent execution with accumulated context. Uses evolved prompts (RoPE) when available, TOML role prompts as fallback. Computes composite reward inline.
@@ -174,6 +177,7 @@ Sub-workflow: `workflows/sub/hera-orchestration.json` — `Plan → Execute → 
 - **ExperienceReflector**: GRPO-style group comparison — ranks current trajectory against prior trajectories, extracts insights via LLM, updates experience library with utility-based pruning.
 - **RoPEEvolver**: Identifies weakest agent (error steps or shortest output), runs contrastive LLM analysis to evolve its prompt with operational rules and behavioral principles.
 - **TopologyMutator**: After `mutationTriggerCount` consecutive failures, LLM recommends structural changes (replace/augment agents). Mutations are persisted and fed into future `PlanGenerator` calls.
+- **FinalSynthesizer**: LLM synthesis of accumulated agent step outputs into a polished, coherent final answer. Falls back to the last step's output if synthesis fails.
 
 ### Atomic Modules — Hybrid Retrieval
 

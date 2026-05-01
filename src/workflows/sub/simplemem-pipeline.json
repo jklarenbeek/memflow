@@ -1,7 +1,7 @@
 {
   "name": "simplemem-pipeline",
-  "version": "1.0",
-  "description": "SimpleMem sub-workflow: sliding window → density gating → fact extraction → semantic synthesis. Implements SimpleMem paper §2 as composable atomic stages.",
+  "version": "1.1",
+  "description": "SimpleMem sub-workflow: sliding window → density gating → fact extraction → semantic synthesis → structured indexing. Implements SimpleMem paper §2 as composable atomic stages.",
   "entry": "window",
   "stages": [
     {
@@ -25,7 +25,13 @@
     {
       "id": "synthesize",
       "module": "SemanticSynthesis",
-      "config": { "synthesisThreshold": 0.82 }
+      "config": { "synthesisThreshold": 0.82 },
+      "next": "index"
+    },
+    {
+      "id": "index",
+      "module": "StructuredIndex",
+      "config": { "maxKeywords": 10 }
     }
   ]
 }

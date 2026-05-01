@@ -1,7 +1,7 @@
 {
   "name": "multi-agent-research",
-  "version": "1.0",
-  "description": "Advanced multi-agent research pipeline: query translation → parallel retrieval branches → HERA orchestration with learning loop. Demonstrates parallel DAG execution, experience library evolution, RoPE prompt evolution, and topology mutation. For LangGraph.js developers building agentic RAG systems.",
+  "version": "2.0",
+  "description": "Advanced multi-agent research pipeline using sub-workflows: query translation → parallel hybrid retrieval branches (sub-workflows) → HERA orchestration (sub-workflow) with learning loop → PriHA fusion (sub-workflow). Demonstrates parallel DAG execution with composable sub-workflows.",
   "entry": "translate",
   "stages": [
     {
@@ -15,59 +15,44 @@
     },
     {
       "id": "vector_retrieve",
-      "module": "LightRAGRetriever",
-      "config": {
-        "topK": 10,
-        "useGraph": false,
-        "useVector": true,
-        "usePyramid": true,
-        "intentAware": true,
-        "tokenBudget": 6000
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/hybrid-retrieval.json",
+      "inputMap": { "query": "query" },
+      "outputMap": { "retrievalResult": "retrievalResult" },
       "next": "orchestrate",
       "dependsOn": ["translate"]
     },
     {
       "id": "graph_retrieve",
-      "module": "LightRAGRetriever",
-      "config": {
-        "topK": 8,
-        "useGraph": true,
-        "useVector": false,
-        "usePyramid": false,
-        "intentAware": false
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/hybrid-retrieval.json",
+      "inputMap": { "query": "query" },
+      "outputMap": { "retrievalResult": "retrievalResult" },
       "next": "orchestrate",
       "dependsOn": ["translate"]
     },
     {
       "id": "orchestrate",
-      "module": "HERAOrchestrator",
-      "config": {
-        "maxAgents": 4,
-        "enableEvolution": true,
-        "enableRoPE": true,
-        "ropeFailureThreshold": 0.4,
-        "enableTopologyMutation": true,
-        "mutationThreshold": 0.3,
-        "mutationTriggerCount": 3,
-        "experienceLibrarySize": 50
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/hera-orchestration.json",
+      "inputMap": {
+        "query": "query",
+        "retrievalResult": "retrievalResult"
+      },
+      "outputMap": {
+        "finalAnswer": "finalAnswer",
+        "trajectory": "trajectory",
+        "insights": "insights"
       },
       "dependsOn": ["vector_retrieve", "graph_retrieve"],
       "next": "fuse"
     },
     {
       "id": "fuse",
-      "module": "PriHAFusion",
-      "config": {
-        "enableTriage": true,
-        "enableDualSource": true,
-        "enableValidation": true,
-        "citationStyle": "inline",
-        "maxClarificationDepth": 2,
-        "maxSubQueries": 3,
-        "maxContextTokens": 8000
-      }
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/priha-fusion.json",
+      "inputMap": { "query": "query", "retrievalResult": "retrievalResult", "finalAnswer": "finalAnswer" },
+      "outputMap": { "finalAnswer": "finalAnswer", "sources": "sources", "confidence": "confidence" }
     }
   ],
   "globalConfig": {

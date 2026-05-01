@@ -58,6 +58,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/memory/CrossEventConsolidationModule.js").then((m) => m.CrossEventConsolidationModule as unknown as ModuleFactory),
   GraphPersist: () =>
     import("../modules/memory/GraphPersistModule.js").then((m) => m.GraphPersistModule as unknown as ModuleFactory),
+  StructuredIndex: () =>
+    import("../modules/memory/StructuredIndexModule.js").then((m) => m.StructuredIndexModule as unknown as ModuleFactory),
 
   // Retrieval — monolithic (backward compat)
   LightRAGRetriever: () =>
@@ -96,6 +98,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/agents/RoPEEvolverModule.js").then((m) => m.RoPEEvolverModule as unknown as ModuleFactory),
   TopologyMutator: () =>
     import("../modules/agents/TopologyMutatorModule.js").then((m) => m.TopologyMutatorModule as unknown as ModuleFactory),
+  FinalSynthesizer: () =>
+    import("../modules/agents/FinalSynthesizerModule.js").then((m) => m.FinalSynthesizerModule as unknown as ModuleFactory),
 
   // Graph — monolithic (backward compat)
   MemgraphGraph: () =>

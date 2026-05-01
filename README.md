@@ -2,7 +2,7 @@
 
 **Self-Improving RAG & Lifelong Memory Workflow Engine**
 
-MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **25 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience.
+MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **27 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience.
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ MemFlow's core innovation is **composable sub-workflows**: complex capabilities 
 ```
 WorkflowEngine ← JSON config
   ├── WorkflowContext (DI: MemgraphClient, StateStore, LLM, Embeddings, Logger)
-  ├── ModuleRegistry (38 modules: 12 monolithic + 25 atomic + 1 SubWorkflow)
+  ├── ModuleRegistry (40 modules: 12 delegation wrappers + 27 atomic + 1 SubWorkflow)
   ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
   └── Stages → Module.process() → shared WorkflowData bus
         └── SubWorkflow stages → nested WorkflowEngine (shared context)
@@ -34,31 +34,34 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 
 ## Module Inventory
 
-### Atomic Modules (25)
+### Atomic Modules (27)
 
 | Category | Modules | Paper |
 |---|---|---|
-| **Memory** | `SlidingWindow`, `DensityGate`, `FactExtractor`, `SemanticSynthesis` | SimpleMem |
+| **Memory** | `SlidingWindow`, `DensityGate`, `FactExtractor`, `SemanticSynthesis`, `StructuredIndex` | SimpleMem |
 | **Memory** | `NoveltyGate`, `TopicSegmenter`, `SleepConsolidation` | LightMem |
 | **Memory** | `DualPerspective`, `CrossEventConsolidation`, `GraphPersist` | StructMem |
-| **Agents** | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator` | HERA |
+| **Agents** | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator`, `FinalSynthesizer` | HERA |
 | **Retrieval** | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker` | LightRAG |
 | **Graph** | `ChunkIngestor`, `EntityExtractor`, `EntityDeduplicator`, `EntityProfiler`, `CommunityDetector` | LightRAG |
 | **Generation** | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector` | PriHA |
 
-### Composite Modules (backward-compatible wrappers)
+### Composite Modules (delegation wrappers)
 
-| Module | Paper | What it does |
+These modules preserve backward compatibility by maintaining the original API surface while delegating all algorithmic logic to their respective atomic sub-workflows via `SubWorkflowModule`.
+
+| Module | Sub-Workflow | Pipeline |
 |---|---|---|
-| **S2Chunker** | [S2 Chunking](https://arxiv.org/abs/2501.05485) | Real spectral clustering on spatial+semantic affinity. Extends LangChain `TextSplitter`. |
-| **SimpleMem** | [SimpleMem](https://arxiv.org/abs/2601.02553) | LLM-driven fact extraction + online semantic synthesis |
-| **LightMem** | [LightMem](https://arxiv.org/abs/2510.18866) | Novelty gating + B1∩B2 topic segmentation + sleep-time consolidation |
-| **StructMem** | [StructMem](https://arxiv.org/abs/2604.21748) | Dual-perspective event binding + temporal relations + graph persistence |
-| **LightRAGRetriever** | [LightRAG](https://arxiv.org/abs/2410.05779) | Hybrid vector+graph+keyword retrieval with intent-aware planning |
-| **HERAOrchestrator** | [HERA](https://arxiv.org/abs/2604.00901) | Multi-agent orchestration with GRPO evolution + RoPE + topology mutation |
-| **PriHAFusion** | [PriHA](https://arxiv.org/abs/2604.14215) | Query triage + dual-source fusion + hallucination validation + citations |
-| **QueryTranslator** | — | HyDE, Multi-Query, Step-Back, Rewriting, Intent Clarification |
-| **MarkdownSpatialParser** | — | Markdown → spatial elements (heading hierarchy, code fences) |
+| **S2Chunker** | — (standalone) | Real spectral clustering on spatial+semantic affinity |
+| **SimpleMem** | `simplemem-pipeline.json` | Window → Gate → Extract → Synthesize → Index |
+| **LightMem** | `lightmem-pipeline.json` | NoveltyGate → TopicSegmenter → SleepConsolidation |
+| **StructMem** | `structmem-pipeline.json` | DualPerspective → CrossEventConsolidation → GraphPersist |
+| **LightRAGRetriever** | `hybrid-retrieval.json` | IntentClassifier → [Vector ∥ Graph ∥ Keyword] → ResultRanker |
+| **HERAOrchestrator** | `hera-orchestration.json` | Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] → Synthesize |
+| **PriHAFusion** | `priha-fusion.json` | Clarify → Generate → Validate → Cite |
+| **MemgraphGraph** | `graph-indexing.json` | Ingest → Extract → Dedup → Profile → Communities |
+| **QueryTranslator** | — (standalone) | HyDE, Multi-Query, Step-Back, Rewriting |
+| **MarkdownSpatialParser** | — (standalone) | Markdown → spatial elements |
 
 ### Infrastructure
 

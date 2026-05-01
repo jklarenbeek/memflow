@@ -1,7 +1,7 @@
 {
   "name": "quick-qa",
-  "version": "1.0",
-  "description": "Minimal QA pipeline: query → embed → hybrid retrieval → PriHA fusion. Fastest path from question to answer with hallucination validation. Ideal for LangChain.js developers who want a simple RAG setup.",
+  "version": "2.0",
+  "description": "Minimal QA pipeline using sub-workflows: query → embed → hybrid retrieval (sub-workflow) → PriHA fusion (sub-workflow). Fastest path from question to answer with hallucination validation.",
   "entry": "translate",
   "stages": [
     {
@@ -24,27 +24,19 @@
     },
     {
       "id": "retrieve",
-      "module": "LightRAGRetriever",
-      "config": {
-        "topK": 5,
-        "useGraph": true,
-        "useVector": true,
-        "usePyramid": false,
-        "intentAware": false,
-        "tokenBudget": 3000
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/hybrid-retrieval.json",
+      "inputMap": { "query": "query" },
+      "outputMap": { "retrievalResult": "retrievalResult", "graphContext": "graphContext" },
+      "config": {},
       "next": "fuse"
     },
     {
       "id": "fuse",
-      "module": "PriHAFusion",
-      "config": {
-        "enableTriage": false,
-        "enableDualSource": false,
-        "enableValidation": true,
-        "citationStyle": "inline",
-        "maxContextTokens": 4000
-      }
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/priha-fusion.json",
+      "inputMap": { "query": "query", "retrievalResult": "retrievalResult" },
+      "outputMap": { "finalAnswer": "finalAnswer", "sources": "sources", "confidence": "confidence" }
     }
   ],
   "globalConfig": {

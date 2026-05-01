@@ -1,7 +1,7 @@
 {
   "name": "hera-orchestration",
-  "version": "1.0",
-  "description": "HERA sub-workflow: plan generation → trajectory execution → reward computation → experience reflection → conditional RoPE evolution → conditional topology mutation. Implements the full HERA paper pipeline with GRPO-style learning.",
+  "version": "1.1",
+  "description": "HERA sub-workflow: plan generation → trajectory execution → reward computation → experience reflection → conditional RoPE evolution → conditional topology mutation → final synthesis. Implements the full HERA paper pipeline with GRPO-style learning.",
   "entry": "plan",
   "stages": [
     {
@@ -31,7 +31,7 @@
       "config": { "experienceLibrarySize": 50 },
       "next": {
         "trajectory.reward<0.4": "rope_evolve",
-        "default": "done"
+        "default": "synthesize"
       }
     },
     {
@@ -40,20 +40,19 @@
       "config": { "failureThreshold": 0.4 },
       "next": {
         "consecutiveFailures>=3": "topology_mutate",
-        "default": "done"
+        "default": "synthesize"
       }
     },
     {
       "id": "topology_mutate",
       "module": "TopologyMutator",
       "config": { "mutationTriggerCount": 3 },
-      "next": "done"
+      "next": "synthesize"
     },
     {
-      "id": "done",
-      "module": "LLMProvider",
-      "config": {},
-      "next": null
+      "id": "synthesize",
+      "module": "FinalSynthesizer",
+      "config": { "maxStepChars": 400 }
     }
   ]
 }

@@ -1,13 +1,11 @@
 /**
- * PriHAFusionModule — triage, dual-source fusion, and validation
+ * PriHAFusionModule — backward-compatible wrapper
  *
- * Ported from HRW's PriHAFusion (102 lines). Implements:
+ * Delegates to the priha-fusion sub-workflow:
+ *   QueryClarifier → AnswerGenerator → HallucinationValidator → CitationInjector
  *
- *  1. Intelligent triage: clarifies ambiguous queries before generation
- *  2. Dual-source fusion: separates official/guideline sources from
- *     dynamic/graph context for balanced generation
- *  3. Hallucination validation: post-generation LLM check
- *  4. Inline citation generation
+ * This module retains the original API surface and ConfigSchema so that
+ * existing workflow JSON references continue to work unchanged.
  */
 
 import { z } from "zod";
@@ -15,14 +13,12 @@ import type {
   BaseModule,
   ModuleInput,
   ModuleOutput,
-  RetrievalResult,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { truncateToTokens } from "../../utils/tokens.js";
-import { loadAndRender } from "../../utils/promptLoader.js";
+import { SubWorkflowModule } from "../../core/SubWorkflowModule.js";
 
 // ---------------------------------------------------------------------------
-// Config
+// Config — preserves original API surface
 // ---------------------------------------------------------------------------
 
 const ConfigSchema = z.object({
@@ -46,178 +42,83 @@ type PriHAConfig = z.infer<typeof ConfigSchema>;
 
 export class PriHAFusionModule implements BaseModule<PriHAConfig> {
   readonly name = "PriHAFusion";
-  readonly version = "0.2.0";
+  readonly version = "0.3.0";
   private config: PriHAConfig;
-  private ctx?: WorkflowContext;
+  private subWorkflow: SubWorkflowModule;
 
   constructor(config: Record<string, unknown> = {}) {
     this.config = ConfigSchema.parse(config);
+    this.subWorkflow = new SubWorkflowModule({
+      workflowRef: "src/workflows/sub/priha-fusion.json",
+      inputMap: {
+        query: "query",
+        retrievalResult: "retrievalResult",
+        finalAnswer: "finalAnswer",
+      },
+      outputMap: {
+        finalAnswer: "finalAnswer",
+        sources: "sources",
+        confidence: "confidence",
+      },
+    });
   }
 
   async init(context: unknown): Promise<void> {
-    this.ctx = context as WorkflowContext;
+    // No-op — child engine shares parent context
   }
 
   async process(
     input: ModuleInput<PriHAConfig>,
     context: unknown,
   ): Promise<ModuleOutput> {
-    const ctx = (context as WorkflowContext) ?? this.ctx!;
-    const query = (input.data.query as string) ?? "";
-    const retrieval = input.data.retrievalResult as RetrievalResult | undefined;
-    const draftAnswer = input.data.finalAnswer as string | undefined;
+    const ctx = (context as WorkflowContext) ?? undefined;
+    ctx?.logger.info("PriHAFusion: Delegating to priha-fusion sub-workflow");
 
-    ctx.logger.info("PriHAFusion: Fusing and validating response");
-    const llm = ctx.getLLM();
+    // Map composite config to per-stage overrides
+    const stageOverrides = this.buildStageConfigs();
 
-    let clarifications: string[] = [];
-    let workingQuery = query;
-    let subQueries: string[] = [];
-
-    // 1. Automated multi-query clarification (PHC-O Query Optimizer pattern)
-    //    Instead of single-shot triage, iteratively decompose fuzzy queries
-    //    into specific sub-queries for comprehensive coverage
-    if (this.config.enableTriage && this.isFuzzyQuery(query)) {
-      for (let depth = 0; depth < this.config.maxClarificationDepth; depth++) {
-        try {
-          const { messages } = loadAndRender("priha/clarification", {
-            query: workingQuery,
-            context: depth === 0 ? "This is ambiguous." : "The previous decomposition needs refinement.",
-            max_sub_queries: this.config.maxSubQueries,
-          });
-          const resp = await llm.invoke(messages);
-          const text =
-            typeof resp.content === "string" ? resp.content : "";
-          const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
-          clarifications = parsed.clarifications ?? [];
-
-          if (parsed.subqueries?.length) {
-            subQueries = parsed.subqueries.slice(0, this.config.maxSubQueries);
-            // Check if sub-queries are specific enough (not fuzzy)
-            const allSpecific = subQueries.every((sq: string) => !this.isFuzzyQuery(sq));
-            if (allSpecific) break;
-            // If still fuzzy, refine in next iteration
-            workingQuery = subQueries[0] ?? workingQuery;
-          } else {
-            break;
-          }
-        } catch {
-          // Triage is optional — continue with original query
-          break;
-        }
-      }
-
-      if (subQueries.length > 0) {
-        workingQuery = subQueries.join(" AND ");
-      }
-    }
-
-    // 2. Dual-source fusion
-    let fusedContext = "";
-    if (this.config.enableDualSource && retrieval) {
-      const staticParts = retrieval.chunks.filter(
-        (c) =>
-          (c.metadata?.source as string)?.includes("guideline") ||
-          c.metadata?.type === "official",
-      );
-      const dynamicParts = retrieval.chunks.filter(
-        (c) => !staticParts.includes(c),
-      );
-
-      fusedContext = `OFFICIAL GUIDELINES:\n${staticParts.map((c) => c.pageContent).join("\n---\n")}\n\nDYNAMIC CONTEXT:\n${dynamicParts.map((c) => c.pageContent).join("\n---\n")}`;
-    } else {
-      fusedContext =
-        retrieval?.chunks.map((c) => c.pageContent).join("\n\n") ?? "";
-    }
-
-    fusedContext = truncateToTokens(fusedContext, this.config.maxContextTokens);
-
-    // 3. Generate or refine answer
-    const genPrompt = draftAnswer
-      ? loadAndRender("priha/refinement", {
-          draft: draftAnswer,
-          context: fusedContext,
-        })
-      : loadAndRender("priha/generation", {
-          query: workingQuery,
-          context: fusedContext,
-        });
-
-    const response = await llm.invoke(genPrompt.messages);
-    let answer =
-      typeof response.content === "string"
-        ? response.content
-        : JSON.stringify(response.content);
-
-    // 4. Hallucination validation
-    if (this.config.enableValidation) {
-      answer = await this.validateAnswer(answer, fusedContext, ctx);
-    }
-
-    // 5. Add citations
-    const sources = retrieval?.sources ?? ["internal-knowledge"];
-    if (this.config.citationStyle === "inline") {
-      answer = this.addInlineCitations(answer, sources);
-    }
-
-    const confidence = retrieval
-      ? Math.min(0.95, retrieval.score + 0.1)
-      : 0.6;
+    const result = await this.subWorkflow.process(
+      {
+        data: { ...input.data, _stageConfigs: stageOverrides },
+        config: {},
+      },
+      context,
+    );
 
     return {
-      data: {
-        finalAnswer: answer,
-        sources: sources.slice(0, this.config.maxCitations),
-        confidence,
-      },
+      data: result.data,
       metrics: {
-        confidence,
-        hasClarifications: clarifications.length > 0 ? 1 : 0,
-        sourceCount: sources.length,
+        ...result.metrics,
+        delegated: true,
       },
     };
   }
 
-  // -----------------------------------------------------------------------
-  // Helpers
-  // -----------------------------------------------------------------------
-
-  private isFuzzyQuery(q: string): boolean {
-    return (
-      q.length < 20 ||
-      (/better|best|should|how|what if/i.test(q) &&
-        !/specific|exact|list/i.test(q))
-    );
-  }
-
-  private async validateAnswer(
-    answer: string,
-    context: string,
-    ctx: WorkflowContext,
-  ): Promise<string> {
-    try {
-      const llm = ctx.getLLM();
-      const { messages } = loadAndRender("priha/validation", {
-        answer: answer.substring(0, 2000),
-        context: context.substring(0, 3000),
-      });
-      const resp = await llm.invoke(messages);
-      const valText =
-        typeof resp.content === "string" ? resp.content : "";
-      if (!valText.includes("VALID")) {
-        return `${answer}\n\n[VALIDATION NOTE: Some claims may need verification. ${valText}]`;
-      }
-    } catch {
-      ctx.logger.debug("Validation LLM call failed, skipping");
-    }
-    return answer;
-  }
-
-  private addInlineCitations(answer: string, sources: string[]): string {
-    if (!answer.includes("[")) {
-      return `${answer}\n\nSources: ${sources.map((s, i) => `[${i + 1}] ${s}`).join(" ")}`;
-    }
-    return answer;
+  /**
+   * Map the composite's flat config to per-stage atomic module configs.
+   * This preserves backward compatibility — callers pass the same config
+   * keys as before, and they are routed to the correct atomic modules.
+   */
+  private buildStageConfigs(): Record<string, Record<string, unknown>> {
+    return {
+      clarify: {
+        maxClarificationDepth: this.config.enableTriage
+          ? this.config.maxClarificationDepth
+          : 0,
+        maxSubQueries: this.config.maxSubQueries,
+      },
+      generate: {
+        enableDualSource: this.config.enableDualSource,
+        maxContextTokens: this.config.maxContextTokens,
+      },
+      validate: {
+        enabled: this.config.enableValidation,
+      },
+      cite: {
+        style: this.config.citationStyle,
+        maxCitations: this.config.maxCitations,
+      },
+    };
   }
 
   getConfigSchema() {

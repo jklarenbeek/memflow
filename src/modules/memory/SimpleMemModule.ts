@@ -1,36 +1,27 @@
 /**
- * SimpleMemModule — LLM-driven memory extraction and online synthesis
+ * SimpleMemModule — backward-compatible wrapper
  *
- * Adapted from HRW's MultiMemBuilder (extractMemoryUnits + synthesizeOnline).
- * Implements the SimpleMem paper's core contributions:
+ * Delegates to the simplemem-pipeline sub-workflow:
+ *   SlidingWindow → DensityGate → FactExtractor → SemanticSynthesis → StructuredIndex
  *
- *  1. Semantic Density Gating (paper Eq. 1): filters low-density windows
- *  2. De-linearisation: LLM extracts 1-3 atomic facts per chunk, resolves
- *     pronouns, adds absolute timestamps
- *  3. Online Semantic Synthesis: merges chunks with >0.82 cosine similarity
- *     into higher-level abstractions (intra-session)
+ * This module retains the original API surface and ConfigSchema so that
+ * existing workflow JSON references continue to work unchanged.
  *
- * This is the first stage of the 3-module memory pipeline:
+ * First stage of the 3-module memory pipeline:
  *   SimpleMem → LightMem → StructMem
- *
- * All LLM prompts are loaded from TOML files in src/prompts/simplemem/.
  */
 
 import { z } from "zod";
-import { v4 as uuidv4 } from "uuid";
-import { Document } from "@langchain/core/documents";
 import type {
   BaseModule,
   ModuleInput,
   ModuleOutput,
-  MemoryUnit,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { cosineSimilarity } from "../../utils/similarity.js";
-import { loadAndRender } from "../../utils/promptLoader.js";
+import { SubWorkflowModule } from "../../core/SubWorkflowModule.js";
 
 // ---------------------------------------------------------------------------
-// Config
+// Config — preserves original API surface
 // ---------------------------------------------------------------------------
 
 const ConfigSchema = z.object({
@@ -58,339 +49,71 @@ type SimpleMemConfig = z.infer<typeof ConfigSchema>;
 
 export class SimpleMemModule implements BaseModule<SimpleMemConfig> {
   readonly name = "SimpleMem";
-  readonly version = "0.2.0";
+  readonly version = "0.3.0";
   private config: SimpleMemConfig;
-  private ctx?: WorkflowContext;
+  private subWorkflow: SubWorkflowModule;
 
   constructor(config: Record<string, unknown> = {}) {
     this.config = ConfigSchema.parse(config);
+    this.subWorkflow = new SubWorkflowModule({
+      workflowRef: "src/workflows/sub/simplemem-pipeline.json",
+      inputMap: {
+        chunks: "chunks",
+        documents: "documents",
+        memoryUnits: "memoryUnits",
+      },
+      outputMap: {
+        memoryUnits: "memoryUnits",
+      },
+    });
   }
 
   async init(context: unknown): Promise<void> {
-    this.ctx = context as WorkflowContext;
+    // No-op — child engine shares parent context
   }
 
   async process(
     input: ModuleInput<SimpleMemConfig>,
     context: unknown,
   ): Promise<ModuleOutput> {
-    const ctx = (context as WorkflowContext) ?? this.ctx!;
-    const chunks: Document[] = (input.data.chunks ?? input.data.documents ?? []) as Document[];
+    const ctx = (context as WorkflowContext) ?? undefined;
+    ctx?.logger.info("SimpleMem: Delegating to simplemem-pipeline sub-workflow");
 
-    if (chunks.length === 0) {
-      return { data: { memoryUnits: [] }, metrics: { extracted: 0 } };
-    }
+    const stageOverrides = this.buildStageConfigs();
 
-    ctx.logger.info(`SimpleMem: Processing ${chunks.length} chunks`);
-    const existing: MemoryUnit[] = (input.data.memoryUnits ?? []) as MemoryUnit[];
-    let newUnits: MemoryUnit[] = [];
-
-    // 1. Sliding window grouping (paper §2)
-    //    Groups chunks into overlapping windows for temporal context
-    const windows = this.createSlidingWindows(chunks);
-    ctx.logger.debug(`SimpleMem: Created ${windows.length} sliding windows from ${chunks.length} chunks`);
-
-    // 2. De-linearise: extract atomic memory units from each window
-    //    Applies semantic density gating (paper Eq. 1) before extraction
-    for (const window of windows) {
-      // Combine window chunks into a single context block
-      const combinedText = window.map((c) => c.pageContent ?? "").join("\n---\n");
-
-      // Semantic density gating: Φ_gate(W) → {mk} | |{mk}| ≥ 0
-      // Empty set signifies a low-density window, effectively discarding it
-      if (this.config.enableDensityGating) {
-        const isDense = await this.semanticDensityGate(combinedText, existing, ctx);
-        if (!isDense) {
-          ctx.logger.debug(`SimpleMem: Skipping low-density window (density gating)`);
-          continue;
-        }
-      }
-
-      const combinedChunk = new Document({
-        pageContent: combinedText,
-        metadata: { ...window[0]?.metadata, windowSize: window.length },
-      });
-      const extracted = await this.extractMemoryUnits(combinedChunk, ctx);
-      newUnits.push(...extracted);
-    }
-
-    // 3. Online Semantic Synthesis: merge highly similar recent units
-    let allUnits = [...existing, ...newUnits];
-    allUnits = await this.synthesizeOnline(allUnits, ctx);
-
-    // 4. Multi-view structured indexing (paper §2)
-    //    Enrich each unit with lexical + symbolic indexes for downstream retrieval
-    await this.structuredIndex(allUnits, ctx);
-
-    const tokenSavings = chunks.reduce(
-      (acc, c) => acc + (c.pageContent?.length ?? 0) / 4,
-      0,
-    ) - allUnits.reduce((acc, u) => acc + u.content.length / 4, 0);
+    const result = await this.subWorkflow.process(
+      {
+        data: { ...input.data, _stageConfigs: stageOverrides },
+        config: {},
+      },
+      context,
+    );
 
     return {
-      data: { memoryUnits: allUnits },
+      data: result.data,
       metrics: {
-        extracted: newUnits.length,
-        synthesized: allUnits.length,
-        tokenSavings: Math.max(0, Math.round(tokenSavings)),
-        windows: windows.length,
+        ...result.metrics,
+        delegated: true,
       },
     };
   }
 
-  // -----------------------------------------------------------------------
-  // Semantic Density Gating (paper Eq. 1)
-  // -----------------------------------------------------------------------
-
-  /**
-   * Implements Φ_gate(W) → {mk} s.t. |{mk}| ≥ 0
-   *
-   * Uses the LLM's semantic understanding to filter low-density windows
-   * (greetings, phatic chitchat, filler). The generation of an empty set
-   * signifies a low-density window, effectively discarding it without
-   * explicit threshold tuning.
-   */
-  private async semanticDensityGate(
-    windowText: string,
-    history: MemoryUnit[],
-    ctx: WorkflowContext,
-  ): Promise<boolean> {
-    const llm = ctx.getLLM();
-    const historyContext = history
-      .slice(-5)
-      .map((h) => h.content)
-      .join(" | ")
-      .substring(0, 500);
-
-    const { messages } = loadAndRender("simplemem/density_gating", {
-      window_text: windowText.substring(0, 1000),
-      history: historyContext || "No prior history",
-    });
-
-    try {
-      const response = await llm.invoke(messages);
-      const text =
-        typeof response.content === "string" ? response.content : "";
-      const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
-      const isDense = json.dense !== false;
-      if (!isDense) {
-        ctx.logger.debug(`Density gate: filtered — ${json.reason ?? "low density"}`);
-      }
-      return isDense;
-    } catch {
-      // On failure, assume dense (don't drop data)
-      return true;
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // De-linearisation (SimpleMem F_theta)
-  // -----------------------------------------------------------------------
-
-  private async extractMemoryUnits(
-    chunk: Document,
-    ctx: WorkflowContext,
-  ): Promise<MemoryUnit[]> {
-    const text = chunk.pageContent?.substring(0, this.config.maxInputChars) ?? "";
-    if (!text.trim()) return [];
-
-    const llm = ctx.getLLM();
-    const embeddings = ctx.getEmbeddings();
-
-    // Load prompt from TOML
-    const { messages } = loadAndRender("simplemem/extraction", {
-      text,
-      max_results: 3,
-    });
-
-    try {
-      const response = await llm.invoke(messages);
-      const responseText =
-        typeof response.content === "string"
-          ? response.content
-          : JSON.stringify(response.content);
-
-      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const units = JSON.parse(jsonMatch[0]) as Array<{
-          content: string;
-          type?: string;
-          confidence?: number;
-        }>;
-
-        const results: MemoryUnit[] = [];
-        for (const u of units.slice(0, 3)) {
-          const emb = await embeddings.embedQuery(u.content);
-          results.push({
-            id: uuidv4(),
-            content: u.content,
-            embedding: emb,
-            timestamp: new Date(),
-            type: (u.type as MemoryUnit["type"]) ?? "fact",
-            metadata: {
-              source: chunk.metadata?.source ?? "chunk",
-              confidence: u.confidence ?? 0.8,
-            },
-          });
-        }
-        return results;
-      }
-    } catch (err) {
-      ctx.logger.warn(`LLM extraction failed: ${(err as Error).message}`);
-    }
-
-    // Fallback: use chunk as single memory unit
-    const emb = await embeddings.embedQuery(text.substring(0, 500));
-    return [
-      {
-        id: uuidv4(),
-        content: text.substring(0, 800),
-        embedding: emb,
-        timestamp: new Date(),
-        type: "summary",
-        metadata: {
-          source: chunk.metadata?.source ?? "chunk",
-          confidence: 0.7,
-        },
+  private buildStageConfigs(): Record<string, Record<string, unknown>> {
+    return {
+      window: {
+        windowSize: this.config.windowSize,
+        windowOverlap: this.config.windowOverlap,
       },
-    ];
-  }
-
-  // -----------------------------------------------------------------------
-  // Online Semantic Synthesis
-  // -----------------------------------------------------------------------
-
-  private async synthesizeOnline(
-    memories: MemoryUnit[],
-    ctx: WorkflowContext,
-  ): Promise<MemoryUnit[]> {
-    if (memories.length <= 1) return memories;
-
-    const recent = memories.slice(-this.config.synthesisWindow);
-    const older = memories.slice(0, -this.config.synthesisWindow);
-    const merged: MemoryUnit[] = [];
-    const used = new Set<string>();
-
-    for (let i = 0; i < recent.length; i++) {
-      if (used.has(recent[i].id)) continue;
-      const group = [recent[i]];
-
-      for (let j = i + 1; j < recent.length; j++) {
-        if (used.has(recent[j].id)) continue;
-        if (recent[i].embedding.length === 0 || recent[j].embedding.length === 0) continue;
-
-        const sim = cosineSimilarity(recent[i].embedding, recent[j].embedding);
-        if (sim > this.config.synthesisThreshold) {
-          group.push(recent[j]);
-          used.add(recent[j].id);
-        }
-      }
-
-      if (group.length > 1) {
-        // Merge similar units into a synthesis
-        const synthContent = group.map((g) => g.content).join(" | ");
-        const embeddings = ctx.getEmbeddings();
-        const synthEmb = await embeddings.embedQuery(
-          synthContent.substring(0, 1500),
-        );
-
-        merged.push({
-          id: uuidv4(),
-          content: `Synthesized: ${synthContent.substring(0, 600)}`,
-          embedding: synthEmb,
-          timestamp: new Date(),
-          type: "summary",
-          metadata: {
-            source: "synthesis",
-            originalIds: group.map((g) => g.id),
-            confidence: 0.85,
-          },
-          relations: group.flatMap((g) => g.relations ?? []),
-        });
-      } else {
-        merged.push(recent[i]);
-      }
-      used.add(recent[i].id);
-    }
-
-    return [...older, ...merged];
-  }
-
-  // -----------------------------------------------------------------------
-  // Sliding windows (paper §2)
-  // -----------------------------------------------------------------------
-
-  /**
-   * Group chunks into overlapping sliding windows.
-   *
-   * Per the SimpleMem paper, dialogue is segmented into overlapping
-   * sliding windows of fixed length. Each window represents a short
-   * contiguous span that serves as the basic processing unit.
-   */
-  private createSlidingWindows(chunks: Document[]): Document[][] {
-    if (chunks.length <= this.config.windowSize) {
-      return [chunks];
-    }
-
-    const windows: Document[][] = [];
-    const step = Math.max(1, this.config.windowSize - this.config.windowOverlap);
-
-    for (let i = 0; i < chunks.length; i += step) {
-      const window = chunks.slice(i, i + this.config.windowSize);
-      if (window.length > 0) windows.push(window);
-    }
-
-    return windows;
-  }
-
-  // -----------------------------------------------------------------------
-  // Multi-view structured indexing (paper §2)
-  // -----------------------------------------------------------------------
-
-  /**
-   * Enrich each memory unit with three complementary index representations:
-   *
-   *  1. Semantic Layer: dense embedding (already exists in unit.embedding)
-   *  2. Lexical Layer: extracted keywords for sparse/exact matching
-   *  3. Symbolic Layer: structured metadata (timestamps, entity types)
-   *
-   * These indexes enable LightRAGRetriever to query all three layers
-   * for comprehensive multi-view retrieval.
-   */
-  private async structuredIndex(
-    units: MemoryUnit[],
-    _ctx: WorkflowContext,
-  ): Promise<void> {
-    for (const unit of units) {
-      // Semantic layer: already populated via unit.embedding
-
-      // Lexical layer: extract keywords via simple TF analysis
-      const words = unit.content
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, "")
-        .split(/\s+/)
-        .filter((w) => w.length > 3);
-      const wordFreq = new Map<string, number>();
-      for (const w of words) {
-        wordFreq.set(w, (wordFreq.get(w) ?? 0) + 1);
-      }
-      // Top keywords by frequency
-      unit.metadata.lexicalKeywords = [...wordFreq.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([word]) => word);
-
-      // Symbolic layer: structured metadata
-      unit.metadata.symbolicIndex = {
-        type: unit.type,
-        timestamp: unit.timestamp instanceof Date
-          ? unit.timestamp.toISOString()
-          : String(unit.timestamp),
-        source: unit.metadata.source ?? "unknown",
-        confidence: unit.metadata.confidence ?? 0.8,
-        hasRelations: (unit.relations?.length ?? 0) > 0,
-      };
-    }
+      gate: {
+        useLLM: this.config.enableDensityGating,
+      },
+      synthesize: {
+        synthesisThreshold: this.config.synthesisThreshold,
+      },
+      index: {
+        maxKeywords: 10,
+      },
+    };
   }
 
   getConfigSchema() {

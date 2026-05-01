@@ -1,7 +1,7 @@
 {
   "name": "rag-memory-pipeline",
-  "version": "1.0",
-  "description": "Full RAG pipeline: query translation → S2 chunking → three-tier memory (SimpleMem → LightMem → StructMem) → hybrid retrieval → PriHA fusion. Demonstrates the complete memory lifecycle with spectral document chunking and dual-source answer generation.",
+  "version": "2.0",
+  "description": "Full RAG pipeline using composable sub-workflows: query translation → S2 chunking → graph indexing (sub-workflow) → three-tier memory (SimpleMem → LightMem → StructMem sub-workflows) → hybrid retrieval (sub-workflow) → PriHA fusion (sub-workflow). Demonstrates the complete memory lifecycle with sub-workflow composition.",
   "entry": "translate",
   "stages": [
     {
@@ -39,65 +39,50 @@
     },
     {
       "id": "graph",
-      "module": "MemgraphGraph",
-      "config": {
-        "vectorDim": 768,
-        "useMAGE": true
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/graph-indexing.json",
+      "inputMap": { "chunks": "chunks", "embeddings": "embeddings" },
+      "outputMap": { "entities": "entities", "relationships": "relationships" },
       "next": "simplemem"
     },
     {
       "id": "simplemem",
-      "module": "SimpleMem",
-      "config": {
-        "synthesisThreshold": 0.82,
-        "windowSize": 5,
-        "windowOverlap": 2
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/simplemem-pipeline.json",
+      "inputMap": { "chunks": "chunks", "memoryUnits": "memoryUnits" },
+      "outputMap": { "memoryUnits": "memoryUnits" },
       "next": "lightmem"
     },
     {
       "id": "lightmem",
-      "module": "LightMem",
-      "config": {
-        "noveltyThreshold": 0.75,
-        "sensoryBufferSize": 50,
-        "stmCapacity": 200,
-        "topicSimilarityThreshold": 0.6
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/lightmem-pipeline.json",
+      "inputMap": { "memoryUnits": "memoryUnits" },
+      "outputMap": { "memoryUnits": "memoryUnits" },
       "next": "structmem"
     },
     {
       "id": "structmem",
-      "module": "StructMem",
-      "config": {
-        "relationThreshold": 0.7,
-        "persistToGraph": true,
-        "consolidationThreshold": 10
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/structmem-pipeline.json",
+      "inputMap": { "memoryUnits": "memoryUnits" },
+      "outputMap": { "memoryUnits": "memoryUnits" },
       "next": "retrieve"
     },
     {
       "id": "retrieve",
-      "module": "LightRAGRetriever",
-      "config": {
-        "topK": 8,
-        "useGraph": true,
-        "useVector": true,
-        "usePyramid": true,
-        "intentAware": true
-      },
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/hybrid-retrieval.json",
+      "inputMap": { "query": "query" },
+      "outputMap": { "retrievalResult": "retrievalResult", "graphContext": "graphContext" },
       "next": "fuse"
     },
     {
       "id": "fuse",
-      "module": "PriHAFusion",
-      "config": {
-        "enableTriage": true,
-        "enableDualSource": true,
-        "enableValidation": true,
-        "citationStyle": "inline"
-      }
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/priha-fusion.json",
+      "inputMap": { "query": "query", "retrievalResult": "retrievalResult" },
+      "outputMap": { "finalAnswer": "finalAnswer", "sources": "sources", "confidence": "confidence" }
     }
   ],
   "globalConfig": {
