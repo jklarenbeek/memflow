@@ -80,7 +80,7 @@ export class CrossEventConsolidationModule implements BaseModule<CrossEventConfi
       const seeds = sorted
         .filter((u) => u.embedding?.length === dim)
         .map((u) => ({ unit: u, sim: cosineSimilarity(avgEmb, u.embedding) }))
-        .sort((a, b) => a.sim - b.sim) // Most different first
+        .sort((a, b) => b.sim - a.sim) // Most similar first (StructMem §3.2 Eq.4)
         .slice(0, this.config.seedCount);
 
       if (seeds.length > 0) {

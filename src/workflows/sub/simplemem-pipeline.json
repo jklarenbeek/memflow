@@ -7,7 +7,7 @@
     {
       "id": "window",
       "module": "SlidingWindow",
-      "config": { "windowSize": 5, "windowOverlap": 2 },
+      "config": { "windowSize": 20, "windowOverlap": 5 },
       "next": "gate"
     },
     {

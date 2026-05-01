@@ -1,0 +1,41 @@
+{
+  "name": "simplemem-retrieval",
+  "version": "1.0",
+  "description": "SimpleMem §2.3: Intent-Aware Retrieval Planning with parallel multi-view retrieval (Rₛₑₘ ∪ Rₗₑₓ ∪ Rₛᵧₘ). Completes the read-side of the SimpleMem pipeline.",
+  "entry": "plan",
+  "stages": [
+    {
+      "id": "plan",
+      "module": "IntentAwarePlanner",
+      "config": { "minDepth": 3, "maxDepth": 20 },
+      "next": ["sem_search", "lex_search", "sym_search"]
+    },
+    {
+      "id": "sem_search",
+      "module": "VectorSearch",
+      "config": { "topK": 10, "weight": 0.4 },
+      "dependsOn": ["plan"],
+      "next": "union_rank"
+    },
+    {
+      "id": "lex_search",
+      "module": "KeywordSearch",
+      "config": { "topK": 10, "weight": 0.4 },
+      "dependsOn": ["plan"],
+      "next": "union_rank"
+    },
+    {
+      "id": "sym_search",
+      "module": "SymbolicSearch",
+      "config": { "topK": 10, "weight": 0.2 },
+      "dependsOn": ["plan"],
+      "next": "union_rank"
+    },
+    {
+      "id": "union_rank",
+      "module": "ResultRanker",
+      "config": { "topK": 15, "tokenBudget": 4000, "usePyramid": true },
+      "dependsOn": ["sem_search", "lex_search", "sym_search"]
+    }
+  ]
+}

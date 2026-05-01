@@ -60,6 +60,14 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/memory/GraphPersistModule.js").then((m) => m.GraphPersistModule as unknown as ModuleFactory),
   StructuredIndex: () =>
     import("../modules/memory/StructuredIndexModule.js").then((m) => m.StructuredIndexModule as unknown as ModuleFactory),
+  PreCompression: () =>
+    import("../modules/memory/PreCompressionModule.js").then((m) => m.PreCompressionModule as unknown as ModuleFactory),
+  SensoryBuffer: () =>
+    import("../modules/memory/SensoryBufferModule.js").then((m) => m.SensoryBufferModule as unknown as ModuleFactory),
+  STMBuffer: () =>
+    import("../modules/memory/STMBufferModule.js").then((m) => m.STMBufferModule as unknown as ModuleFactory),
+  IntentAwarePlanner: () =>
+    import("../modules/memory/IntentAwarePlannerModule.js").then((m) => m.IntentAwarePlannerModule as unknown as ModuleFactory),
 
   // Retrieval — monolithic (backward compat)
   LightRAGRetriever: () =>
@@ -76,6 +84,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/retrieval/KeywordSearchModule.js").then((m) => m.KeywordSearchModule as unknown as ModuleFactory),
   ResultRanker: () =>
     import("../modules/retrieval/ResultRankerModule.js").then((m) => m.ResultRankerModule as unknown as ModuleFactory),
+  SymbolicSearch: () =>
+    import("../modules/retrieval/SymbolicSearchModule.js").then((m) => m.SymbolicSearchModule as unknown as ModuleFactory),
 
   // Query
   QueryTranslator: () =>

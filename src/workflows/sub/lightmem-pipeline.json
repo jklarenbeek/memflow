@@ -1,9 +1,29 @@
 {
   "name": "lightmem-pipeline",
-  "version": "1.0",
-  "description": "LightMem sub-workflow: novelty gating → topic segmentation (B1∩B2) → sleep consolidation with soft-update LTM. Implements the three-tier memory architecture from the LightMem paper.",
-  "entry": "novelty",
+  "version": "2.0",
+  "description": "LightMem three-tier memory pipeline: Light₁ (pre-compression → sensory buffer) → Light₂ (novelty gate → topic segmentation → STM buffer) → Light₃ (sleep consolidation with offline parallel update). Implements the full LightMem paper §3.1–3.3 architecture.",
+  "entry": "precompress",
   "stages": [
+    {
+      "id": "precompress",
+      "module": "PreCompression",
+      "config": { "compressionRatio": 0.5, "useLLM": true },
+      "next": "sensory_buffer"
+    },
+    {
+      "id": "sensory_buffer",
+      "module": "SensoryBuffer",
+      "config": { "bufferCapacity": 512 },
+      "next": {
+        "bufferFull>0.5": "novelty",
+        "default": "passthrough"
+      }
+    },
+    {
+      "id": "passthrough",
+      "module": "NoveltyGate",
+      "config": { "noveltyThreshold": 1.0 }
+    },
     {
       "id": "novelty",
       "module": "NoveltyGate",
@@ -14,6 +34,12 @@
       "id": "segment",
       "module": "TopicSegmenter",
       "config": { "topicSimilarityThreshold": 0.6, "minSegmentSize": 2 },
+      "next": "stm_buffer"
+    },
+    {
+      "id": "stm_buffer",
+      "module": "STMBuffer",
+      "config": { "stmCapacity": 2048 },
       "next": "consolidate"
     },
     {

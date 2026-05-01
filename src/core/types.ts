@@ -160,6 +160,22 @@ export interface WorkflowData {
   // Metrics (accumulated across stages)
   metrics?: ModuleMetrics;
 
+  // LightMem tier state (Phase 1)
+  existingMemories?: MemoryUnit[];
+
+  // SimpleMem multi-view retrieval (Phase 2)
+  semanticQuery?: string;
+  lexicalQuery?: string;
+  symbolicFilter?: string;
+  retrievalDepth?: number;
+
+  // HERA learning state (Phase 3)
+  previousTrajectories?: AgentTrajectory[];
+  consecutiveFailures?: number;
+  evolvedRolePrompts?: Record<string, string>;
+  mutatedTopology?: { addAgents: string[]; removeAgents: string[] };
+  experienceLibrary?: ExperienceEntry[];
+
   // Escape hatch for custom data
   [key: string]: unknown;
 }
