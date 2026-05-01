@@ -21,18 +21,37 @@ MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a compos
 - **Config validation at load time** — Zod schema validation during `initialize()` catches errors before execution
 - **Proper error boundaries** — bare `catch {}` blocks replaced with structured logging across 15+ modules
 
+## Prerequisites
+
+**Bun** (recommended, primary runtime):
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+**Node.js** (fallback, ≥20.0.0) — see `npm run start:node` below.
+
 ## Quick Start
 
 ```bash
-# Install
+# Install dependencies (Bun — 20x faster than npm)
 bun install
 
 # Start the HTTP server (requires Memgraph on bolt://localhost:7687)
 bun run start
 
-# Or run a workflow directly
+# Development mode with hot-reload
+bun run dev
+
+# Type-check (no emit)
+bun run typecheck
+
+# Or run a workflow directly from CLI
 bun src/index.ts run src/workflows/examples/rag-memory-pipeline.json --input='{"query": "What is S2 chunking?"}'
 ```
+
+> **Node.js fallback**: `npm install && npm run start:node` — uses `@hono/node-server` (installed as optional dependency).
+>
+> **Bun auto-loads `.env`**: No `dotenv` package needed. Copy `.env.example` to `.env` and Bun picks it up automatically.
 
 ## Architecture
 
@@ -116,10 +135,14 @@ The `/workflow/run` response includes aggregated telemetry:
 
 ## Docker
 
+The Dockerfile uses a **multi-stage build** with `oven/bun:1` for fast dependency installation:
+
 ```bash
-# Build and run (includes Memgraph)
+# Build and run (includes Memgraph + Bun runtime)
 docker compose -f docker/docker-compose.yml up -d
 ```
+
+Bun runs `.ts` directly — no `tsc` build step is needed in the container.
 
 ## Configuration
 

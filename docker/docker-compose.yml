@@ -1,4 +1,4 @@
-version: '3.8'
+# MemFlow Docker Compose — Bun runtime
 services:
   memflow:
     build:

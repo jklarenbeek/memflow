@@ -215,7 +215,9 @@ All module error boundaries use structured logging instead of bare `catch {}` bl
 - API keys via env only
 - Memgraph auth + network isolation recommended in prod
 - CORS middleware on HTTP server
-- **Dual-runtime**: Server auto-detects Bun vs Node.js via `globalThis.Bun`. Bun uses native `Bun.serve()`, Node.js uses `@hono/node-server` (listed in dependencies) with raw `node:http` fallback.
+- **Bun-first runtime**: Bun is the primary and recommended runtime. Server auto-detects Bun vs Node.js via `globalThis.Bun`. Bun uses native `Bun.serve()`, Node.js falls back to `@hono/node-server` (listed in `optionalDependencies`) with raw `node:http` as a last resort.
+- **Environment**: Bun auto-loads `.env` files — no `dotenv` dependency needed. No `ts-node` required — Bun runs `.ts` natively.
+- **Docker**: Multi-stage build with `oven/bun:1` builder and `memgraph/memgraph-mage` runtime. Bun runs TypeScript directly — no `tsc` build step in the container.
 
 ## Prompt System (TOML)
 
