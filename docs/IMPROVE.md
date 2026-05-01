@@ -125,18 +125,22 @@
 
 **Implemented**:
 - Added `StreamEvent` discriminated union (7 event types) and `StreamableModule<T>` interface to `types.ts` — **100% additive, zero breaking changes**
-- Added `WorkflowEngine.runStream()` AsyncGenerator that yields events as stages execute
+- Added `WorkflowEventEmitter` (`src/core/WorkflowEventEmitter.ts`) — typed wrapper around Node.js's native `EventEmitter` with per-event-type `on()`/`once()`/`off()`, wildcard `*` channel, and `toAsyncGenerator()` bridge
+- Added `WorkflowEngine.runStream()` AsyncGenerator that yields events as stages execute — dual-emits via both the generator and the EventEmitter
+- Added `WorkflowEngine.events` getter exposing the typed emitter for direct subscription (SSE, metrics, tests)
 - Added `executeDAGStreaming()` and `executeStageStreaming()` with runtime `processStream()` detection
 - Added `POST /workflow/run/stream` SSE endpoint using Hono's `streamSSE()` helper with abort handling
 - Implemented `processStream()` on `AnswerGenerator` and `FinalSynthesizer` using LangChain `.stream()` for token-level output
 - Added `generatePreview()` for stage:complete events (auto-summarizes output for UI display)
 - Non-streaming `run()` path completely unmodified — streaming is a parallel execution path
 - Bun/Node server banners updated with new endpoint
+- `shutdown()` cleans up all emitter listeners
 
 **Non-breaking design**:
 - `BaseModule.process()` is unchanged. `StreamableModule.processStream()` is optional.
 - Modules without `processStream()` automatically fall back to `process()` + single `stage:complete`
 - Existing `POST /workflow/run` works identically
+- `engine.events` allows multi-consumer access without SSE (metrics, logging, tests)
 
 ### 10. ~~Module-level telemetry~~ ✅ COMPLETED
 

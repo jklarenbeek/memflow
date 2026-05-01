@@ -28,6 +28,7 @@ import {
 } from "./types.js";
 import { ModuleRegistry } from "./ModuleRegistry.js";
 import { WorkflowContext } from "./WorkflowContext.js";
+import { WorkflowEventEmitter } from "./WorkflowEventEmitter.js";
 import {
   WorkflowConfigError,
   WorkflowDAGError,
@@ -107,6 +108,7 @@ const ALL_ACCEPTED = [
 export class WorkflowEngine {
   private readonly registry = ModuleRegistry.getInstance();
   private readonly config: WorkflowConfig;
+  private readonly emitter: WorkflowEventEmitter;
   private state: WorkflowState;
   private context?: WorkflowContext;
   private modules = new Map<string, BaseModule>();
@@ -122,9 +124,37 @@ export class WorkflowEngine {
       );
     }
 
+    this.emitter = new WorkflowEventEmitter();
     this.state = this.createInitialState();
     this.validateDAG();
     this.validateVersion();
+  }
+
+  // -----------------------------------------------------------------------
+  // Public event access
+  // -----------------------------------------------------------------------
+
+  /**
+   * The typed event emitter for this workflow engine.
+   *
+   * Consumers can subscribe to specific event types or use the wildcard `*`
+   * to receive all events. This enables multiple independent consumers:
+   *
+   * @example
+   *   // SSE endpoint
+   *   engine.events.on('*', (event) => stream.writeSSE({ ... }));
+   *
+   *   // Metrics collector
+   *   engine.events.on('stage:complete', (e) => recordLatency(e.durationMs));
+   *
+   *   // Test assertions
+   *   engine.events.once('workflow:complete', (e) => assert(e.finalAnswer));
+   *
+   *   // AsyncGenerator (backward compatible)
+   *   for await (const event of engine.events.toAsyncGenerator()) { ... }
+   */
+  get events(): WorkflowEventEmitter {
+    return this.emitter;
   }
 
   // -----------------------------------------------------------------------
@@ -268,11 +298,12 @@ export class WorkflowEngine {
    * This is the streaming counterpart of `run()`. It yields `StreamEvent`
    * objects as stages execute, enabling real-time UI updates via SSE.
    *
-   * - Non-streaming modules: `process()` → single `stage:complete` event
-   * - Streaming modules: `processStream()` → `stage:progress` tokens + `stage:complete`
-   *
-   * The non-streaming `run()` path is COMPLETELY UNMODIFIED — this is
-   * a parallel execution path that shares initialization and shutdown.
+   * Events are emitted via the `WorkflowEventEmitter` (accessible via
+   * `engine.events`) AND yielded from this generator. This dual-emission
+   * allows multiple consumers:
+   *  - The SSE endpoint consumes the AsyncGenerator
+   *  - Metrics/logging consumers subscribe via `engine.events.on()`
+   *  - Tests can use either approach
    *
    * @param initialInput — optional initial data to merge into state
    * @param abortSignal — optional AbortSignal for client disconnect handling
@@ -290,13 +321,15 @@ export class WorkflowEngine {
     this.state.data = { ...this.state.data, ...initialInput };
 
     // Emit workflow:start
-    yield {
+    const startEvent: StreamEvent = {
       type: "workflow:start",
       workflowId: this.state.id,
       name: this.config.name,
       stages: this.config.stages.map((s) => s.id),
       timestamp: new Date().toISOString(),
     };
+    this.emitter.emit(startEvent);
+    yield startEvent;
 
     try {
       // Execute the DAG, yielding events for each stage
@@ -309,7 +342,7 @@ export class WorkflowEngine {
         new Date(this.state.metadata.startTime).getTime();
 
       // Emit workflow:complete
-      yield {
+      const completeEvent: StreamEvent = {
         type: "workflow:complete",
         workflowId: this.state.id,
         totalDurationMs: this.state.metadata.totalDurationMs,
@@ -318,21 +351,25 @@ export class WorkflowEngine {
         sources: this.state.data.sources as string[] | undefined,
         timestamp: new Date().toISOString(),
       };
+      this.emitter.emit(completeEvent);
+      yield completeEvent;
     } catch (err) {
       // Emit workflow:error
-      yield {
+      const errorEvent: StreamEvent = {
         type: "workflow:error",
         workflowId: this.state.id,
         error: (err as Error).message,
         stage: this.state.currentStage,
         timestamp: new Date().toISOString(),
       };
+      this.emitter.emit(errorEvent);
+      yield errorEvent;
     }
 
     return this.state;
   }
 
-  /** Tear down all modules and the context. */
+  /** Tear down all modules, clean up listeners, and the context. */
   async shutdown(): Promise<void> {
     for (const mod of this.modules.values()) {
       try {
@@ -343,6 +380,7 @@ export class WorkflowEngine {
         );
       }
     }
+    this.emitter.removeAllListeners();
     await this.context?.shutdown();
     this.registry.clearInstances();
     this.initialized = false;
@@ -596,7 +634,7 @@ export class WorkflowEngine {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       // Emit stage:start
-      yield {
+      const startEvt: StreamEvent = {
         type: "stage:start" as const,
         stageId: stage.id,
         module: stage.module,
@@ -604,6 +642,8 @@ export class WorkflowEngine {
         progress,
         timestamp: new Date().toISOString(),
       };
+      this.emitter.emit(startEvt);
+      yield startEvt;
 
       try {
         const startTime = Date.now();
@@ -631,6 +671,7 @@ export class WorkflowEngine {
           let result = await generator.next();
           while (!result.done) {
             const event = result.value;
+            this.emitter.emit(event);
             yield event;
             result = await generator.next();
           }
@@ -668,7 +709,7 @@ export class WorkflowEngine {
         const preview = this.generatePreview(output);
 
         // Emit stage:complete
-        yield {
+        const completeEvt: StreamEvent = {
           type: "stage:complete" as const,
           stageId: stage.id,
           module: stage.module,
@@ -678,6 +719,8 @@ export class WorkflowEngine {
           progress: { completed: completedCount + 1, total: totalStages },
           timestamp: new Date().toISOString(),
         };
+        this.emitter.emit(completeEvt);
+        yield completeEvt;
 
         return; // Success
       } catch (err) {
@@ -692,7 +735,7 @@ export class WorkflowEngine {
         const willRetry = attempt < maxAttempts;
 
         // Emit stage:error
-        yield {
+        const errorEvt: StreamEvent = {
           type: "stage:error" as const,
           stageId: stage.id,
           module: stage.module,
@@ -702,6 +745,8 @@ export class WorkflowEngine {
           willRetry,
           timestamp: new Date().toISOString(),
         };
+        this.emitter.emit(errorEvt);
+        yield errorEvt;
 
         if (willRetry) {
           const delay = Math.min(baseDelay * 2 ** (attempt - 1), 30_000);

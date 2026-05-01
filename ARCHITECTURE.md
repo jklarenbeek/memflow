@@ -262,20 +262,42 @@ Streaming is **fully additive and non-breaking**. The existing `run()` path, `pr
 
 ### Architecture
 
+The `WorkflowEventEmitter` (a typed wrapper around Node.js's native `EventEmitter`) is the **single source of truth** for all streaming events. Events are emitted via the emitter and optionally yielded via an AsyncGenerator for backward compatibility:
+
 ```
-Client (EventSource/fetch) → POST /workflow/run/stream
+WorkflowEngine
     │
-    ▼
-Hono streamSSE() → WorkflowEngine.runStream()
-    │
-    ├── executeStageStreaming(stage)
+    ├── runStream() ────── AsyncGenerator<StreamEvent> ──► SSE endpoint (Hono)
     │       │
-    │       ├── module.processStream?()  ← yields token events
-    │       │   (StreamableModule)
-    │       │
-    │       └── module.process()  ← fallback: single complete event
+    │       └── emitter.emit(event)  ←── dual-emission
     │
-    └── yield events to SSE stream
+    └── engine.events ─── WorkflowEventEmitter
+            │
+            ├── .on('stage:complete', handler)  ←── typed subscription
+            ├── .on('stage:progress', handler)  ←── token-level
+            ├── .on('*', handler)               ←── wildcard (all events)
+            └── .toAsyncGenerator()             ←── alternative to runStream()
+```
+
+### WorkflowEventEmitter
+
+Wraps Node.js `EventEmitter` with typed `on()`/`once()`/`off()` for each `StreamEvent` type. Supports a wildcard `*` channel that receives ALL events. Provides `toAsyncGenerator()` for consumers preferring the iterator pattern.
+
+```typescript
+// Typed subscription — TypeScript narrows the event type
+engine.events.on('stage:complete', (event) => {
+  console.log(event.durationMs);  // typed as StreamEventStageComplete
+});
+
+// Wildcard — receive all events
+engine.events.on('*', (event) => {
+  logger.info(`[${event.type}]`, event);
+});
+
+// AsyncGenerator bridge
+for await (const event of engine.events.toAsyncGenerator()) {
+  // same as consuming runStream()
+}
 ```
 
 ### StreamEvent Protocol
