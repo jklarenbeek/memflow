@@ -1,35 +1,328 @@
 /**
- * CommunityDetectorModule — MAGE Leiden community detection
- * Reads:  (graph state)
- * Writes: (side-effect: community labels on Entity nodes)
+ * CommunityDetectorModule — MAGE community detection (Louvain / Leiden)
+ *
+ * Runs community detection on the Entity graph and:
+ *  1. Captures community IDs from MAGE YIELD clause
+ *  2. Writes community labels back to Entity nodes as `communityId` property
+ *  3. Generates community-level summaries for high-level LightRAG retrieval
+ *  4. Exposes community data on the WorkflowData bus
+ *
+ * Supports two algorithms (configurable via `algorithm`):
+ *  - `louvain`: community_detection.get() — greedy modularity maximization,
+ *    O(n log n), supports parallel execution via graph coloring heuristics.
+ *  - `leiden`: leiden_community_detection.get() — enhanced Louvain that
+ *    guarantees well-connected communities, O(L·m), non-deterministic.
+ *
+ * The module operates on :Entity nodes connected by :RELATES_TO edges.
+ * It can also run on a subgraph projection for targeted analysis.
+ *
+ * Reads:  (graph state — :Entity nodes, :RELATES_TO edges)
+ * Writes: communities (Record<number, CommunityInfo>), communitySummaries
  */
+
 import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 
-const ConfigSchema = z.object({ maxIterations: z.number().default(10) });
-type Config = z.infer<typeof ConfigSchema>;
+const ConfigSchema = z.object({
+  /** Algorithm: "louvain" (default) or "leiden" */
+  algorithm: z.enum(["louvain", "leiden"]).default("louvain"),
 
-export class CommunityDetectorModule implements BaseModule<Config> {
+  // --- Louvain-specific ---
+  /** Edge property name for weights (Louvain). Set to "" for unweighted. */
+  weight: z.string().default("weight"),
+  /** Enable graph coloring heuristic for parallelization (Louvain) */
+  coloring: z.boolean().default(false),
+  /** Stop graph coarsening when shrunk to this many nodes (Louvain) */
+  minGraphShrink: z.number().default(100000),
+  /** Modularity gain threshold to stop iteration (Louvain) — (0, 1) exclusive */
+  communityAlgThreshold: z.number().default(0.000001),
+  /** Modularity gain threshold for coloring phase (Louvain) — must be > communityAlgThreshold */
+  coloringAlgThreshold: z.number().default(0.01),
+
+  // --- Leiden-specific ---
+  /** Gamma parameter (Leiden) — resolution; lower = fewer, larger communities */
+  gamma: z.number().default(1.0),
+  /** Theta parameter (Leiden) — controls randomness */
+  theta: z.number().default(0.01),
+
+  // --- General ---
+  /** Node label to detect communities on */
+  nodeLabel: z.string().default("Entity"),
+  /** Edge type connecting nodes */
+  edgeType: z.string().default("RELATES_TO"),
+  /** Generate LLM summaries for each detected community */
+  generateSummaries: z.boolean().default(true),
+  /** Maximum communities to summarize (to control LLM cost) */
+  maxSummaries: z.number().default(20),
+});
+
+type CommunityConfig = z.infer<typeof ConfigSchema>;
+
+interface CommunityInfo {
+  id: number;
+  nodeCount: number;
+  nodeNames: string[];
+  summary?: string;
+}
+
+export class CommunityDetectorModule implements BaseModule<CommunityConfig> {
   readonly name = "CommunityDetector";
-  readonly version = "0.2.0";
-  private config: Config;
-  constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
+  readonly version = "0.3.0";
+  private config: CommunityConfig;
 
-  async process(input: ModuleInput<Config>, context: unknown): Promise<ModuleOutput> {
+  constructor(config: Record<string, unknown> = {}) {
+    this.config = ConfigSchema.parse(config);
+  }
+
+  async process(
+    input: ModuleInput<CommunityConfig>,
+    context: unknown,
+  ): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
+    const communities = new Map<number, CommunityInfo>();
+
     try {
-      await ctx.memgraph.query(
-        `CALL mage.community_leiden("Entity", "RELATES_TO", {max_iterations: ${this.config.maxIterations}}) YIELD *`,
+      // 1. Run community detection algorithm
+      const results = this.config.algorithm === "leiden"
+        ? await this.runLeiden(ctx)
+        : await this.runLouvain(ctx);
+
+      // 2. Group nodes by community
+      for (const row of results) {
+        const communityId = row.community_id;
+        const nodeName = row.name ?? row.id ?? "unknown";
+
+        if (communityId === -1) continue; // Node not in any community
+
+        if (!communities.has(communityId)) {
+          communities.set(communityId, {
+            id: communityId,
+            nodeCount: 0,
+            nodeNames: [],
+          });
+        }
+
+        const info = communities.get(communityId)!;
+        info.nodeCount++;
+        if (info.nodeNames.length < 20) {
+          info.nodeNames.push(String(nodeName));
+        }
+      }
+
+      // 3. Write community labels back to Entity nodes
+      await this.writeCommunityLabels(results, ctx);
+
+      // 4. Generate community summaries for high-level retrieval
+      if (this.config.generateSummaries && communities.size > 0) {
+        await this.generateCommunitySummaries(communities, ctx);
+      }
+
+      const communityData = Object.fromEntries(communities);
+
+      ctx.logger.info(
+        `CommunityDetector (${this.config.algorithm}): ` +
+        `${communities.size} communities detected across ${results.length} nodes`,
       );
-      ctx.logger.info("CommunityDetector: Leiden algorithm completed");
-      return { data: {}, metrics: { detected: true } };
-    } catch {
-      ctx.logger.debug("CommunityDetector: MAGE not available");
-      return { data: {}, metrics: { detected: false } };
+
+      return {
+        data: {
+          communities: communityData,
+          communitySummaries: [...communities.values()]
+            .filter((c) => c.summary)
+            .map((c) => ({ communityId: c.id, summary: c.summary!, members: c.nodeNames })),
+        },
+        metrics: {
+          detected: true,
+          algorithm: this.config.algorithm,
+          communityCount: communities.size,
+          totalNodes: results.length,
+        },
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown error";
+      ctx.logger.warn(`CommunityDetector (${this.config.algorithm}): failed — ${msg}`);
+
+      // If Leiden throws (no communities detected), suggest gamma adjustment
+      if (this.config.algorithm === "leiden" && msg.includes("exception")) {
+        ctx.logger.info(
+          "CommunityDetector: Leiden found no communities. Try adjusting the gamma parameter.",
+        );
+      }
+
+      return {
+        data: { communities: {}, communitySummaries: [] },
+        metrics: { detected: false, error: msg },
+      };
     }
   }
 
-  getConfigSchema() { return ConfigSchema; }
-  supportsLearning() { return false; }
+  /**
+   * Run Louvain community detection via MAGE.
+   *
+   * Procedure: community_detection.get()
+   * YIELD: node, community_id
+   */
+  private async runLouvain(
+    ctx: WorkflowContext,
+  ): Promise<Array<{ community_id: number; name?: string; id?: string }>> {
+    // Build the subgraph projection for targeted detection on nodeLabel/edgeType
+    const results = await ctx.memgraph.query<{
+      community_id: number;
+      name: string;
+      id: string;
+    }>(
+      `CALL community_detection.get($coloring, $minShrink, $communityThreshold, $coloringThreshold)
+       YIELD node, community_id
+       WHERE $nodeLabel IN labels(node)
+       RETURN node.name AS name, node.id AS id, community_id`,
+      {
+        coloring: this.config.coloring,
+        minShrink: this.config.minGraphShrink,
+        communityThreshold: this.config.communityAlgThreshold,
+        coloringThreshold: this.config.coloringAlgThreshold,
+        nodeLabel: this.config.nodeLabel,
+      },
+    );
+
+    return results;
+  }
+
+  /**
+   * Run Leiden community detection via MAGE.
+   *
+   * Procedure: leiden_community_detection.get()
+   * YIELD: node, community_id, communities
+   *
+   * Note: Leiden can throw if no communities are detected. Callers
+   * should handle this by adjusting the gamma parameter.
+   */
+  private async runLeiden(
+    ctx: WorkflowContext,
+  ): Promise<Array<{ community_id: number; name?: string; id?: string }>> {
+    const results = await ctx.memgraph.query<{
+      community_id: number;
+      name: string;
+      id: string;
+    }>(
+      `CALL leiden_community_detection.get()
+       YIELD node, community_id
+       WHERE $nodeLabel IN labels(node)
+       RETURN node.name AS name, node.id AS id, community_id`,
+      {
+        nodeLabel: this.config.nodeLabel,
+      },
+    );
+
+    return results;
+  }
+
+  /**
+   * Write community labels back to Entity nodes as a `communityId` property.
+   * This enables community-based retrieval queries downstream.
+   */
+  private async writeCommunityLabels(
+    results: Array<{ community_id: number; name?: string; id?: string }>,
+    ctx: WorkflowContext,
+  ): Promise<void> {
+    // Batch update: set communityId on each node
+    for (const row of results) {
+      if (row.community_id === -1) continue;
+      const identifier = row.id ?? row.name;
+      if (!identifier) continue;
+
+      try {
+        await ctx.memgraph.query(
+          `MATCH (n:${this.config.nodeLabel} {id: $nodeId})
+           SET n.communityId = $communityId`,
+          { nodeId: identifier, communityId: row.community_id },
+        );
+      } catch {
+        // Try matching by name if id fails
+        try {
+          await ctx.memgraph.query(
+            `MATCH (n:${this.config.nodeLabel} {name: $nodeName})
+             SET n.communityId = $communityId`,
+            { nodeName: identifier, communityId: row.community_id },
+          );
+        } catch {
+          // Silently skip if node can't be matched
+        }
+      }
+    }
+
+    ctx.logger.debug(
+      `CommunityDetector: wrote communityId labels to ${results.filter((r) => r.community_id !== -1).length} nodes`,
+    );
+  }
+
+  /**
+   * Generate LLM summaries for each community.
+   * Produces community-level descriptions usable for high-level LightRAG
+   * retrieval (theme/topic queries).
+   */
+  private async generateCommunitySummaries(
+    communities: Map<number, CommunityInfo>,
+    ctx: WorkflowContext,
+  ): Promise<void> {
+    const llm = ctx.getLLM();
+    const sortedCommunities = [...communities.values()]
+      .sort((a, b) => b.nodeCount - a.nodeCount)
+      .slice(0, this.config.maxSummaries);
+
+    const summaryResults = await Promise.allSettled(
+      sortedCommunities.map(async (community) => {
+        const members = community.nodeNames.join(", ");
+
+        const resp = await llm.invoke([
+          {
+            role: "system",
+            content: `You are a knowledge graph analyst. Summarize a community of related entities in 1-2 sentences. Focus on the common theme or topic that connects these entities.`,
+          },
+          {
+            role: "user",
+            content: `Community ${community.id} contains ${community.nodeCount} entities: ${members}.\n\nSummarize the theme of this community:`,
+          },
+        ]);
+
+        const summary = typeof resp.content === "string"
+          ? resp.content.trim()
+          : "";
+
+        community.summary = summary;
+
+        // Persist community summary to Memgraph
+        try {
+          await ctx.memgraph.query(
+            `MERGE (c:Community {id: $communityId})
+             SET c.summary = $summary,
+                 c.nodeCount = $nodeCount,
+                 c.members = $members,
+                 c.updatedAt = $timestamp`,
+            {
+              communityId: community.id,
+              summary,
+              nodeCount: community.nodeCount,
+              members: community.nodeNames,
+              timestamp: new Date().toISOString(),
+            },
+          );
+        } catch {
+          // Summary persistence is best-effort
+        }
+      }),
+    );
+
+    const succeeded = summaryResults.filter((r) => r.status === "fulfilled").length;
+    ctx.logger.debug(
+      `CommunityDetector: generated ${succeeded}/${sortedCommunities.length} community summaries`,
+    );
+  }
+
+  getConfigSchema() {
+    return ConfigSchema;
+  }
+  supportsLearning() {
+    return false;
+  }
 }

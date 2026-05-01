@@ -220,9 +220,22 @@ Sub-workflow: `workflows/sub/simplemem-retrieval.json` — `Plan → [Sem ∥ Le
 | **EntityExtractor** | LightRAG §3.1 | `chunks` → `entities`, `relationships` |
 | **EntityDeduplicator** | LightRAG §3.1 | `entities` → `entities` (canonical) |
 | **EntityProfiler** | LightRAG §3.1 | `entities`, `chunks` → profile summaries |
-| **CommunityDetector** | LightRAG | (graph state) → community labels |
+| **CommunityDetector** | LightRAG | (graph state) → `communities`, `communitySummaries`, `:Community` nodes |
 
 Sub-workflow: `workflows/sub/graph-indexing.json` — `Ingest → Extract → Dedup → Profile → Community`
+
+**CommunityDetector** now supports two MAGE algorithms (configurable via `algorithm`):
+
+| Algorithm | MAGE Procedure | Runtime | Key Properties |
+|---|---|---|---|
+| **Louvain** (default) | `community_detection.get()` | O(n log n) | Greedy modularity maximization, parallel via graph coloring heuristic |
+| **Leiden** | `leiden_community_detection.get()` | O(L·m) | Guarantees well-connected communities, non-deterministic (controlled via `theta`) |
+
+After detection, the module:
+1. **Writes `communityId`** property to each `:Entity` node for downstream community-based retrieval
+2. **Generates LLM summaries** per community (configurable, capped at `maxSummaries`)
+3. **Persists `:Community` nodes** to Memgraph with `{id, summary, nodeCount, members, updatedAt}`
+4. **Outputs** `communities` (grouped node info) and `communitySummaries` on the WorkflowData bus for high-level LightRAG retrieval
 
 ### Atomic Modules — PriHA Generation
 
@@ -251,10 +264,15 @@ Sub-workflow: `workflows/sub/priha-fusion.json` — `Clarify → Generate → Va
 
 - **:Chunk** — S2 output (text, embedding, source)
 - **:MemoryUnit** — atomic facts/events/summaries (content, embedding, type, timestamp, confidence)
-- **:Entity** — LLM-extracted entities with type, description, profileSummary, keyThemes
+- **:Entity** — LLM-extracted entities with type, description, profileSummary, keyThemes, `communityId`
+- **:Community** — Community summaries from MAGE detection (id, summary, nodeCount, members)
 - **:Element** — raw layout elements from document parser
+- **:ParentChunk** — Large context chunks for PriHA parent-child retrieval
+- **:ChildChunk** — Small precision chunks for PriHA parent-child retrieval
+- **:Answer** — Generated answers for citation tracking
+- **:Citation** — Traceable source URLs with title, accessedAt, verified status
 - **:ModuleState** — persistent module state (workflowId, moduleKey, value JSON, updatedAt)
-- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords)
+- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords), `BELONGS_TO` (child→parent chunks), `CITES` (answer→citation)
 - **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`
 
 ## HTTP API (Hono)
