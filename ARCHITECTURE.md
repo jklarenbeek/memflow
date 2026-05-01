@@ -168,7 +168,7 @@ src/prompts/
   lightmem/      consolidation.toml
   structmem/     dual_perspective.toml, consolidation_synthesis.toml
   retrieval/     intent_inference.toml
-  hera/          plan_generation.toml, reflection.toml, synthesis.toml, rope_evolution.toml, topology_mutation.toml
+  hera/          plan_generation.toml, reflection.toml, reflection_single.toml, synthesis.toml, rope_evolution.toml, topology_mutation.toml
   hera/roles/    13 role-specific agent prompts
   priha/         clarification.toml, generation.toml, refinement.toml, validation.toml
   query/         hyde.toml, multi_query.toml, step_back.toml, query_rewriting.toml, intent_clarification.toml
