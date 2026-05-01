@@ -43,6 +43,14 @@ export interface WorkflowStage {
   parallel?: boolean;
   retry?: number;
   retryDelayMs?: number;
+  /** Inline sub-workflow definition (for SubWorkflow module) */
+  workflow?: WorkflowConfig;
+  /** File path to external sub-workflow JSON (for SubWorkflow module) */
+  workflowRef?: string;
+  /** Map parent data keys → child input keys */
+  inputMap?: Record<string, string>;
+  /** Map child output keys → parent data keys */
+  outputMap?: Record<string, string>;
 }
 
 export interface GlobalConfig {
@@ -122,19 +130,32 @@ export interface WorkflowData {
   memoryUnits?: MemoryUnit[];
   retrievalScope?: string;
 
+  // Atomic memory pipeline stages
+  windowedChunks?: Document[][];
+  filteredChunks?: Document[];
+  topicSegments?: MemoryUnit[][];
+
   // Graph stage
   graphContext?: string;
+  entities?: Array<{ name: string; type: string; description: string }>;
+  relationships?: Array<{ source: string; target: string; type: string; description: string; keywords: string[] }>;
 
   // Retrieval stage
   retrievalResult?: RetrievalResult;
+  candidates?: Array<{ id: string; text: string; embedding: number[]; score: number; source: string; metadata: Record<string, unknown> }>;
+  searchScope?: string;
 
   // Agent / orchestration stage
   agentResult?: AgentResult;
+  agentPlan?: AgentPlan;
+  trajectory?: AgentTrajectory;
+  insights?: string[];
 
   // Generation stage
   finalAnswer?: string;
   sources?: string[];
   confidence?: number;
+  clarifications?: string[];
 
   // Metrics (accumulated across stages)
   metrics?: ModuleMetrics;

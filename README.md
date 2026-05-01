@@ -2,7 +2,7 @@
 
 **Self-Improving RAG & Lifelong Memory Workflow Engine**
 
-MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a modular, JSON-driven workflow engine with built-in learning loops. It combines real spectral chunking, multi-tier memory systems, hybrid retrieval, multi-agent orchestration, and hallucination validation — all backed by Memgraph for graph-native persistence.
+MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **25 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience.
 
 ## Quick Start
 
@@ -17,31 +17,71 @@ bun run start
 bun src/index.ts run src/workflows/examples/rag-memory-pipeline.json --input='{"query": "What is S2 chunking?"}'
 ```
 
-## Features
+## Architecture
+
+MemFlow's core innovation is **composable sub-workflows**: complex capabilities (HERA orchestration, hybrid retrieval, memory pipelines) are described as JSON DAGs of atomic modules, callable from parent workflows via the `SubWorkflow` engine module.
+
+```
+WorkflowEngine ← JSON config
+  ├── WorkflowContext (DI: MemgraphClient, StateStore, LLM, Embeddings, Logger)
+  ├── ModuleRegistry (38 modules: 12 monolithic + 25 atomic + 1 SubWorkflow)
+  ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
+  └── Stages → Module.process() → shared WorkflowData bus
+        └── SubWorkflow stages → nested WorkflowEngine (shared context)
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
+
+## Module Inventory
+
+### Atomic Modules (25)
+
+| Category | Modules | Paper |
+|---|---|---|
+| **Memory** | `SlidingWindow`, `DensityGate`, `FactExtractor`, `SemanticSynthesis` | SimpleMem |
+| **Memory** | `NoveltyGate`, `TopicSegmenter`, `SleepConsolidation` | LightMem |
+| **Memory** | `DualPerspective`, `CrossEventConsolidation`, `GraphPersist` | StructMem |
+| **Agents** | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator` | HERA |
+| **Retrieval** | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker` | LightRAG |
+| **Graph** | `ChunkIngestor`, `EntityExtractor`, `EntityDeduplicator`, `EntityProfiler`, `CommunityDetector` | LightRAG |
+| **Generation** | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector` | PriHA |
+
+### Composite Modules (backward-compatible wrappers)
 
 | Module | Paper | What it does |
 |---|---|---|
 | **S2Chunker** | [S2 Chunking](https://arxiv.org/abs/2501.05485) | Real spectral clustering on spatial+semantic affinity. Extends LangChain `TextSplitter`. |
-| **SimpleMem** | [SimpleMem](https://arxiv.org/abs/2601.02553) | LLM-driven atomic fact extraction + online semantic synthesis |
-| **LightMem** | [LightMem](https://arxiv.org/abs/2510.18866) | Novelty gating + sleep-time consolidation (dedup + LLM abstraction) |
+| **SimpleMem** | [SimpleMem](https://arxiv.org/abs/2601.02553) | LLM-driven fact extraction + online semantic synthesis |
+| **LightMem** | [LightMem](https://arxiv.org/abs/2510.18866) | Novelty gating + B1∩B2 topic segmentation + sleep-time consolidation |
 | **StructMem** | [StructMem](https://arxiv.org/abs/2604.21748) | Dual-perspective event binding + temporal relations + graph persistence |
-| **LightRAGRetriever** | [LightRAG](https://arxiv.org/abs/2410.05779) | Hybrid vector+graph+keyword retrieval with intent-aware planning + pyramid expansion |
-| **HERAOrchestrator** | [HERA](https://arxiv.org/abs/2604.00901) | Multi-agent orchestration with experience library + GRPO-style evolution |
+| **LightRAGRetriever** | [LightRAG](https://arxiv.org/abs/2410.05779) | Hybrid vector+graph+keyword retrieval with intent-aware planning |
+| **HERAOrchestrator** | [HERA](https://arxiv.org/abs/2604.00901) | Multi-agent orchestration with GRPO evolution + RoPE + topology mutation |
 | **PriHAFusion** | [PriHA](https://arxiv.org/abs/2604.14215) | Query triage + dual-source fusion + hallucination validation + citations |
-| **QueryTranslator** | [5 Techniques](https://towardsdatascience.com/) | HyDE, Multi-Query, Step-Back, Rewriting, Intent Clarification |
-| **MarkdownSpatialParser** | — | Markdown → spatial elements (heading hierarchy, code fences, reading order) |
-| **Learning Loop** | [AutoResearchClaw](https://github.com/aiming-lab/AutoResearchClaw) | Self-evolving config: composite scoring → config mutation across iterations |
+| **QueryTranslator** | — | HyDE, Multi-Query, Step-Back, Rewriting, Intent Clarification |
+| **MarkdownSpatialParser** | — | Markdown → spatial elements (heading hierarchy, code fences) |
 
-## Architecture
+### Infrastructure
 
-```
-WorkflowEngine ← JSON config
-  ├── WorkflowContext (DI: MemgraphClient, LLM, Embeddings, Logger)
-  ├── ModuleRegistry (lazy loading, instance caching, plugin registration)
-  └── Stages → Module.process() → shared WorkflowData bus
-```
+| Module | Purpose |
+|---|---|
+| **SubWorkflow** | Execute a child workflow as a single stage (workflows-within-workflows) |
+| **Embedder** | LangChain embedding provider (Ollama / OpenAI / OpenRouter) |
+| **LLMProvider** | LangChain chat model provider (Ollama / OpenAI / OpenRouter) |
+| **MemgraphGraph** | Graph indexing: chunk ingestion, entity extraction, deduplication, profiling, community detection |
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
+## Sub-Workflows
+
+Pre-built sub-workflow JSONs compose atomic modules into paper-aligned pipelines:
+
+| Sub-Workflow | Stages | Highlights |
+|---|---|---|
+| `simplemem-pipeline.json` | Window → Gate → Extract → Synthesize | Full SimpleMem §2 |
+| `lightmem-pipeline.json` | Novelty → Segment → Consolidate | Three-tier memory with B1∩B2 |
+| `structmem-pipeline.json` | DualPersp → Consolidate → Persist | Cbuf→seed→LLM synthesis |
+| `hera-orchestration.json` | Plan → Execute → Reward → Reflect → [RoPE] → [Mutate] | Conditional branches |
+| `hybrid-retrieval.json` | Intent → [Vector ∥ Graph ∥ Keyword] → Rank | 3-way parallel search |
+| `graph-indexing.json` | Ingest → Extract → Dedup → Profile → Community | LightRAG §3.1 |
+| `priha-fusion.json` | Clarify → Generate → Validate → Cite | Full PriHA pipeline |
 
 ## API
 

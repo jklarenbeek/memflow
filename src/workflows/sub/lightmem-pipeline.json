@@ -1,0 +1,25 @@
+{
+  "name": "lightmem-pipeline",
+  "version": "1.0",
+  "description": "LightMem sub-workflow: novelty gating → topic segmentation (B1∩B2) → sleep consolidation with soft-update LTM. Implements the three-tier memory architecture from the LightMem paper.",
+  "entry": "novelty",
+  "stages": [
+    {
+      "id": "novelty",
+      "module": "NoveltyGate",
+      "config": { "noveltyThreshold": 0.75 },
+      "next": "segment"
+    },
+    {
+      "id": "segment",
+      "module": "TopicSegmenter",
+      "config": { "topicSimilarityThreshold": 0.6, "minSegmentSize": 2 },
+      "next": "consolidate"
+    },
+    {
+      "id": "consolidate",
+      "module": "SleepConsolidation",
+      "config": { "ltmMaxSize": 1000, "softUpdateThreshold": 0.8 }
+    }
+  ]
+}

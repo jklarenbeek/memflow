@@ -1,0 +1,25 @@
+{
+  "name": "structmem-pipeline",
+  "version": "1.0",
+  "description": "StructMem sub-workflow: dual-perspective extraction → cross-event consolidation → graph persistence. Implements StructMem paper §3.1 and §3.2 as composable stages.",
+  "entry": "dual_perspective",
+  "stages": [
+    {
+      "id": "dual_perspective",
+      "module": "DualPerspective",
+      "config": { "useLLM": true },
+      "next": "consolidate"
+    },
+    {
+      "id": "consolidate",
+      "module": "CrossEventConsolidation",
+      "config": { "relationThreshold": 0.7, "seedCount": 5 },
+      "next": "persist"
+    },
+    {
+      "id": "persist",
+      "module": "GraphPersist",
+      "config": { "batchSize": 50, "enabled": true }
+    }
+  ]
+}

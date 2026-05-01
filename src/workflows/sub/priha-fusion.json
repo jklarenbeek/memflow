@@ -1,0 +1,31 @@
+{
+  "name": "priha-fusion",
+  "version": "1.0",
+  "description": "PriHA fusion sub-workflow: query clarification (PHC-O) → answer generation with dual-source fusion → hallucination validation → citation injection.",
+  "entry": "clarify",
+  "stages": [
+    {
+      "id": "clarify",
+      "module": "QueryClarifier",
+      "config": { "maxClarificationDepth": 2, "maxSubQueries": 3 },
+      "next": "generate"
+    },
+    {
+      "id": "generate",
+      "module": "AnswerGenerator",
+      "config": { "enableDualSource": true, "maxContextTokens": 7000 },
+      "next": "validate"
+    },
+    {
+      "id": "validate",
+      "module": "HallucinationValidator",
+      "config": {},
+      "next": "cite"
+    },
+    {
+      "id": "cite",
+      "module": "CitationInjector",
+      "config": { "style": "inline", "maxCitations": 6 }
+    }
+  ]
+}

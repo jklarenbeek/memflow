@@ -1,0 +1,37 @@
+{
+  "name": "graph-indexing",
+  "version": "1.0",
+  "description": "Graph indexing sub-workflow: chunk ingestion → entity extraction → deduplication → entity profiling → community detection. Implements the LightRAG paper §3.1 graph indexing pipeline.",
+  "entry": "ingest",
+  "stages": [
+    {
+      "id": "ingest",
+      "module": "ChunkIngestor",
+      "config": { "vectorDim": 768 },
+      "next": "extract_entities"
+    },
+    {
+      "id": "extract_entities",
+      "module": "EntityExtractor",
+      "config": { "maxChunks": 50 },
+      "next": "deduplicate"
+    },
+    {
+      "id": "deduplicate",
+      "module": "EntityDeduplicator",
+      "config": { "useLLM": true },
+      "next": "profile"
+    },
+    {
+      "id": "profile",
+      "module": "EntityProfiler",
+      "config": { "maxEntities": 20 },
+      "next": "communities"
+    },
+    {
+      "id": "communities",
+      "module": "CommunityDetector",
+      "config": { "maxIterations": 10 }
+    }
+  ]
+}

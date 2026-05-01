@@ -140,6 +140,39 @@ export class WorkflowEngine {
     });
   }
 
+  /**
+   * Initialise with an existing WorkflowContext (for sub-workflows).
+   *
+   * Reuses the parent's shared resources (LLM, Memgraph, StateStore, Logger)
+   * instead of creating new connections. This avoids spinning up duplicate
+   * clients and ensures state is shared across parent/child workflows.
+   */
+  async initializeWithContext(parentContext: WorkflowContext): Promise<void> {
+    this.context = parentContext;
+
+    // Resolve and init all modules using the shared context
+    for (const stage of this.config.stages) {
+      const mod = await this.registry.getModule(
+        stage.module,
+        stage.config as Record<string, unknown>,
+        stage.id,
+      );
+      if (mod.init) {
+        await mod.init(this.context);
+      }
+      this.modules.set(stage.id, mod);
+    }
+
+    this.initialized = true;
+    this.context.logger.info(
+      `Sub-workflow "${this.config.name}" initialized with shared context`,
+      {
+        stages: this.config.stages.map((s) => s.id),
+        modules: this.config.stages.map((s) => s.module),
+      },
+    );
+  }
+
   /** Execute the workflow with optional initial input data. */
   async run(initialInput: Partial<WorkflowData> = {}): Promise<WorkflowState> {
     if (!this.initialized || !this.context) {

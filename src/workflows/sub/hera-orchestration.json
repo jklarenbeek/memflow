@@ -1,0 +1,59 @@
+{
+  "name": "hera-orchestration",
+  "version": "1.0",
+  "description": "HERA sub-workflow: plan generation → trajectory execution → reward computation → experience reflection → conditional RoPE evolution → conditional topology mutation. Implements the full HERA paper pipeline with GRPO-style learning.",
+  "entry": "plan",
+  "stages": [
+    {
+      "id": "plan",
+      "module": "PlanGenerator",
+      "config": {
+        "maxAgents": 4,
+        "availableRoles": ["retriever", "reasoner", "critic", "synthesizer", "verifier", "decomposer"]
+      },
+      "next": "execute"
+    },
+    {
+      "id": "execute",
+      "module": "TrajectoryExecutor",
+      "config": {},
+      "next": "reward"
+    },
+    {
+      "id": "reward",
+      "module": "RewardComputer",
+      "config": {},
+      "next": "reflect"
+    },
+    {
+      "id": "reflect",
+      "module": "ExperienceReflector",
+      "config": { "experienceLibrarySize": 50 },
+      "next": {
+        "trajectory.reward<0.4": "rope_evolve",
+        "default": "done"
+      }
+    },
+    {
+      "id": "rope_evolve",
+      "module": "RoPEEvolver",
+      "config": { "failureThreshold": 0.4 },
+      "next": {
+        "consecutiveFailures>=3": "topology_mutate",
+        "default": "done"
+      }
+    },
+    {
+      "id": "topology_mutate",
+      "module": "TopologyMutator",
+      "config": { "mutationTriggerCount": 3 },
+      "next": "done"
+    },
+    {
+      "id": "done",
+      "module": "LLMProvider",
+      "config": {},
+      "next": null
+    }
+  ]
+}

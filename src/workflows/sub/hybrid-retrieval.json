@@ -1,0 +1,41 @@
+{
+  "name": "hybrid-retrieval",
+  "version": "1.0",
+  "description": "LightRAG hybrid retrieval sub-workflow: intent classification → parallel (vector + graph + keyword) search → result ranking with pyramid expansion. Implements the LightRAG paper's dual-level retrieval as composable parallel stages.",
+  "entry": "intent",
+  "stages": [
+    {
+      "id": "intent",
+      "module": "IntentClassifier",
+      "config": { "defaultScope": "full" },
+      "next": ["vector", "graph", "keyword"]
+    },
+    {
+      "id": "vector",
+      "module": "VectorSearch",
+      "config": { "topK": 10, "minScore": 0.6, "weight": 0.5 },
+      "dependsOn": ["intent"],
+      "next": "rank"
+    },
+    {
+      "id": "graph",
+      "module": "GraphSearch",
+      "config": { "topK": 8, "weight": 0.3 },
+      "dependsOn": ["intent"],
+      "next": "rank"
+    },
+    {
+      "id": "keyword",
+      "module": "KeywordSearch",
+      "config": { "topK": 5, "weight": 0.2 },
+      "dependsOn": ["intent"],
+      "next": "rank"
+    },
+    {
+      "id": "rank",
+      "module": "ResultRanker",
+      "config": { "topK": 8, "tokenBudget": 4000, "usePyramid": true },
+      "dependsOn": ["vector", "graph", "keyword"]
+    }
+  ]
+}
