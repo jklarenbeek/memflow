@@ -2,7 +2,9 @@
 
 **Self-Improving RAG & Lifelong Memory Workflow Engine**
 
-MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It registers **61 modules** — 42 atomic pipeline modules, 7 composite wrappers, and 12 standalone/infrastructure modules — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience. The engine exposes MCP, ACP, and REST interfaces for integration with LLM-powered tools and agents.
+MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It registers **66 modules** — 42 atomic pipeline modules, 7 composite wrappers, 5 GMPL pattern modules, and 12 standalone/infrastructure modules — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience. The engine exposes MCP, ACP, and REST interfaces for integration with LLM-powered tools and agents.
+
+The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with composable workflow patterns (Structured Debate, Clarification Pipeline, Parallel Analysis) that can be orchestrated, composed, and specialized per domain.
 
 ## Prerequisites
 
@@ -46,10 +48,11 @@ MemFlow's core innovation is **composable sub-workflows**: complex capabilities 
 ```
 WorkflowEngine ← JSON config
   ├── WorkflowContext (DI: MemgraphClient, StateStore, LLM, Embeddings, Logger)
-  ├── ModuleRegistry (61 modules: lazy-loaded, instance-cached)
+  ├── ModuleRegistry (66 modules: lazy-loaded, instance-cached)
   ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
   ├── WorkflowEventEmitter (typed event system for streaming + metrics)
   ├── Config Validation (Zod schemas validated at initialize(), not mid-pipeline)
+  ├── GMPL (PatternRegistry, RoleRegistry, DomainRegistry)
   └── Stages → Module.process() → shared WorkflowData bus (with telemetry counters)
         ├── SubWorkflow stages → nested WorkflowEngine (shared context)
         ├── _stageConfigs override mechanism for per-stage config tuning
@@ -60,7 +63,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Module Inventory
 
-MemFlow registers **61 modules** across 10 categories:
+MemFlow registers **66 modules** across 11 categories:
 
 | Category | Count | Key Modules |
 |---|---|---|
@@ -70,7 +73,8 @@ MemFlow registers **61 modules** across 10 categories:
 | Retrieval | 9 | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker`, `SymbolicSearch`, `SetUnionMerger`, `DualLevelRouter` + wrapper |
 | Agents | 8 | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator`, `FinalSynthesizer` + wrapper |
 | Graph | 6 | `ChunkIngestor`, `EntityExtractor`, `EntityDeduplicator`, `EntityProfiler`, `CommunityDetector` + wrapper |
-| Generation | 7 | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector`, `WebSearchAgent`, `PriHAReconciler` + wrapper |
+| Generation | 7 | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector`, `WebSearchAgent`, `DualSourceFusion` + wrapper |
+| GMPL Patterns | 5 | `DebateModule`, `ConsensusJudge`, `MultiTurnClarifier`, `ParallelDispatcher`, `OutcomeMemory` |
 | Query | 1 | `QueryTranslator` |
 | Providers | 2 | `Embedder`, `LLMProvider` |
 | Advanced | 4 | `AgentContext`, `OutcomeLearner`, `Crystallizer`, `Contradiction` |
@@ -203,7 +207,7 @@ GitHub Actions CI runs on every push and pull request:
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The test suite covers unit tests (14 files), integration tests (3 files), and workflow JSON validation.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The test suite covers unit tests (22 files, including 8 GMPL tests), integration tests (3 files), and workflow JSON validation.
 
 ## License
 

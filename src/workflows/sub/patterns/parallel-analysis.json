@@ -1,0 +1,26 @@
+{
+  "name": "parallel-analysis",
+  "version": "1.0",
+  "description": "Parallel analysis pattern: dispatch query to N analyst agents, collect reports, and merge via synthesis.",
+  "entry": "dispatch",
+  "stages": [
+    {
+      "id": "dispatch",
+      "module": "ParallelDispatcher",
+      "config": {
+        "analysts": [
+          { "id": "analyst_1", "role": "domain_analyst" },
+          { "id": "analyst_2", "role": "domain_analyst" }
+        ],
+        "mergeStrategy": "ranked_synthesis",
+        "timeout": "30s"
+      },
+      "next": "synthesize"
+    },
+    {
+      "id": "synthesize",
+      "module": "FinalSynthesizer",
+      "config": {}
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "structured-debate",
+  "version": "1.0",
+  "description": "Structured debate pattern: multi-round opposing-view debate with evidence, history injection, and consensus judgment.",
+  "entry": "debate",
+  "stages": [
+    {
+      "id": "debate",
+      "module": "DebateModule",
+      "config": {
+        "roles": [
+          { "id": "proponent", "persona": "opposing_researcher" },
+          { "id": "opponent", "persona": "opposing_researcher" }
+        ],
+        "maxRounds": 3,
+        "termination": { "type": "judge_decision" },
+        "historyInjection": true
+      },
+      "next": "judge"
+    },
+    {
+      "id": "judge",
+      "module": "ConsensusJudge",
+      "config": { "convergenceThreshold": 0.7 },
+      "next": "synthesize"
+    },
+    {
+      "id": "synthesize",
+      "module": "FinalSynthesizer",
+      "config": {}
+    }
+  ]
+}

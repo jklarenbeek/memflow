@@ -152,8 +152,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/generation/CitationInjectorModule.js").then((m) => m.CitationInjectorModule as unknown as ModuleFactory),
   WebSearchAgent: () =>
     import("../modules/generation/WebSearchAgentModule.js").then((m) => m.WebSearchAgentModule as unknown as ModuleFactory),
-  PriHAReconciler: () =>
-    import("../modules/generation/PriHAReconcilerModule.js").then((m) => m.PriHAReconcilerModule as unknown as ModuleFactory),
+  DualSourceFusion: () =>
+    import("../modules/generation/DualSourceFusionModule.js").then((m) => m.DualSourceFusionModule as unknown as ModuleFactory),
 
   // Providers
   Embedder: () =>
@@ -172,6 +172,18 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/memory/CrystallizerModule.js").then((m) => m.CrystallizerModule as unknown as ModuleFactory),
   Contradiction: () =>
     import("../modules/memory/ContradictionModule.js").then((m) => m.ContradictionModule as unknown as ModuleFactory),
+
+  // GMPL — Generic Multi-Agent Pattern Library
+  DebateModule: () =>
+    import("../gmpl/modules/DebateModule.js").then((m) => m.DebateModule as unknown as ModuleFactory),
+  ConsensusJudge: () =>
+    import("../gmpl/modules/ConsensusJudgeModule.js").then((m) => m.ConsensusJudgeModule as unknown as ModuleFactory),
+  MultiTurnClarifier: () =>
+    import("../gmpl/modules/MultiTurnClarifierModule.js").then((m) => m.MultiTurnClarifierModule as unknown as ModuleFactory),
+  ParallelDispatcher: () =>
+    import("../gmpl/modules/ParallelDispatcherModule.js").then((m) => m.ParallelDispatcherModule as unknown as ModuleFactory),
+  OutcomeMemory: () =>
+    import("../gmpl/modules/OutcomeMemoryModule.js").then((m) => m.OutcomeMemoryModule as unknown as ModuleFactory),
 };
 
 export class ModuleRegistry {

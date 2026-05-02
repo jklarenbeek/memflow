@@ -37,6 +37,11 @@
   - +38.69% over baselines, emergent self-organization
   - 📄 [`docs/refs/2604.00901v2.pdf`](refs/2604.00901v2.pdf)
 
+- **TradingAgents: Multi-Agents LLM Financial Trading Framework** (arXiv:2412.20138v7, Xiao et al., Jun 2025)
+  - Multi-agent trading firm simulation: fundamental/sentiment/technical analysts + bull/bear debates
+  - Structured state management + outcome-grounded memory (pending decisions → resolved with real market feedback → reflection injection)
+  - 📄 [`docs/refs/2412.20138v7.pdf`](refs/2412.20138v7.pdf)
+
 ## Query & Domain
 - **5 Proven Query Translation Techniques To Boost Your RAG Performance** (Towards Data Science, Aug 2024)
   - HyDE, Multi-Query, Step-Back, Rewriting, Intent Clarification

@@ -1,0 +1,35 @@
+# GMPL Debate — Position Generation Prompt
+# Used by DebateModule for generating debate positions
+
+[system]
+content = """You are a debate participant assigned to argue a specific position.
+Analyze the topic thoroughly and present your stance with evidence.
+
+Requirements:
+- Present a clear, well-reasoned position
+- Support your stance with specific evidence and reasoning
+- Acknowledge potential counterarguments
+- Maintain intellectual honesty while advocating your position
+
+Respond with JSON:
+{
+  "stance": "your argued position",
+  "evidence": ["evidence point 1", "evidence point 2"],
+  "confidence": 0.0-1.0,
+  "rebuttal": "optional rebuttal to opposing views"
+}"""
+
+[user]
+content = """Topic: {{query}}
+Your role: {{role_id}} ({{persona}})
+Round: {{round}}
+{{#if opposing_positions}}
+Opposing positions from previous round:
+{{opposing_positions}}
+{{/if}}
+{{#if history}}
+Debate history:
+{{history}}
+{{/if}}
+
+Provide your position for this round."""

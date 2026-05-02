@@ -32,7 +32,7 @@ graph TD
     CTX --> EMB["Embedding Provider"]
     CTX --> LOG["Winston Logger"]
     
-    WE --> MR["ModuleRegistry (61 modules)"]
+    WE --> MR["ModuleRegistry (66 modules)"]
     WE --> EE["WorkflowEventEmitter"]
     EE --> METRICS["Prometheus Metrics"]
     EE --> SSE["SSE Endpoint"]
@@ -55,6 +55,20 @@ graph TD
         MR --> HERA["HERAOrchestrator"]
         MR --> PH["PriHAFusion"]
         MR --> MGMOD["MemgraphGraph"]
+    end
+    
+    subgraph "GMPL Pattern Layer"
+        MR --> DEBATE["DebateModule"]
+        MR --> JUDGE["ConsensusJudge"]
+        MR --> CLARIFY["MultiTurnClarifier"]
+        MR --> PARALLEL["ParallelDispatcher"]
+        MR --> OUTCOME["OutcomeMemory"]
+        GMPL_PR["PatternRegistry"] --> DEBATE
+        GMPL_PR --> CLARIFY
+        GMPL_PR --> PARALLEL
+        GMPL_RR["RoleRegistry"] --> DEBATE
+        GMPL_RR --> PARALLEL
+        GMPL_DR["DomainRegistry"] -.-> GMPL_PR
     end
     
     WE -->|"learning loop"| WE
@@ -122,7 +136,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **61 built-in modules**: 7 composite wrappers (thin delegation layers), 42 atomic pipeline modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 1 query module.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **66 built-in modules**: 7 composite wrappers (thin delegation layers), 42 atomic pipeline modules, 5 GMPL pattern modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 1 query module.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -151,6 +165,9 @@ Meta-module that wraps any sub-workflow in an iterative diagnosis → mutation �
 | **Hybrid Retrieval** | IntentClassifier → [VectorSearch ∥ GraphSearch ∥ KeywordSearch] → ResultRanker | `hybrid-retrieval.json` | LightRAG |
 | **Graph Indexing** | ChunkIngestor → EntityExtractor → EntityDeduplicator → EntityProfiler → CommunityDetector | `graph-indexing.json` | LightRAG §3.1 |
 | **PriHA Generation** | QueryClarifier → AnswerGenerator → HallucinationValidator → CitationInjector | `priha-fusion.json` | PriHA |
+| **GMPL: Structured Debate** | DebateModule → ConsensusJudge → FinalSynthesizer | `patterns/structured-debate.json` | TradingAgents |
+| **GMPL: Clarification Pipeline** | MultiTurnClarifier → QueryClarifier → WebSearch → DualSourceFusion → Generate → Validate → Cite | `patterns/clarification-pipeline.json` | PriHA + GMPL |
+| **GMPL: Parallel Analysis** | ParallelDispatcher → FinalSynthesizer | `patterns/parallel-analysis.json` | TradingAgents |
 
 ### Key Algorithmic Behaviors
 
@@ -163,7 +180,7 @@ Meta-module that wraps any sub-workflow in an iterative diagnosis → mutation �
 - **CitationInjector**: Persists `:Citation` nodes with `:CITES` edges for traceable source attribution. Uses `batchQuery()` UNWIND for N+1→2 round-trip reduction.
 - **TopicSegmenter**: Hybrid B1∩B2 boundary detection with configurable similarity function (`cosine`, `euclidean`, `dotProduct`). Derives `topicLabel` for each segment.
 - **GraphSearch**: Entity-centric graph traversal. Community-aware mode: when `communityScope: true` and `searchScope` is high-level, queries `:Community` summaries for theme-based retrieval.
-- **PriHAReconciler**: Dual-source context fusion (CLocal + CWeb) with source authority scoring, temporal freshness weighting, and budget-gated segment ranking.
+- **DualSourceFusion**: Dual-source context fusion (CLocal + CWeb) with source authority scoring, temporal freshness weighting, and budget-gated segment ranking.
 
 ### Standalone Modules
 
@@ -222,8 +239,12 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 - **:Answer** — Generated answers for citation tracking
 - **:Citation** — Traceable source URLs with title, accessedAt, verified status
 - **:ModuleState** — persistent module state (workflowId, moduleKey, value JSON, updatedAt)
-- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords), `BELONGS_TO` (child→parent chunks), `CITES` (answer→citation)
-- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`
+- **:DebateSession** — GMPL debate sessions (id, query, rounds, verdict, convergenceScore, timestamp)
+- **:PendingDecision** — GMPL two-phase outcome memory: unresolved decision proposals
+- **:Decision** — GMPL resolved decisions with outcome data
+- **:Reflection** — GMPL LLM-generated reflections on resolved outcomes
+- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords), `BELONGS_TO` (child→parent chunks), `CITES` (answer→citation), `IMPROVED_BY` (decision→reflection), `REFERENCES` (decision→entity)
+- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`; scalar on `PendingDecision.id`, `Decision.pendingId`, `Reflection.decisionId`
 
 ## HTTP API (Hono)
 
@@ -254,6 +275,10 @@ The `WorkflowData` interface provides typed fields for all inter-module data:
 | Retrieval | `retrievalResult`, `candidates`, `searchScope` |
 | Agents | `agentResult`, `agentPlan`, `trajectory`, `insights` |
 | Generation | `finalAnswer`, `sources`, `confidence`, `fusedContext` |
+| GMPL: Debate | `debateState`, `consensusReport` |
+| GMPL: Clarification | `clarificationState`, `userClarificationResponse` |
+| GMPL: Analysis | `analystReports`, `mergedAnalysis` |
+| GMPL: Outcome | `pendingDecision`, `outcomeResolution`, `outcomeContext` |
 | Telemetry | `metrics.tokenUsage`, `metrics.memgraphQueries`, `metrics.embeddingCalls` |
 | Meta | `metrics`, `[key: string]: unknown` (escape hatch) |
 
@@ -300,6 +325,50 @@ Each TOML file contains `[meta]` (name, version), `[config]` (temperature, max_t
 ### Hot-Reload
 
 `startPromptWatcher()` monitors `src/prompts/` via `fs.watch` with a 300ms debounce. When a TOML file changes on disk, the cached version is automatically invalidated. The `POST /prompts/reload` endpoint provides manual cache invalidation for CI/CD scenarios.
+
+## GMPL — Generic Multi-Agent Pattern Library
+
+GMPL is an extension layer that provides composable, reusable multi-agent workflow patterns. It adds three registries and five modules without modifying existing MemFlow core code.
+
+### Registries
+
+| Registry | Purpose | Pre-registered |
+|---|---|---|
+| `PatternRegistry` | Composable workflow pattern definitions with Zod-validated input/output contracts | 3 patterns (Structured Debate, Clarification Pipeline, Parallel Analysis) |
+| `RoleRegistry` | Domain-agnostic agent role library with extension support | 8 roles (domain_analyst, opposing_researcher, synthesizer, risk_assessor, decision_maker, critic, clarifier, outcome_evaluator) |
+| `DomainRegistry` | Domain adapter plugins (data providers, evaluators, prompt packs, entity schemas) | None (populated at runtime) |
+
+### Pattern Modules
+
+| Module | Pattern | Description |
+|---|---|---|
+| `DebateModule` | Structured Debate | Multi-round opposing-view debate with evidence, history injection, and 3 termination strategies (max rounds, consensus threshold, judge decision) |
+| `ConsensusJudge` | Structured Debate | Atomic debate judge that evaluates convergence and produces a ConsensusReport |
+| `MultiTurnClarifier` | Clarification Pipeline | User-facing clarification with stateful conversation history and complexity gate |
+| `ParallelDispatcher` | Parallel Analysis | Dispatches to N analyst agents in parallel with timeout and configurable merge strategies |
+| `OutcomeMemory` | Cross-pattern | Two-phase (pending → resolution) outcome memory with LLM reflections and KG persistence |
+
+### Pattern Sub-Workflows
+
+Three GMPL pattern sub-workflows in `src/workflows/sub/patterns/`:
+
+| File | Pipeline | Inspired By |
+|---|---|---|
+| `structured-debate.json` | DebateModule → ConsensusJudge → FinalSynthesizer | TradingAgents (arXiv:2412.20138v7) |
+| `clarification-pipeline.json` | MultiTurnClarifier → QueryClarifier → WebSearch → DualSourceFusion → Generate → Validate → Cite | PriHA + GMPL |
+| `parallel-analysis.json` | ParallelDispatcher → FinalSynthesizer | TradingAgents |
+
+### Prompt Packs
+
+GMPL prompt templates in `src/prompts/gmpl/`:
+
+```
+src/prompts/gmpl/
+  debate/        position.toml, rebuttal.toml, judge.toml
+  analysis/      analyst.toml, merge.toml
+  clarification/ question.toml, resolve.toml
+  outcome/       reflection.toml
+```
 
 ## Workflow Versioning
 
@@ -354,10 +423,22 @@ src/
     WorkflowEngine.ts         — DAG executor with parallel, retry, learning loops, sub-workflow support
     WorkflowContext.ts         — DI container (Memgraph, LLM, Embeddings, StateStore, Logger)
     WorkflowEventEmitter.ts    — Typed event system for streaming and Prometheus metrics
-    ModuleRegistry.ts          — Lazy-loading singleton with 61 registered modules
+    ModuleRegistry.ts          — Lazy-loading singleton with 66 registered modules
     StateStore.ts              — Memgraph-backed persistent state with LRU cache
     types.ts                   — All interfaces (WorkflowData, BaseModule, StreamEvent, etc.)
     errors.ts                  — 7 typed error classes
+  gmpl/
+    types.ts                   — GMPL Zod schemas and TypeScript interfaces
+    PatternRegistry.ts         — Composable workflow pattern registry (3 built-in patterns)
+    RoleRegistry.ts            — Agent role library (8 core roles) with extension support
+    DomainRegistry.ts          — Domain adapter plugin registry
+    index.ts                   — Public API barrel export
+    modules/
+      DebateModule.ts          — Structured multi-round debate (Pattern A)
+      ConsensusJudgeModule.ts  — Debate convergence evaluation (Pattern A helper)
+      MultiTurnClarifierModule.ts — User-facing clarification (Pattern B)
+      ParallelDispatcherModule.ts — Parallel analyst dispatch (Pattern C)
+      OutcomeMemoryModule.ts   — Two-phase outcome memory
   modules/
     core/                      SubWorkflowModule, AutonomousLoopModule, AgentContextModule
     chunking/                  S2ChunkerModule, MarkdownSpatialParserModule, ParentChildChunkerModule
@@ -377,7 +458,7 @@ src/
                                SymbolicSearchModule, SetUnionMergerModule, DualLevelRouterModule
     graph/                     MemgraphGraphModule, ChunkIngestorModule, EntityExtractorModule,
                                EntityDeduplicatorModule, EntityProfilerModule, CommunityDetectorModule
-    generation/                PriHAFusionModule, PriHAReconcilerModule, QueryClarifierModule,
+    generation/                PriHAFusionModule, DualSourceFusionModule, QueryClarifierModule,
                                AnswerGeneratorModule, HallucinationValidatorModule,
                                CitationInjectorModule, WebSearchAgentModule
     query/                     QueryTranslatorModule
@@ -390,13 +471,16 @@ src/
                                lightmem-pipeline.json, structmem-pipeline.json,
                                hera-orchestration.json, hybrid-retrieval.json, graph-indexing.json,
                                priha-fusion.json
+    sub/patterns/              structured-debate.json, clarification-pipeline.json,
+                               parallel-analysis.json
     service/                   ingest.json, recall.json, search.json (REST API backing workflows)
   prompts/                     TOML prompt templates (see Prompt System section)
+    gmpl/                      debate/, analysis/, clarification/, outcome/ (GMPL prompts)
   providers/                   LLMProvider.ts, EmbeddingProvider.ts, MemgraphClient.ts
   server/                      Hono HTTP server, metrics.ts, mcp.ts, acp.ts, api.ts
   utils/                       promptLoader.ts, similarity.ts, tokens.ts
   tests/
-    unit/                      14 unit test files
+    unit/                      22 unit test files (including 8 GMPL pattern tests)
     integration/               3 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e)
     helpers/                   Shared mock factory (mocks.ts)
 ```

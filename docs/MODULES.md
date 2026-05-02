@@ -1,6 +1,6 @@
-# MemFlow Module System (v0.5.0)
+# MemFlow Module System (v0.5.1)
 
-> How the WorkflowEngine, ModuleRegistry, and Sub-Workflow system combine 61 modules into composable research-aligned pipelines.
+> How the WorkflowEngine, ModuleRegistry, GMPL, and Sub-Workflow system combine 66 modules into composable research-aligned pipelines.
 
 ---
 
@@ -40,7 +40,7 @@ Key capabilities:
 
 ## ModuleRegistry
 
-The `ModuleRegistry` is a singleton factory that manages all 61 registered modules:
+The `ModuleRegistry` is a singleton factory that manages all 66 registered modules:
 
 - **Lazy loading**: Modules are loaded via dynamic `import()` on first use — no upfront loading penalty
 - **Instance caching**: Instances are keyed by `moduleName::stageId` to ensure stateful modules maintain their state across stages
@@ -64,7 +64,7 @@ Sub-workflows are the primary composition mechanism. Any workflow stage can dele
 
 The `SubWorkflowModule` reads `_stageConfigs` from the parent input data and applies them to the child engine via `setStageConfigOverrides()` before initialization. This enables composite wrappers to fine-tune individual stage configs without modifying sub-workflow JSON files.
 
-Eight pre-built sub-workflows are provided in `src/workflows/sub/`:
+Eleven pre-built sub-workflows are provided in `src/workflows/sub/`:
 
 | Sub-Workflow | Pipeline | Paper |
 |---|---|---|
@@ -76,6 +76,9 @@ Eight pre-built sub-workflows are provided in `src/workflows/sub/`:
 | [`hybrid-retrieval.json`](modules/retrieval.md) | Intent → [Vector ∥ Graph ∥ Keyword] → Rank | LightRAG |
 | [`graph-indexing.json`](modules/graph.md) | Ingest → Extract → Dedup → Profile → Community | LightRAG §3.1 |
 | [`priha-fusion.json`](modules/priha.md) | Clarify → Generate → Validate → Cite | PriHA |
+| [`patterns/structured-debate.json`](modules/gmpl.md) | DebateModule → ConsensusJudge → FinalSynthesizer | TradingAgents |
+| [`patterns/clarification-pipeline.json`](modules/gmpl.md) | MultiTurnClarifier → QueryClarifier → WebSearch → DualSourceFusion → Generate → Validate → Cite | PriHA + GMPL |
+| [`patterns/parallel-analysis.json`](modules/gmpl.md) | ParallelDispatcher → FinalSynthesizer | TradingAgents |
 
 ## Pipeline Reference
 
@@ -89,7 +92,8 @@ Detailed per-module documentation (input/output fingerprints, config schemas, pa
 | **Retrieval** | [retrieval.md](modules/retrieval.md) | IntentClassifier, DualLevelRouter, VectorSearch, GraphSearch, KeywordSearch, SymbolicSearch, ResultRanker, SetUnionMerger | `LightRAGRetriever` |
 | **HERA Agents** | [hera.md](modules/hera.md) | PlanGenerator, TrajectoryExecutor, RewardComputer, ExperienceReflector, RoPEEvolver, TopologyMutator, FinalSynthesizer | `HERAOrchestrator` |
 | **Graph Indexing** | [graph.md](modules/graph.md) | ChunkIngestor, EntityExtractor, EntityDeduplicator, EntityProfiler, CommunityDetector | `MemgraphGraph` |
-| **PriHA Generation** | [priha.md](modules/priha.md) | QueryClarifier, AnswerGenerator, HallucinationValidator, CitationInjector, WebSearchAgent, PriHAReconciler | `PriHAFusion` |
+| **PriHA Generation** | [priha.md](modules/priha.md) | QueryClarifier, AnswerGenerator, HallucinationValidator, CitationInjector, WebSearchAgent, DualSourceFusion | `PriHAFusion` |
+| **GMPL Patterns** | [gmpl.md](modules/gmpl.md) | DebateModule, ConsensusJudge, MultiTurnClarifier, ParallelDispatcher, OutcomeMemory | — |
 
 ## Standalone Modules
 

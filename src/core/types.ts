@@ -182,6 +182,23 @@ export interface WorkflowData {
   agentIdentity?: AgentIdentity;
   outcomeReport?: OutcomeReport;
 
+  // GMPL: Debate pattern state
+  debateState?: unknown;
+  consensusReport?: unknown;
+
+  // GMPL: Clarification pattern state
+  clarificationState?: unknown;
+  userClarificationResponse?: string;
+
+  // GMPL: Parallel Analysis state
+  analystReports?: unknown[];
+  mergedAnalysis?: unknown;
+
+  // GMPL: Outcome memory state
+  pendingDecision?: unknown;
+  outcomeResolution?: unknown;
+  outcomeContext?: string;
+
   // Escape hatch for custom data
   [key: string]: unknown;
 }

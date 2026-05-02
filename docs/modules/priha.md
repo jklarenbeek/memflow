@@ -2,7 +2,8 @@
 
 > **Paper**: PriHA  
 > **Composite Wrapper**: `PriHAFusionModule` (`modules/generation/PriHAFusionModule.ts`)  
-> **Sub-Workflow**: `priha-fusion.json` — QueryClarifier → AnswerGenerator → HallucinationValidator → CitationInjector
+> **Sub-Workflow**: `priha-fusion.json` — QueryClarifier → AnswerGenerator → HallucinationValidator → CitationInjector  
+> **Related**: `DualSourceFusionModule` for dual-source reconciliation
 
 The PriHA pipeline implements the full generation path: iterative query clarification (PHC-O), dual-source answer generation, hallucination validation, and traceable citation injection. It is the standard answer generation pipeline used downstream of hybrid retrieval.
 
@@ -75,16 +76,16 @@ Inline/footnote citation injection with Memgraph persistence. Uses `batchQuery()
 | **Output** | `webContext`, `webSources`, `webSearchCompleted` (always `false`) |
 | **Config** | `maxResults`, `searchProvider`, `urlSafelist` |
 
-Stub awaiting search API provider integration. The PriHAReconciler depends on this module.
+Stub awaiting search API provider integration. The DualSourceFusion module depends on this module.
 
-### PriHAReconciler
+### DualSourceFusion
 
 | | |
 |---|---|
-| **File** | `modules/generation/PriHAReconcilerModule.ts` |
+| **File** | `modules/generation/DualSourceFusionModule.ts` |
 | **Paper** | PriHA §3.4 |
 | **Input** | `retrievalResult`, `webContext`, `webSources` |
 | **Output** | `fusedContext`, `sources` |
 | **Config** | `localWeight` (0.6), `authorityBoost` (1.3), `stalenessPenalty` (0.05), `maxContextChars` (6000) |
 
-Dual-source reconciliation: fuses local KB context (CLocal) with web context (CWeb). Applies source priority scoring (official > academic > general web), temporal freshness weighting, and budget-gated segment ranking.
+Dual-source reconciliation: fuses local KB context (CLocal) with web context (CWeb). Applies source priority scoring (official > academic > general web), temporal freshness weighting, and budget-gated segment ranking. Domain-agnostic — usable in any domain, not just healthcare or finance.

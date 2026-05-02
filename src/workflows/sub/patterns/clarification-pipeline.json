@@ -1,11 +1,17 @@
 {
-  "name": "priha-fusion",
+  "name": "clarification-pipeline",
   "version": "1.0",
-  "description": "PriHA fusion sub-workflow: query clarification (PHC-O) → web search → local+web reconciliation → answer generation → hallucination validation → citation injection.",
-  "entry": "clarify",
+  "description": "Clarification pipeline pattern: multi-turn user clarification → dual-source retrieval → reconciled generation. Extracted from priha-fusion.json.",
+  "entry": "clarify_user",
   "stages": [
     {
-      "id": "clarify",
+      "id": "clarify_user",
+      "module": "MultiTurnClarifier",
+      "config": { "maxTurns": 5, "complexityGate": true },
+      "next": "clarify_llm"
+    },
+    {
+      "id": "clarify_llm",
       "module": "QueryClarifier",
       "config": { "maxClarificationDepth": 2, "maxSubQueries": 3 },
       "next": "websearch"

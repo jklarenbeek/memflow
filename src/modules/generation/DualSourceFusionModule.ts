@@ -1,10 +1,13 @@
 /**
- * PriHAReconcilerModule — fuse local KB context with web context
+ * DualSourceFusionModule — fuse local KB context with web context
  *
- * Implements PriHA §3.4: Dual-source reconciliation with:
+ * Domain-agnostic dual-source reconciliation with:
  *  - Source priority: official > academic > general web
  *  - Temporal freshness scoring
  *  - Conflict resolution between CLocal and CWeb
+ *
+ * Reflecting its domain-agnostic nature — usable in
+ * any domain, not just healthcare or finance.
  *
  * Reads:  retrievalResult, webContext, webSources
  * Writes: fusedContext (string), sources (string[])
@@ -35,9 +38,9 @@ interface SourceSegment {
   freshnessScore: number;
 }
 
-export class PriHAReconcilerModule implements BaseModule<ReconcilerConfig> {
-  readonly name = "PriHAReconciler";
-  readonly version = "0.5.0";
+export class DualSourceFusionModule implements BaseModule<ReconcilerConfig> {
+  readonly name = "DualSourceFusion";
+  readonly version = "0.5.1";
   private config: ReconcilerConfig;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -50,7 +53,7 @@ export class PriHAReconcilerModule implements BaseModule<ReconcilerConfig> {
     const webContext = (input.data.webContext as string) ?? "";
     const webSources = (input.data.webSources as string[]) ?? [];
 
-    ctx.logger.info("PriHAReconciler: fusing local + web context", {
+    ctx.logger.info("DualSourceFusion: fusing local + web context", {
       localChars: localContext.length,
       webChars: webContext.length,
       webSourceCount: webSources.length,
@@ -128,7 +131,7 @@ export class PriHAReconcilerModule implements BaseModule<ReconcilerConfig> {
 
     const fusedContext = parts.join("\n\n---\n\n");
 
-    ctx.logger.info("PriHAReconciler: fusion complete", {
+    ctx.logger.info("DualSourceFusion: fusion complete", {
       segments: scored.length,
       fusedChars: fusedContext.length,
       sources: sources.length,

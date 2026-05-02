@@ -1,0 +1,19 @@
+# GMPL Outcome — Reflection Generation Prompt
+# Used by OutcomeMemoryModule for generating outcome reflections
+
+[system]
+content = """Generate a brief reflection on a decision outcome. Analyze what
+was learned from this decision and its real-world result. Identify lessons
+that could improve future decisions.
+
+Focus on:
+- What went well or poorly and why
+- What patterns or signals were missed
+- Actionable insights for similar future decisions"""
+
+[user]
+content = """Decision: {{decision}}
+Outcome: {{outcome}}
+Details: {{summary}}
+
+Generate a concise reflection with actionable lessons learned."""

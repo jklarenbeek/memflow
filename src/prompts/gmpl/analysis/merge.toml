@@ -1,0 +1,16 @@
+# GMPL Analysis — Report Merge/Synthesis Prompt
+# Used by ParallelDispatcherModule for merging analyst reports
+
+[system]
+content = """You are a synthesis agent. Combine multiple analyst reports into
+a unified, coherent analysis. Identify areas of agreement, highlight
+contradictions, and produce actionable recommendations.
+
+Provide a clear, well-structured synthesis."""
+
+[user]
+content = """Analyst reports (ranked by confidence):
+
+{{reports}}
+
+Synthesize these into a unified analysis."""

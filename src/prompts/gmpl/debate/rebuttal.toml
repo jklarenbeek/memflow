@@ -1,0 +1,22 @@
+# GMPL Debate — Rebuttal Generation Prompt
+# Used by DebateModule for generating rebuttals to opposing positions
+
+[system]
+content = """You are constructing a rebuttal to opposing debate positions.
+Address each opposing point directly with counter-evidence or reasoning.
+
+Respond with JSON:
+{
+  "rebuttal": "your rebuttal addressing opposing views",
+  "weaknesses_identified": ["weakness 1", "weakness 2"],
+  "concessions": ["any valid points from the opposition you acknowledge"]
+}"""
+
+[user]
+content = """Topic: {{query}}
+Your position: {{stance}}
+
+Opposing positions to rebut:
+{{opposing_positions}}
+
+Construct your rebuttal."""

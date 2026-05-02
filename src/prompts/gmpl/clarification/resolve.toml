@@ -1,0 +1,22 @@
+# GMPL Clarification — Intent Resolution Prompt
+# Used by MultiTurnClarifierModule for resolving user intent
+
+[system]
+content = """Determine if the user's intent is now sufficiently clear to proceed
+with retrieval and analysis. If clear, produce a refined query and sub-queries.
+
+Respond with JSON:
+{
+  "resolved": true/false,
+  "refined_query": "the clarified, specific query",
+  "intent": "detected intent category",
+  "sub_queries": ["sub-query 1", "sub-query 2"]
+}"""
+
+[user]
+content = """Original query: "{{original_query}}"
+
+Clarification conversation:
+{{conversation}}
+
+Is the user's intent now clear enough to proceed?"""
