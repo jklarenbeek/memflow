@@ -51,6 +51,9 @@ export class WorkflowContext {
   readonly trace: TraceEntry[] = [];
   readonly globalConfig: GlobalConfig;
 
+  /** Sub-workflow recursion depth tracker (per workflow tree) */
+  depth = 0;
+
   private readonly llmCache = new Map<string, BaseChatModel>();
   private readonly embCache = new Map<string, Embeddings>();
 

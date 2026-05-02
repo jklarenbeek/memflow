@@ -44,10 +44,7 @@ const ConfigSchema = z.object({
   maxDepth: z.number().default(5),
 });
 
-type SubWorkflowConfig = z.infer<typeof ConfigSchema>;
-
-// Track recursion depth via a simple global counter per execution chain
-let currentDepth = 0;
+type SubWorkflowConfig = z.input<typeof ConfigSchema>;
 
 export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
   readonly name = "SubWorkflow";
@@ -71,7 +68,7 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
     };
 
     // Recursion guard
-    if (currentDepth >= (stageConfig.maxDepth ?? 5)) {
+    if (ctx.depth >= (stageConfig.maxDepth ?? 5)) {
       throw new Error(
         `SubWorkflow recursion depth exceeded (max ${stageConfig.maxDepth}). ` +
           `Check for circular workflow references.`,
@@ -85,7 +82,7 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
     const childInput = applyInputMap(input.data, stageConfig.inputMap);
 
     // Execute child workflow with shared context
-    currentDepth++;
+    ctx.depth++;
     try {
       const childEngine = new WorkflowEngine(workflowConfig);
       await childEngine.initializeWithContext(ctx);
@@ -105,10 +102,11 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
           childStages: workflowConfig.stages.length,
           childIterations: childState.iteration + 1,
           childErrors: childState.errors.length,
+          ...(childState.data.metrics ?? {}),
         },
       };
     } finally {
-      currentDepth--;
+      ctx.depth--;
     }
   }
 
@@ -145,7 +143,7 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
       typeof __filename !== "undefined"
         ? __filename
         : fileURLToPath(import.meta.url);
-    const projectRoot = path.resolve(path.dirname(thisFile), "..", "..");
+    const projectRoot = path.resolve(path.dirname(thisFile), "..", "..", "..");
     return path.join(projectRoot, ref);
   }
 

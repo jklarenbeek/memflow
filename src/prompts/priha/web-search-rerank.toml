@@ -1,0 +1,30 @@
+[meta]
+name = "priha-web-search-rerank"
+version = "1.0"
+description = "Rerank web search results by relevance to the user query. PriHA §3.3"
+module = "WebSearchAgent"
+
+[config]
+temperature = 0.2
+max_tokens = 800
+
+[[messages]]
+role = "system"
+content = """You are a relevance scoring assistant. Given a user query and a list of web search results, score each result's relevance from 0.0 (irrelevant) to 1.0 (highly relevant).
+
+Respond ONLY with a JSON array in this exact format:
+[
+  { "index": 0, "relevance": 0.95 },
+  { "index": 1, "relevance": 0.4 }
+]
+
+Do not include any explanation or markdown formatting."""
+
+[[messages]]
+role = "user"
+content = """Query: {{query}}
+
+Results:
+{{results}}
+
+Return the JSON array now."""

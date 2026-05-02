@@ -26,7 +26,7 @@ import type {
   ExperienceEntry,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { SubWorkflowModule } from "../../core/SubWorkflowModule.js";
+import { SubWorkflowModule } from "../core/SubWorkflowModule.js";
 
 // ---------------------------------------------------------------------------
 // Config — preserves original API surface
@@ -204,7 +204,7 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
 
     return {
       data: {
-        agentResult: { answer: finalAnswer, trajectory, insights },
+        agentResult: { answer: finalAnswer, trajectory: trajectory ?? { plan: { agents: [], order: "sequential" }, steps: [], reward: 0, query: "", finalAnswer: "", insights: [] }, insights },
         finalAnswer,
       },
       metrics: {

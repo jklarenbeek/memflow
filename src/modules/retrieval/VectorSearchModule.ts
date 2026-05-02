@@ -26,7 +26,7 @@ export class VectorSearchModule implements BaseModule<VectorConfig> {
   async process(input: ModuleInput<VectorConfig>, context: unknown): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
     const query = (input.data.query as string) ?? "";
-    const existing = (input.data.candidates ?? []) as Array<Record<string, unknown>>;
+    const existing = input.data.candidates ?? [];
 
     let queryEmb: number[] = [];
     try {

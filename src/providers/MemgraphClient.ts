@@ -66,7 +66,6 @@ export class MemgraphClient {
     this.driver = neo4j.driver(
       this.config.uri,
       neo4j.auth.basic(this.config.user, this.config.password),
-      // @ts-expect-error — neo4j-driver types may vary across minor versions
       {
         maxConnectionPoolSize: this.config.maxPoolSize,
         connectionAcquisitionTimeout: this.config.connectionTimeoutMs,

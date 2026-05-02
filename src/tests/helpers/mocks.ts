@@ -57,6 +57,14 @@ export function createMockLLM(options: MockLLMOptions = {}) {
       callIndex++;
       return { content: resp };
     },
+    stream: async function* (_msgs: unknown) {
+      if (options.shouldFail) throw new Error("Mock LLM stream failure");
+      const resp = responses[callIndex % responses.length];
+      callIndex++;
+      for (const char of resp) {
+        yield { content: char };
+      }
+    },
     _callCount: () => callIndex,
   };
 }
@@ -201,9 +209,9 @@ export function createMockContext(options: MockContextOptions = {}) {
 // Input builder
 // ---------------------------------------------------------------------------
 
-export function buildInput<TConfig = Record<string, unknown>>(
+export function buildInput(
   data: Partial<WorkflowData> = {},
-  config: TConfig = {} as TConfig,
-): ModuleInput<TConfig> {
+  config: Record<string, unknown> = {},
+): ModuleInput<any> {
   return { data, config };
 }

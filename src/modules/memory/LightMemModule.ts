@@ -25,7 +25,7 @@ import type {
   MemoryUnit,
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
-import { SubWorkflowModule } from "../../core/SubWorkflowModule.js";
+import { SubWorkflowModule } from "../core/SubWorkflowModule.js";
 
 // ---------------------------------------------------------------------------
 // Config — preserves original API surface

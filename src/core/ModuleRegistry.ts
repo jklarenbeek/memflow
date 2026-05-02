@@ -152,6 +152,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/generation/CitationInjectorModule.js").then((m) => m.CitationInjectorModule as unknown as ModuleFactory),
   WebSearchAgent: () =>
     import("../modules/generation/WebSearchAgentModule.js").then((m) => m.WebSearchAgentModule as unknown as ModuleFactory),
+  PriHAReconciler: () =>
+    import("../modules/generation/PriHAReconcilerModule.js").then((m) => m.PriHAReconcilerModule as unknown as ModuleFactory),
 
   // Providers
   Embedder: () =>

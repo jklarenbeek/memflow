@@ -91,7 +91,7 @@ const WorkflowConfigSchema = z.object({
 
 /** Supported workflow config versions */
 const SUPPORTED_VERSIONS = {
-  current: ["1.0", "1.1"],
+  current: ["1.0", "1.1", "2.0"],
   deprecated: ["0.1", "0.2"],
 };
 
@@ -100,6 +100,17 @@ const ALL_ACCEPTED = [
   ...SUPPORTED_VERSIONS.current,
   ...SUPPORTED_VERSIONS.deprecated,
 ];
+
+/** Merge stage-level config properties (workflowRef, inputMap, outputMap) into the stage config object. */
+function buildStageConfig(stage: WorkflowStage): Record<string, unknown> {
+  return {
+    ...(stage.config ?? {}),
+    ...(stage.workflow !== undefined ? { workflow: stage.workflow } : {}),
+    ...(stage.workflowRef !== undefined ? { workflowRef: stage.workflowRef } : {}),
+    ...(stage.inputMap !== undefined ? { inputMap: stage.inputMap } : {}),
+    ...(stage.outputMap !== undefined ? { outputMap: stage.outputMap } : {}),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Engine
@@ -178,7 +189,7 @@ export class WorkflowEngine {
     for (const stage of this.config.stages) {
       const mod = await this.registry.getModule(
         stage.module,
-        stage.config as Record<string, unknown>,
+        buildStageConfig(stage),
         stage.id,
       );
       if (mod.init) {
@@ -221,7 +232,7 @@ export class WorkflowEngine {
     for (const stage of this.config.stages) {
       const mod = await this.registry.getModule(
         stage.module,
-        stage.config as Record<string, unknown>,
+        buildStageConfig(stage),
         stage.id,
       );
       if (mod.init) {
@@ -485,7 +496,7 @@ export class WorkflowEngine {
 
         const input: ModuleInput = {
           data: this.state.data,
-          config: stage.config as Record<string, unknown>,
+          config: buildStageConfig(stage),
         };
 
         const output: ModuleOutput = await mod.process(input, this.context!);
@@ -820,13 +831,13 @@ export class WorkflowEngine {
       try {
         const mod = await this.registry.getModule(
           stage.module,
-          stage.config as Record<string, unknown>,
+          buildStageConfig(stage),
           `__validate__${stage.id}`,
         );
 
         // Attempt schema validation
         const schema = mod.getConfigSchema();
-        schema.parse(stage.config);
+        schema.parse(buildStageConfig(stage));
       } catch (err) {
         errors.push({
           stageId: stage.id,

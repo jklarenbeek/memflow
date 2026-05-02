@@ -39,7 +39,7 @@ export class GraphSearchModule implements BaseModule<GraphConfig> {
   async process(input: ModuleInput<GraphConfig>, context: unknown): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
     const query = (input.data.query as string) ?? "";
-    const existing = (input.data.candidates ?? []) as Array<Record<string, unknown>>;
+    const existing = input.data.candidates ?? [];
     const searchScope = (input.data.searchScope as string) ?? "";
 
     let queryEmb: number[] = [];

@@ -1,13 +1,25 @@
 {
   "name": "priha-fusion",
   "version": "1.0",
-  "description": "PriHA fusion sub-workflow: query clarification (PHC-O) → answer generation with dual-source fusion → hallucination validation → citation injection.",
+  "description": "PriHA fusion sub-workflow: query clarification (PHC-O) → web search → local+web reconciliation → answer generation → hallucination validation → citation injection.",
   "entry": "clarify",
   "stages": [
     {
       "id": "clarify",
       "module": "QueryClarifier",
       "config": { "maxClarificationDepth": 2, "maxSubQueries": 3 },
+      "next": "websearch"
+    },
+    {
+      "id": "websearch",
+      "module": "WebSearchAgent",
+      "config": { "searchProvider": "none", "maxResults": 5 },
+      "next": "reconcile"
+    },
+    {
+      "id": "reconcile",
+      "module": "PriHAReconciler",
+      "config": { "localWeight": 0.6, "maxContextChars": 6000 },
       "next": "generate"
     },
     {

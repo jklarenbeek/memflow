@@ -45,6 +45,7 @@ export interface PromptConfig {
 export interface PromptMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  [key: string]: unknown;
 }
 
 export interface PromptTemplate {
@@ -103,7 +104,7 @@ export function loadPrompt(
     messages: (
       (parsed.messages as Array<Record<string, unknown>>) ?? []
     ).map((m) => ({
-      role: (m.role as string) ?? "user",
+      role: ((m.role ?? m.type) as PromptMessage["role"]) ?? "user",
       content: (m.content as string) ?? "",
     })),
   };
@@ -147,7 +148,7 @@ export function loadAndRender(
 export function loadRolePrompt(roleName: string): string {
   try {
     const tpl = loadPrompt(`hera/roles/${roleName}`);
-    const sysMsg = tpl.messages.find((m) => m.role === "system");
+    const sysMsg = tpl.messages.find((m) => m.role === "system" || m.type === "system");
     return sysMsg?.content ?? `You are ${roleName}.`;
   } catch {
     return `You are ${roleName}.`;
@@ -195,6 +196,7 @@ const KNOWN_PROMPT_REFS: string[] = [
   "priha/generation",
   "priha/refinement",
   "priha/validation",
+  "priha/web-search-rerank",
   // Query
   "query/hyde",
   "query/multi_query",

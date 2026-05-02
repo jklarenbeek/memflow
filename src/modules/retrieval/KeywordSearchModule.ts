@@ -34,7 +34,7 @@ export class KeywordSearchModule implements BaseModule<KeywordConfig> {
   async process(input: ModuleInput<KeywordConfig>, context: unknown): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
     const query = (input.data.query as string) ?? "";
-    const existing = (input.data.candidates ?? []) as Array<Record<string, unknown>>;
+    const existing = input.data.candidates ?? [];
 
     try {
       const results = this.config.searchMode === "bm25"
