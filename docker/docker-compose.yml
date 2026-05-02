@@ -1,21 +1,225 @@
-# MemFlow Docker Compose — Bun runtime
+# docker-compose.yml — MemFlow + Ollama (GPU-profile aware)
+#
+# Combines a GPU profile (Ollama) with a mode profile (dev or deploy).
+#
+# ---------------------------------------------------------------------------
+# Deploy mode — full build (MemFlow + bundled Memgraph + Ollama)
+# ---------------------------------------------------------------------------
+#   docker compose --profile deploy --profile amd-rocm up
+#   docker compose --profile deploy --profile amd-vulkan up
+#   docker compose --profile deploy --profile cpu up
+#
+# ---------------------------------------------------------------------------
+# Dev mode — infrastructure only (Memgraph MAGE + Ollama, run Bun locally)
+# ---------------------------------------------------------------------------
+#   docker compose --profile dev --profile amd-rocm up
+#   docker compose --profile dev --profile amd-vulkan up
+#   docker compose --profile dev --profile cpu up
+#
+#   Then locally:
+#     bun run dev   # connects to localhost:7687 (Memgraph) + localhost:11434 (Ollama)
+#
+# ---------------------------------------------------------------------------
+# First start pulls models automatically:
+#   - nomic-embed-text:latest  (embeddings, ~274 MB)
+#   - qwen3.5:4b               (LLM, ~2.7 GB)
+#
+# To swap the LLM, edit the pull commands in x-init-ollama-common below.
+
+# ---------------------------------------------------------------------------
+# Volumes & Networks
+# ---------------------------------------------------------------------------
+volumes:
+  ollama_storage:
+  memgraph_storage:
+
+networks:
+  memflow-net:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Shared YAML anchors — Ollama base config
+# ---------------------------------------------------------------------------
+x-ollama-common: &ollama-common
+  pull_policy: always
+  tty: true
+  restart: unless-stopped
+  ports:
+    - "11434:11434"
+  volumes:
+    - ollama_storage:/root/.ollama
+  networks:
+    memflow-net:
+      aliases:
+        - ollama # stable DNS for MemFlow + init containers
+  healthcheck:
+    test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/11434'" ]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+
+x-init-ollama-common: &init-ollama-common
+  image: ollama/ollama:latest
+  pull_policy: always
+  restart: "no"
+  networks:
+    - memflow-net
+  volumes:
+    - ollama_storage:/root/.ollama
+  environment:
+    - OLLAMA_HOST=ollama:11434
+  entrypoint: /bin/sh
+  command:
+    - "-c"
+    - |
+      sleep 5
+      echo "[init] Pulling embedding model..."
+      ollama pull nomic-embed-text:latest
+      echo "[init] Pulling LLM..."
+      ollama pull qwen3.5:4b
+      echo "[init] Models ready."
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
 services:
+
+  # =========================================================================
+  # Memgraph MAGE — dev mode only (standalone, for local Bun development)
+  #
+  # Exposes Bolt on :7687 and Memgraph Lab websocket on :7444.
+  # Your local `bun run dev` connects via MEMGRAPH_URI=bolt://localhost:7687.
+  # =========================================================================
+  memgraph-mage:
+    profiles: [ "dev" ]
+    image: memgraph/memgraph-mage:latest
+    container_name: memflow-memgraph
+    ports:
+      - "7687:7687" # Bolt protocol
+      - "7444:7444" # Memgraph Lab websocket
+    command:
+      - "--log-level=TRACE"
+      - "--storage-wal-enabled=true"
+      - "--storage-snapshot-interval-sec=300"
+    volumes:
+      - memgraph_storage:/var/lib/memgraph
+    networks:
+      - memflow-net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "echo > /dev/tcp/localhost/7687" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # =========================================================================
+  # MemFlow — deploy mode only (Dockerfile bundles Memgraph internally)
+  #
+  # NOT started in dev mode — you run `bun run dev` on the host instead.
+  # =========================================================================
   memflow:
+    profiles: [ "deploy" ]
     build:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
-      - "3000:3000"
-      - "7687:7687"
+      - "3000:3000" # MemFlow HTTP API
+      - "7687:7687" # Memgraph Bolt (bundled inside container)
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - LLM_PROVIDER=ollama
+      - LLM_MODEL=qwen3.5:9b
+      - EMBEDDING_PROVIDER=ollama
+      - EMBEDDING_MODEL=nomic-embed-text
       - MEMGRAPH_URI=bolt://localhost:7687
-      - LOG_LEVEL=info
+      - LOG_LEVEL=${LOG_LEVEL:-info}
       - PORT=3000
     volumes:
-      - memgraph-data:/var/lib/memgraph
+      - memgraph_storage:/var/lib/memgraph
+    networks:
+      - memflow-net
     restart: unless-stopped
 
-volumes:
-  memgraph-data:
+  # =========================================================================
+  # Ollama — AMD ROCm (dedicated GPU)
+  # Requires: amdgpu + ROCm host drivers, /dev/kfd + /dev/dri
+  # =========================================================================
+  ollama-amd-rocm:
+    profiles: [ "amd-rocm" ]
+    <<: *ollama-common
+    image: ollama/ollama:rocm
+    container_name: ollama-rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_KEEP_ALIVE=24h
+      # Uncomment for unsupported GPU arch (e.g. RX 6600 → 10.3.0)
+      # - HSA_OVERRIDE_GFX_VERSION=10.3.0
+
+  init-ollama-amd-rocm:
+    profiles: [ "amd-rocm" ]
+    <<: *init-ollama-common
+    container_name: ollama-init-rocm
+    depends_on:
+      ollama-amd-rocm:
+        condition: service_healthy
+
+  # =========================================================================
+  # Ollama — AMD Vulkan (iGPU / APU / older dGPU without KFD)
+  # Experimental, requires Ollama >= 0.12.11
+  # =========================================================================
+  ollama-amd-vulkan:
+    profiles: [ "amd-vulkan" ]
+    <<: *ollama-common
+    image: ollama/ollama:latest
+    container_name: ollama-vulkan
+    group_add:
+      - "105" # render GID — verify with: getent group render
+      - "39" # video GID — verify with: getent group video
+    volumes:
+      - ollama_storage:/root/.ollama
+      - /usr/lib64/libvulkan_radeon.so:/usr/lib64/libvulkan_radeon.so:ro
+      - /usr/share/vulkan/icd.d/radeon_icd.x86_64.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json:ro
+      - /usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.i686.json:ro
+      - /dev/dri:/dev/dri
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_VULKAN=1
+      - GGML_VK_VISIBLE_DEVICES=0
+      - HIP_VISIBLE_DEVICES=-1
+      - OLLAMA_FLASH_ATTENTION=1
+      - VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+
+  init-ollama-amd-vulkan:
+    profiles: [ "amd-vulkan" ]
+    <<: *init-ollama-common
+    container_name: ollama-init-vulkan
+    depends_on:
+      ollama-amd-vulkan:
+        condition: service_healthy
+
+  # =========================================================================
+  # Ollama — CPU only (no GPU required)
+  # =========================================================================
+  ollama-cpu:
+    profiles: [ "cpu" ]
+    <<: *ollama-common
+    image: ollama/ollama:latest
+    container_name: ollama-cpu
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=1
+
+  init-ollama-cpu:
+    profiles: [ "cpu" ]
+    <<: *init-ollama-common
+    container_name: ollama-init-cpu
+    depends_on:
+      ollama-cpu:
+        condition: service_healthy
