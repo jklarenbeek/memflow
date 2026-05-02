@@ -137,7 +137,7 @@ Meta-module that wraps any sub-workflow in an iterative diagnosis â†’ mutation â
 
 ## Module Deep Dive
 
-> **Full per-module reference** (input/output fingerprints, config schemas, behavioral descriptions, paper traceability): **[docs/modules/MODULES.md](docs/modules/MODULES.md)**
+> **Full per-module reference** (input/output fingerprints, config schemas, behavioral descriptions, paper traceability): **[MODULES.md](MODULES.md)**
 
 ### Pipeline Architecture Summary
 

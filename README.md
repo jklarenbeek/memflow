@@ -56,7 +56,7 @@ WorkflowEngine ← JSON config
         └── MemgraphClient.batchQuery() → UNWIND-based batch operations
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Module Inventory
 
@@ -75,7 +75,7 @@ MemFlow registers **59 modules** across 10 categories:
 | Providers | 2 | `Embedder`, `LLMProvider` |
 | Advanced | 2 | `AgentContext`, `OutcomeLearner`, `Crystallizer`, `Contradiction` |
 
-> **Full module reference** with input/output fingerprints, config schemas, and paper traceability: **[docs/modules/MODULES.md](docs/modules/MODULES.md)**
+> **Full module reference** with input/output fingerprints, config schemas, and paper traceability: **[docs/MODULES.md](docs/MODULES.md)**
 >
 > **Improvement roadmap**: **[docs/IMPROVE.md](docs/IMPROVE.md)**
 >

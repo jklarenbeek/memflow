@@ -47,8 +47,6 @@ COPY --from=builder /build/package.json ./
 # Copy source (Bun runs .ts directly — no build step needed!)
 COPY src ./src
 COPY tsconfig.json ./
-COPY docs ./docs
-COPY README.md ARCHITECTURE.md ./
 
 # Copy entrypoint
 COPY docker/entrypoint.sh /entrypoint.sh
