@@ -15,7 +15,7 @@ import type { WorkflowContext } from "../../core/WorkflowContext.js";
 
 const ConfigSchema = z.object({
   provider: z.enum(["ollama", "openai", "openrouter"]).default("ollama"),
-  model: z.string().default("llama3.2"),
+  model: z.string().default("qwen3.5:9b"),
   temperature: z.number().default(0.1),
 });
 

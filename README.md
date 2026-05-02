@@ -2,7 +2,7 @@
 
 **Self-Improving RAG & Lifelong Memory Workflow Engine**
 
-MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It decomposes complex RAG capabilities into **39 atomic modules** — each independently consumable — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience. The engine exposes MCP, ACP, and REST interfaces for integration with LLM-powered tools and agents.
+MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It registers **61 modules** — 42 atomic pipeline modules, 7 composite wrappers, and 12 standalone/infrastructure modules — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience. The engine exposes MCP, ACP, and REST interfaces for integration with LLM-powered tools and agents.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ MemFlow's core innovation is **composable sub-workflows**: complex capabilities 
 ```
 WorkflowEngine ← JSON config
   ├── WorkflowContext (DI: MemgraphClient, StateStore, LLM, Embeddings, Logger)
-  ├── ModuleRegistry (59 modules: lazy-loaded, instance-cached)
+  ├── ModuleRegistry (61 modules: lazy-loaded, instance-cached)
   ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
   ├── WorkflowEventEmitter (typed event system for streaming + metrics)
   ├── Config Validation (Zod schemas validated at initialize(), not mid-pipeline)
@@ -60,7 +60,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Module Inventory
 
-MemFlow registers **59 modules** across 10 categories:
+MemFlow registers **61 modules** across 10 categories:
 
 | Category | Count | Key Modules |
 |---|---|---|
@@ -73,11 +73,9 @@ MemFlow registers **59 modules** across 10 categories:
 | Generation | 7 | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector`, `WebSearchAgent`, `PriHAReconciler` + wrapper |
 | Query | 1 | `QueryTranslator` |
 | Providers | 2 | `Embedder`, `LLMProvider` |
-| Advanced | 2 | `AgentContext`, `OutcomeLearner`, `Crystallizer`, `Contradiction` |
+| Advanced | 4 | `AgentContext`, `OutcomeLearner`, `Crystallizer`, `Contradiction` |
 
 > **Full module reference** with input/output fingerprints, config schemas, and paper traceability: **[docs/MODULES.md](docs/MODULES.md)**
->
-> **Improvement roadmap**: **[docs/IMPROVE.md](docs/IMPROVE.md)**
 >
 > **Research papers** with archived PDFs: **[docs/PAPERS.md](docs/PAPERS.md)**
 
@@ -182,7 +180,7 @@ Copy `.env.example` to `.env` and configure:
 | Variable | Default | Description |
 |---|---|---|
 | `LLM_PROVIDER` | `ollama` | `ollama` / `openrouter` / `openai` |
-| `LLM_MODEL` | `llama3.2` | Model name |
+| `LLM_MODEL` | `qwen3.5:9b` | Model name |
 | `EMBEDDING_PROVIDER` | `ollama` | Same as LLM |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | Embedding model |
 | `MEMGRAPH_URI` | `bolt://localhost:7687` | Memgraph connection |

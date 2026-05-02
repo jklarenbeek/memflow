@@ -1,6 +1,6 @@
 # MemFlow Module System (v0.5.0)
 
-> How the WorkflowEngine, ModuleRegistry, and Sub-Workflow system combine 59 atomic modules into composable research-aligned pipelines.
+> How the WorkflowEngine, ModuleRegistry, and Sub-Workflow system combine 61 modules into composable research-aligned pipelines.
 
 ---
 
@@ -40,7 +40,7 @@ Key capabilities:
 
 ## ModuleRegistry
 
-The `ModuleRegistry` is a singleton factory that manages all 59 registered modules:
+The `ModuleRegistry` is a singleton factory that manages all 61 registered modules:
 
 - **Lazy loading**: Modules are loaded via dynamic `import()` on first use — no upfront loading penalty
 - **Instance caching**: Instances are keyed by `moduleName::stageId` to ensure stateful modules maintain their state across stages

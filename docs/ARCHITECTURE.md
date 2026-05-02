@@ -32,7 +32,7 @@ graph TD
     CTX --> EMB["Embedding Provider"]
     CTX --> LOG["Winston Logger"]
     
-    WE --> MR["ModuleRegistry (59 modules)"]
+    WE --> MR["ModuleRegistry (61 modules)"]
     WE --> EE["WorkflowEventEmitter"]
     EE --> METRICS["Prometheus Metrics"]
     EE --> SSE["SSE Endpoint"]
@@ -122,7 +122,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **59 built-in modules**: 7 composite wrappers (thin delegation layers), 39 atomic modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 2 monolithic compatibility wrappers.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **61 built-in modules**: 7 composite wrappers (thin delegation layers), 42 atomic pipeline modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 1 query module.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -354,7 +354,7 @@ src/
     WorkflowEngine.ts         — DAG executor with parallel, retry, learning loops, sub-workflow support
     WorkflowContext.ts         — DI container (Memgraph, LLM, Embeddings, StateStore, Logger)
     WorkflowEventEmitter.ts    — Typed event system for streaming and Prometheus metrics
-    ModuleRegistry.ts          — Lazy-loading singleton with 59 registered modules
+    ModuleRegistry.ts          — Lazy-loading singleton with 61 registered modules
     StateStore.ts              — Memgraph-backed persistent state with LRU cache
     types.ts                   — All interfaces (WorkflowData, BaseModule, StreamEvent, etc.)
     errors.ts                  — 7 typed error classes

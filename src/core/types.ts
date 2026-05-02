@@ -263,7 +263,7 @@ export interface MemoryUnit {
   userContent?: string;
   /** LightMem §3.2: Model response that generated/contributed to this unit */
   modelContent?: string;
-  /** Model identifier (e.g. "llama3.2", "gpt-4o-mini") for provenance tracking */
+  /** Model identifier (e.g. "qwen3.5:9b", "gpt-4o-mini") for provenance tracking */
   modelId?: string;
   /** Provider identifier (e.g. "ollama", "openrouter", "openai") for provenance tracking */
   providerId?: string;

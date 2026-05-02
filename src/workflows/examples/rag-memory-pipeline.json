@@ -87,7 +87,7 @@
   ],
   "globalConfig": {
     "llmProvider": "ollama",
-    "llmModel": "llama3.2",
+    "llmModel": "qwen3.5:9b",
     "embeddingProvider": "ollama",
     "embeddingModel": "nomic-embed-text",
     "maxConcurrency": 4,

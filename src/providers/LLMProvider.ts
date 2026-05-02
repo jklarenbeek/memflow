@@ -17,7 +17,7 @@ import { ProviderError } from "../core/errors.js";
 
 export const LLMConfigSchema = z.object({
   provider: z.enum(["ollama", "openrouter", "openai"]).default("ollama"),
-  model: z.string().default("llama3.2"),
+  model: z.string().default("qwen3.5:9b"),
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
   temperature: z.number().min(0).max(2).default(0.1),

@@ -153,7 +153,7 @@ export class WorkflowContext {
     const model =
       moduleConfig?.llmModel ??
       this.globalConfig.llmModel ??
-      (provider === "ollama" ? "llama3.2" : "anthropic/claude-3.5-sonnet");
+      (provider === "ollama" ? "qwen3.5:9b" : "anthropic/claude-3.5-sonnet");
 
     const cacheKey = `${provider}:${model}`;
     if (!this.llmCache.has(cacheKey)) {
