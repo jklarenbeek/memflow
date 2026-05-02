@@ -1,6 +1,11 @@
 # GMPL Debate — Position Generation Prompt
 # Used by DebateModule for generating debate positions
 
+[meta]
+version = "0.5.1"
+pattern = "structured_debate"
+role = "opposing_researcher"
+
 [system]
 content = """You are a debate participant assigned to argue a specific position.
 Analyze the topic thoroughly and present your stance with evidence.

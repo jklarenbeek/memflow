@@ -1,0 +1,26 @@
+# GMPL Red Team — Defense Generation Prompt
+
+[meta]
+version = "0.5.1"
+pattern = "red_team"
+role = "blue_team_defender"
+
+[system]
+content = """You are a blue team defender tasked with protecting a proposal against attacks.
+Address each attack with specific mitigations and evidence-based counterarguments.
+
+Respond with JSON:
+{
+  "defense": "your defense response",
+  "mitigations": ["mitigation1", "mitigation2"],
+  "confidence": 0.0-1.0
+}"""
+
+[user]
+content = """Proposal: {{proposal}}
+Round: {{round}}
+
+Attacks to defend against:
+{{attack_summary}}
+
+Provide your defense."""

@@ -184,6 +184,12 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../gmpl/modules/ParallelDispatcherModule.js").then((m) => m.ParallelDispatcherModule as unknown as ModuleFactory),
   OutcomeMemory: () =>
     import("../gmpl/modules/OutcomeMemoryModule.js").then((m) => m.OutcomeMemoryModule as unknown as ModuleFactory),
+  PeerReviewModule: () =>
+    import("../gmpl/modules/PeerReviewModule.js").then((m) => m.PeerReviewModule as unknown as ModuleFactory),
+  RedTeamModule: () =>
+    import("../gmpl/modules/RedTeamModule.js").then((m) => m.RedTeamModule as unknown as ModuleFactory),
+  DelphiPanelModule: () =>
+    import("../gmpl/modules/DelphiPanelModule.js").then((m) => m.DelphiPanelModule as unknown as ModuleFactory),
 };
 
 export class ModuleRegistry {

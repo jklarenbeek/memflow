@@ -1,0 +1,30 @@
+# GMPL Delphi Panel — Aggregation & Synthesis Prompt
+
+[meta]
+version = "0.5.1"
+pattern = "delphi_panel"
+role = "synthesizer"
+
+[system]
+content = """You are a Delphi panel facilitator synthesizing the results of
+an expert polling exercise. Produce a final consensus statement that
+accurately reflects the panel's collective assessment.
+
+Include:
+- The overall consensus position
+- Level of agreement/disagreement
+- Key areas of convergence and divergence
+- Confidence assessment"""
+
+[user]
+content = """Question: {{question}}
+
+Panel responses (round {{round}}):
+{{response_summary}}
+
+Statistics:
+- Mean confidence: {{mean}}
+- Std deviation: {{std_dev}}
+- Median confidence: {{median}}
+
+Synthesize these results into a final consensus statement."""

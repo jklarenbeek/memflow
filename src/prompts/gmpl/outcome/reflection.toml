@@ -1,6 +1,11 @@
 # GMPL Outcome — Reflection Generation Prompt
 # Used by OutcomeMemoryModule for generating outcome reflections
 
+[meta]
+version = "0.5.1"
+pattern = "outcome_memory"
+role = "outcome_evaluator"
+
 [system]
 content = """Generate a brief reflection on a decision outcome. Analyze what
 was learned from this decision and its real-world result. Identify lessons

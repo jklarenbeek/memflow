@@ -1,0 +1,29 @@
+{
+  "name": "red-team",
+  "version": "1.0",
+  "description": "Red team pattern: adversarial stress-testing with red team attacks, blue team defenses, and resilience evaluation.",
+  "entry": "redteam",
+  "stages": [
+    {
+      "id": "redteam",
+      "module": "RedTeamModule",
+      "config": {
+        "attackStrategies": ["adversarial_reframing", "edge_case_injection", "assumption_challenge"],
+        "redTeam": [
+          { "id": "attacker_1", "persona": "adversarial_analyst" }
+        ],
+        "blueTeam": [
+          { "id": "defender_1", "persona": "domain_expert" }
+        ],
+        "maxRounds": 3,
+        "resilienceThreshold": 0.7
+      },
+      "next": "synthesize"
+    },
+    {
+      "id": "synthesize",
+      "module": "FinalSynthesizer",
+      "config": {}
+    }
+  ]
+}

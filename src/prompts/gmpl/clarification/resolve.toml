@@ -1,6 +1,11 @@
 # GMPL Clarification — Intent Resolution Prompt
 # Used by MultiTurnClarifierModule for resolving user intent
 
+[meta]
+version = "0.5.1"
+pattern = "clarification_pipeline"
+role = "clarifier"
+
 [system]
 content = """Determine if the user's intent is now sufficiently clear to proceed
 with retrieval and analysis. If clear, produce a refined query and sub-queries.

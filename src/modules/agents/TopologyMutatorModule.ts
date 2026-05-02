@@ -9,10 +9,15 @@ import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput, AgentTrajectory, ExperienceEntry } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
+import { PatternRegistry } from "../../gmpl/PatternRegistry.js";
 
 const ConfigSchema = z.object({
   mutationTriggerCount: z.number().default(3),
   availableRoles: z.array(z.string()).default(["retriever", "reasoner", "critic", "synthesizer", "verifier", "decomposer"]),
+  /** Enable pattern-level mutation (GMPL Phase 2) */
+  enablePatternMutation: z.boolean().default(false),
+  /** Available patterns for swapping — auto-populated from PatternRegistry if empty */
+  availablePatterns: z.array(z.string()).default([]),
 });
 type MutatorConfig = z.infer<typeof ConfigSchema>;
 
@@ -38,18 +43,31 @@ export class TopologyMutatorModule implements BaseModule<MutatorConfig> {
       const currentRoles = trajectory.plan.agents;
       const unusedRoles = this.config.availableRoles.filter((r) => !currentRoles.includes(r));
 
+      // Resolve available patterns from PatternRegistry if not explicitly configured
+      const availablePatterns = this.config.availablePatterns.length > 0
+        ? this.config.availablePatterns
+        : (this.config.enablePatternMutation ? PatternRegistry.getInstance().list() : []);
+
+      const currentPattern = (input.data as Record<string, unknown>).selectedPattern as string | undefined;
+
       const resp = await llm.invoke(
         loadAndRender("hera/topology_mutation", {
           current_roles: currentRoles.join(", "),
           failure_count: consecutiveFailures,
           unused_roles: unusedRoles.join(", "),
           reward: trajectory.reward.toFixed(3),
+          ...(this.config.enablePatternMutation && {
+            enable_pattern_mutation: "true",
+            current_pattern: currentPattern ?? "none",
+            available_patterns: availablePatterns.join(", "),
+          }),
         }).messages,
       );
 
       const text = typeof resp.content === "string" ? resp.content : "";
       const mutation = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
       const mutations = { ...currentMutations };
+      let mutatedPattern: { from: string; to: string } | undefined;
 
       if (mutation.action === "replace" && mutation.removeAgent && mutation.addAgent) {
         mutations.removeAgents = [...mutations.removeAgents, mutation.removeAgent];
@@ -60,9 +78,21 @@ export class TopologyMutatorModule implements BaseModule<MutatorConfig> {
         mutations.addAgents = [...mutations.addAgents, mutation.addAgent];
         experienceLibrary.push({ context: "topology-augment", insight: `Add ${mutation.addAgent}: ${mutation.reason}`, utility: 0.8 });
         ctx.logger.info(`TopologyMutator: Augmenting with "${mutation.addAgent}"`);
+      } else if (mutation.action === "swap_pattern" && mutation.from && mutation.to && this.config.enablePatternMutation) {
+        mutatedPattern = { from: mutation.from, to: mutation.to };
+        experienceLibrary.push({ context: "pattern-swap", insight: `Swap pattern ${mutation.from} → ${mutation.to}: ${mutation.reason}`, utility: 0.8 });
+        ctx.logger.info(`TopologyMutator: Swapping pattern "${mutation.from}" → "${mutation.to}"`);
       }
 
-      return { data: { mutatedTopology: mutations, experienceLibrary, consecutiveFailures: 0 }, metrics: { mutated: 1 } };
+      return {
+        data: {
+          mutatedTopology: mutations,
+          experienceLibrary,
+          consecutiveFailures: 0,
+          ...(mutatedPattern && { mutatedPattern }),
+        },
+        metrics: { mutated: 1, patternSwapped: mutatedPattern ? 1 : 0 },
+      };
     } catch {
       return { data: { mutatedTopology: currentMutations, experienceLibrary }, metrics: { mutated: 0 } };
     }

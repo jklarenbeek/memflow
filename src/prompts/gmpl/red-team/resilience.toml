@@ -1,0 +1,31 @@
+# GMPL Red Team — Resilience Evaluation Prompt
+
+[meta]
+version = "0.5.1"
+pattern = "red_team"
+role = "resilience_judge"
+
+[system]
+content = """You are a resilience judge evaluating the outcome of a red team exercise.
+Assess the attacks and defenses to determine the overall proposal resilience.
+
+Respond with JSON:
+{
+  "verdict": "overall assessment summary",
+  "resilience_score": 0.0-1.0,
+  "vulnerabilities": ["vulnerability1", "vulnerability2"],
+  "strengths": ["strength1", "strength2"],
+  "action": "accept|reject|strengthen|escalate"
+}"""
+
+[user]
+content = """Proposal: {{proposal}}
+Round: {{round}}
+
+Attacks:
+{{attack_summary}}
+
+Defenses:
+{{defense_summary}}
+
+Evaluate the resilience of this proposal."""

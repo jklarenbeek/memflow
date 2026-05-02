@@ -280,6 +280,138 @@ export const ReviewCycleSchema = z.object({
 
 export type ReviewCycle = z.infer<typeof ReviewCycleSchema>;
 
+export const PeerReviewStateSchema = z.object({
+  /** The current draft being reviewed */
+  draft: z.string(),
+  /** All review cycles */
+  cycles: z.array(ReviewCycleSchema),
+  /** Current cycle number */
+  currentCycle: z.number(),
+  /** Whether the draft has been accepted */
+  accepted: z.boolean(),
+});
+
+export type PeerReviewState = z.infer<typeof PeerReviewStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Red Team Schemas (Pattern E — Phase 2)
+// ---------------------------------------------------------------------------
+
+export const AttackSchema = z.object({
+  /** Attacker role ID */
+  attackerId: z.string(),
+  /** Strategy seed used to generate this attack */
+  strategy: z.string(),
+  /** The attack content (freeform LLM-generated, seeded by strategy) */
+  attack: z.string(),
+  /** Identified weakness targeted */
+  targetWeakness: z.string(),
+  /** Round number */
+  round: z.number(),
+});
+
+export type Attack = z.infer<typeof AttackSchema>;
+
+export const DefenseSchema = z.object({
+  /** Defender role ID */
+  defenderId: z.string(),
+  /** The defense content */
+  defense: z.string(),
+  /** Specific mitigations proposed */
+  mitigations: z.array(z.string()),
+  /** Confidence in the defense (0–1) */
+  confidence: z.number().min(0).max(1),
+  /** Round number */
+  round: z.number(),
+});
+
+export type Defense = z.infer<typeof DefenseSchema>;
+
+export const ResilienceReportSchema = z.object({
+  /** Final resilience verdict */
+  verdict: z.string(),
+  /** Overall resilience score (0–1) */
+  resilienceScore: z.number().min(0).max(1),
+  /** Vulnerabilities identified */
+  vulnerabilities: z.array(z.string()),
+  /** Strengths confirmed */
+  strengths: z.array(z.string()),
+  /** Recommended action */
+  action: z.enum(["accept", "reject", "strengthen", "escalate"]),
+  /** Total rounds completed */
+  roundsCompleted: z.number(),
+});
+
+export type ResilienceReport = z.infer<typeof ResilienceReportSchema>;
+
+export const RedTeamStateSchema = z.object({
+  /** The proposal being stress-tested */
+  proposal: z.string(),
+  /** All attacks across all rounds */
+  attacks: z.array(AttackSchema),
+  /** All defenses across all rounds */
+  defenses: z.array(DefenseSchema),
+  /** Current round number */
+  currentRound: z.number(),
+  /** Whether the red team exercise has concluded */
+  concluded: z.boolean(),
+  /** Resilience report (if concluded) */
+  resilienceReport: ResilienceReportSchema.optional(),
+});
+
+export type RedTeamState = z.infer<typeof RedTeamStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Delphi Expert Panel Schemas (Pattern F — Phase 2)
+// ---------------------------------------------------------------------------
+
+export const PanelResponseSchema = z.object({
+  /** Panelist identifier (anonymized if configured) */
+  panelistId: z.string(),
+  /** The response content */
+  response: z.string(),
+  /** Confidence in the response (0–1) */
+  confidence: z.number().min(0).max(1),
+  /** Reasoning behind the response */
+  reasoning: z.string(),
+  /** Round number */
+  round: z.number(),
+});
+
+export type PanelResponse = z.infer<typeof PanelResponseSchema>;
+
+export const AggregatedResultSchema = z.object({
+  /** Round number */
+  round: z.number(),
+  /** All responses for this round */
+  responses: z.array(PanelResponseSchema),
+  /** Mean confidence */
+  mean: z.number(),
+  /** Standard deviation of confidence */
+  stdDev: z.number(),
+  /** Median confidence */
+  median: z.number(),
+  /** Convergence score (lower = more converged) */
+  convergenceScore: z.number(),
+});
+
+export type AggregatedResult = z.infer<typeof AggregatedResultSchema>;
+
+export const DelphiPanelStateSchema = z.object({
+  /** The question being polled */
+  question: z.string(),
+  /** All aggregated round results */
+  rounds: z.array(AggregatedResultSchema),
+  /** Current round number */
+  currentRound: z.number(),
+  /** Whether the panel has converged */
+  converged: z.boolean(),
+  /** Final aggregation (if converged) */
+  finalAggregation: AggregatedResultSchema.optional(),
+});
+
+export type DelphiPanelState = z.infer<typeof DelphiPanelStateSchema>;
+
 // ---------------------------------------------------------------------------
 // Outcome Memory Schemas
 // ---------------------------------------------------------------------------

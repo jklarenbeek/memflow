@@ -38,7 +38,8 @@ export class ParallelDispatcherModule implements BaseModule<Config> {
 
   async process(input: ModuleInput<Config>, context: unknown): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
-    const mergedConfig = { ...this.config, ...ConfigSchema.parse(input.config) };
+    const inputConfig = Object.keys(input.config).length > 0 ? ConfigSchema.parse(input.config) : {};
+    const mergedConfig = { ...this.config, ...inputConfig };
     const query = (input.data.query as string) ?? "";
 
     ctx.logger.info(`ParallelDispatcher: Dispatching to ${mergedConfig.analysts.length} analysts`);

@@ -1,0 +1,26 @@
+{
+  "name": "peer-review",
+  "version": "1.0",
+  "description": "Peer review pattern: iterative review cycles with N reviewers, feedback collection, and draft revision until acceptance.",
+  "entry": "review",
+  "stages": [
+    {
+      "id": "review",
+      "module": "PeerReviewModule",
+      "config": {
+        "reviewers": [
+          { "id": "reviewer_1", "persona": "critic" },
+          { "id": "reviewer_2", "persona": "critic" }
+        ],
+        "maxCycles": 3,
+        "acceptanceThreshold": 0.7
+      },
+      "next": "synthesize"
+    },
+    {
+      "id": "synthesize",
+      "module": "FinalSynthesizer",
+      "config": {}
+    }
+  ]
+}

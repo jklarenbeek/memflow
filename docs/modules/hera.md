@@ -14,6 +14,7 @@ The `HERAOrchestratorModule` wrapper is the most stateful composite module. It m
 - `enableTopologyMutation` (true) — enable structural topology changes
 - `topologyMutationThreshold` (3) — consecutive failures before topology mutation triggers
 - `grpoGroupSize` (3) — trajectory comparison group size for GRPO
+- `patternSelection` — `fixed` (default) | `hera_adaptive` (opt-in GMPL pattern selection querying `PatternRegistry` and experience library)
 
 ---
 
@@ -83,6 +84,13 @@ Identifies weakest agent, runs contrastive LLM analysis. Prompt updates are cons
 | **Config** | `mutationTriggerCount` |
 
 After N consecutive failures, LLM recommends structural changes (replace/augment agents). Mutations persist and feed into future `PlanGenerator` calls.
+
+With `enablePatternMutation: true`, the mutator can also recommend swapping the current GMPL pattern for a different one from `PatternRegistry` via the `swap_pattern` action.
+
+**Config**:
+- `mutationTriggerCount` — consecutive failures before triggering (default: 3)
+- `enablePatternMutation` — boolean (default: `false`) — enable pattern-level mutation
+- `availablePatterns` — explicit pattern IDs for swapping; auto-populated from `PatternRegistry` when empty
 
 ### FinalSynthesizer
 

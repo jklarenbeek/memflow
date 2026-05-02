@@ -10,6 +10,9 @@ export { PatternRegistry } from "./PatternRegistry.js";
 export { RoleRegistry } from "./RoleRegistry.js";
 export { DomainRegistry } from "./DomainRegistry.js";
 
+// Pattern composer
+export { generateWorkflow } from "./PatternComposer.js";
+
 // Type system
 export type {
   // Pattern types
@@ -33,9 +36,21 @@ export type {
   AnalystReport,
   MergedAnalysis,
 
-  // Review schemas (Phase 2)
+  // Review schemas
   ReviewCycle,
   ReviewFeedback,
+  PeerReviewState,
+
+  // Red Team schemas
+  Attack,
+  Defense,
+  ResilienceReport,
+  RedTeamState,
+
+  // Delphi Panel schemas
+  PanelResponse,
+  AggregatedResult,
+  DelphiPanelState,
 
   // Outcome memory schemas
   PendingDecision,
@@ -58,6 +73,14 @@ export {
   MergedAnalysisSchema,
   ReviewCycleSchema,
   ReviewFeedbackSchema,
+  PeerReviewStateSchema,
+  AttackSchema,
+  DefenseSchema,
+  ResilienceReportSchema,
+  RedTeamStateSchema,
+  PanelResponseSchema,
+  AggregatedResultSchema,
+  DelphiPanelStateSchema,
   PendingDecisionSchema,
   OutcomeResultSchema,
   DecisionSchema,

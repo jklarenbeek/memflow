@@ -1,6 +1,11 @@
 # GMPL Debate — Rebuttal Generation Prompt
 # Used by DebateModule for generating rebuttals to opposing positions
 
+[meta]
+version = "0.5.1"
+pattern = "structured_debate"
+role = "opposing_researcher"
+
 [system]
 content = """You are constructing a rebuttal to opposing debate positions.
 Address each opposing point directly with counter-evidence or reasoning.

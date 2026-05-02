@@ -27,6 +27,7 @@ import type {
 } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { SubWorkflowModule } from "../core/SubWorkflowModule.js";
+import { PatternRegistry } from "../../gmpl/PatternRegistry.js";
 
 // ---------------------------------------------------------------------------
 // Config — preserves original API surface
@@ -46,6 +47,8 @@ const ConfigSchema = z.object({
   mutationThreshold: z.number().default(0.3),
   /** Number of consecutive failures before topology mutation triggers */
   mutationTriggerCount: z.number().default(3),
+  /** GMPL pattern selection mode: fixed (default) or hera_adaptive (opt-in) */
+  patternSelection: z.enum(["fixed", "hera_adaptive"]).default("fixed"),
   rolePrompts: z
     .record(z.string())
     .default({
@@ -132,6 +135,13 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
       `HERA: Delegating orchestration to hera-orchestration sub-workflow`,
     );
 
+    // GMPL adaptive pattern selection (opt-in)
+    let selectedPattern: string | undefined;
+    if (this.config.patternSelection === "hera_adaptive") {
+      selectedPattern = await this.selectPattern(ctx, query);
+      ctx?.logger.info(`HERA: Adaptive pattern selection → ${selectedPattern ?? "none"}`);
+    }
+
     // Inject persisted state into sub-workflow input
     const stageOverrides = this.buildStageConfigs();
 
@@ -146,6 +156,7 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
           mutatedTopology: this.mutatedTopology,
           agentFailureBuffers: this.agentFailureBuffers,
           _stageConfigs: stageOverrides,
+          ...(selectedPattern && { selectedPattern }),
         },
         config: {},
       },
@@ -247,5 +258,76 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
   }
   supportsLearning() {
     return true;
+  }
+
+  // -----------------------------------------------------------------------
+  // GMPL Adaptive Pattern Selection (Phase 2)
+  // -----------------------------------------------------------------------
+
+  private async selectPattern(
+    ctx: WorkflowContext | undefined,
+    query: string,
+  ): Promise<string | undefined> {
+    if (!ctx) return undefined;
+
+    try {
+      const llm = ctx.getLLM();
+      const availablePatterns = PatternRegistry.getInstance().getAll();
+
+      if (availablePatterns.length === 0) return undefined;
+
+      const patternDescriptions = availablePatterns
+        .map((p) => `- ${p.id}: ${p.description}`)
+        .join("\n");
+
+      // Check experience library for pattern performance history
+      const patternExperiences = this.experienceLibrary
+        .filter((e) => e.context.startsWith("pattern-"))
+        .slice(-10)
+        .map((e) => `  ${e.context}: ${e.insight} (utility: ${e.utility})`)
+        .join("\n");
+
+      const prompt = [
+        {
+          type: "system" as const,
+          content:
+            "You are a meta-orchestrator selecting the optimal GMPL pattern for a query. " +
+            'Respond with JSON: {"pattern": "pattern_id", "reason": "..."} or {"pattern": null} if no pattern fits.',
+        },
+        {
+          type: "user" as const,
+          content:
+            `Query: ${query.substring(0, 500)}\n\n` +
+            `Available patterns:\n${patternDescriptions}\n` +
+            (patternExperiences
+              ? `\nPast pattern performance:\n${patternExperiences}\n`
+              : "") +
+            `\nSelect the best pattern for this query.`,
+        },
+      ];
+
+      const resp = await llm.invoke(prompt);
+      const text = typeof resp.content === "string" ? resp.content : "";
+      const parsed = JSON.parse(
+        text.match(/\{[\s\S]*\}/)?.[0] ?? "{}",
+      ) as Record<string, unknown>;
+
+      const patternId = parsed.pattern as string | null;
+      if (patternId && PatternRegistry.getInstance().has(patternId)) {
+        // Log selection to experience library for future learning
+        this.experienceLibrary.push({
+          context: `pattern-selection`,
+          insight: `Selected ${patternId} for query type: ${(parsed.reason as string) ?? "no reason"}`,
+          utility: 0.5,
+        });
+        return patternId;
+      }
+    } catch (err) {
+      ctx.logger.warn(
+        `HERA: Pattern selection failed: ${(err as Error).message}`,
+      );
+    }
+
+    return undefined;
   }
 }

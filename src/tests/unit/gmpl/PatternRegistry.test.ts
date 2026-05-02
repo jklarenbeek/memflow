@@ -13,7 +13,10 @@ describe("PatternRegistry", () => {
     expect(patterns).toContain("structured_debate");
     expect(patterns).toContain("clarification_pipeline");
     expect(patterns).toContain("parallel_analysis");
-    expect(patterns.length).toBe(3);
+    expect(patterns).toContain("peer_review");
+    expect(patterns).toContain("red_team");
+    expect(patterns).toContain("delphi_panel");
+    expect(patterns.length).toBe(6);
   });
 
   it("should retrieve a pattern by ID", () => {
@@ -92,7 +95,7 @@ describe("PatternRegistry", () => {
   it("should return all patterns via getAll()", () => {
     const registry = PatternRegistry.getInstance();
     const all = registry.getAll();
-    expect(all.length).toBe(3);
+    expect(all.length).toBe(6);
     expect(all.every((p) => p.id && p.version)).toBe(true);
   });
 

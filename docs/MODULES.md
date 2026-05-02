@@ -1,6 +1,6 @@
 # MemFlow Module System (v0.5.1)
 
-> How the WorkflowEngine, ModuleRegistry, GMPL, and Sub-Workflow system combine 66 modules into composable research-aligned pipelines.
+> How the WorkflowEngine, ModuleRegistry, GMPL, and Sub-Workflow system combine 69 modules into composable research-aligned pipelines.
 
 ---
 
@@ -40,7 +40,7 @@ Key capabilities:
 
 ## ModuleRegistry
 
-The `ModuleRegistry` is a singleton factory that manages all 66 registered modules:
+The `ModuleRegistry` is a singleton factory that manages all 69 registered modules:
 
 - **Lazy loading**: Modules are loaded via dynamic `import()` on first use — no upfront loading penalty
 - **Instance caching**: Instances are keyed by `moduleName::stageId` to ensure stateful modules maintain their state across stages
@@ -64,7 +64,7 @@ Sub-workflows are the primary composition mechanism. Any workflow stage can dele
 
 The `SubWorkflowModule` reads `_stageConfigs` from the parent input data and applies them to the child engine via `setStageConfigOverrides()` before initialization. This enables composite wrappers to fine-tune individual stage configs without modifying sub-workflow JSON files.
 
-Eleven pre-built sub-workflows are provided in `src/workflows/sub/`:
+Fourteen pre-built sub-workflows are provided in `src/workflows/sub/`:
 
 | Sub-Workflow | Pipeline | Paper |
 |---|---|---|
@@ -79,6 +79,9 @@ Eleven pre-built sub-workflows are provided in `src/workflows/sub/`:
 | [`patterns/structured-debate.json`](modules/gmpl.md) | DebateModule → ConsensusJudge → FinalSynthesizer | TradingAgents |
 | [`patterns/clarification-pipeline.json`](modules/gmpl.md) | MultiTurnClarifier → QueryClarifier → WebSearch → DualSourceFusion → Generate → Validate → Cite | PriHA + GMPL |
 | [`patterns/parallel-analysis.json`](modules/gmpl.md) | ParallelDispatcher → FinalSynthesizer | TradingAgents |
+| [`patterns/peer-review.json`](modules/gmpl.md) | PeerReviewModule → FinalSynthesizer | GMPL |
+| [`patterns/red-team.json`](modules/gmpl.md) | RedTeamModule → FinalSynthesizer | GMPL |
+| [`patterns/delphi-panel.json`](modules/gmpl.md) | DelphiPanelModule → FinalSynthesizer | GMPL |
 
 ## Pipeline Reference
 
@@ -93,7 +96,7 @@ Detailed per-module documentation (input/output fingerprints, config schemas, pa
 | **HERA Agents** | [hera.md](modules/hera.md) | PlanGenerator, TrajectoryExecutor, RewardComputer, ExperienceReflector, RoPEEvolver, TopologyMutator, FinalSynthesizer | `HERAOrchestrator` |
 | **Graph Indexing** | [graph.md](modules/graph.md) | ChunkIngestor, EntityExtractor, EntityDeduplicator, EntityProfiler, CommunityDetector | `MemgraphGraph` |
 | **PriHA Generation** | [priha.md](modules/priha.md) | QueryClarifier, AnswerGenerator, HallucinationValidator, CitationInjector, WebSearchAgent, DualSourceFusion | `PriHAFusion` |
-| **GMPL Patterns** | [gmpl.md](modules/gmpl.md) | DebateModule, ConsensusJudge, MultiTurnClarifier, ParallelDispatcher, OutcomeMemory | — |
+| **GMPL Patterns** | [gmpl.md](modules/gmpl.md) | DebateModule, ConsensusJudge, MultiTurnClarifier, ParallelDispatcher, OutcomeMemory, PeerReviewModule, RedTeamModule, DelphiPanelModule | — |
 
 ## Standalone Modules
 

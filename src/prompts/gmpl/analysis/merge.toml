@@ -1,6 +1,11 @@
 # GMPL Analysis — Report Merge/Synthesis Prompt
 # Used by ParallelDispatcherModule for merging analyst reports
 
+[meta]
+version = "0.5.1"
+pattern = "parallel_analysis"
+role = "synthesizer"
+
 [system]
 content = """You are a synthesis agent. Combine multiple analyst reports into
 a unified, coherent analysis. Identify areas of agreement, highlight

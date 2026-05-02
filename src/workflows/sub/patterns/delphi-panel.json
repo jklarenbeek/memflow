@@ -1,0 +1,25 @@
+{
+  "name": "delphi-panel",
+  "version": "1.0",
+  "description": "Delphi expert panel pattern: anonymous polling, statistical aggregation, iterative re-polling until convergence.",
+  "entry": "delphi",
+  "stages": [
+    {
+      "id": "delphi",
+      "module": "DelphiPanelModule",
+      "config": {
+        "panelSize": 5,
+        "maxRounds": 3,
+        "anonymize": true,
+        "convergenceMetric": "std_dev",
+        "convergenceThreshold": 0.2
+      },
+      "next": "synthesize"
+    },
+    {
+      "id": "synthesize",
+      "module": "FinalSynthesizer",
+      "config": {}
+    }
+  ]
+}

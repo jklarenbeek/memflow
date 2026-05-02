@@ -1,12 +1,12 @@
 # GMPL — Generic Multi-Agent Pattern Library
 
 > **Inspired by**: TradingAgents (arXiv:2412.20138v7), PriHA, HERA  
-> **Package**: `src/gmpl/` — public API via `import { PatternRegistry, RoleRegistry, DomainRegistry } from './gmpl/index.js'`  
-> **Sub-Workflows**: `src/workflows/sub/patterns/` — structured-debate.json, clarification-pipeline.json, parallel-analysis.json
+> **Package**: `src/gmpl/` — public API via `import { PatternRegistry, RoleRegistry, DomainRegistry, generateWorkflow } from './gmpl/index.js'`  
+> **Sub-Workflows**: `src/workflows/sub/patterns/` — structured-debate.json, clarification-pipeline.json, parallel-analysis.json, peer-review.json, red-team.json, delphi-panel.json
 
-GMPL is a composable extension layer that provides reusable multi-agent workflow patterns. Instead of implementing domain-specific orchestration logic directly, GMPL defines generic pattern templates (debate, clarification, analysis) that can be specialized per domain through the `DomainRegistry` adapter plugin system.
+GMPL is a composable extension layer that provides reusable multi-agent workflow patterns. Instead of implementing domain-specific orchestration logic directly, GMPL defines generic pattern templates (debate, clarification, analysis, peer review, red team, Delphi panel) that can be specialized per domain through the `DomainRegistry` adapter plugin system and composed programmatically via the `PatternComposer` API.
 
-**Design**: GMPL sits above MemFlow core without modifying it. All 5 GMPL modules are registered in `ModuleRegistry` alongside the 61 existing modules, and all GMPL state flows through the standard `WorkflowData` bus.
+**Design**: GMPL sits above MemFlow core without modifying it. All 8 GMPL modules are registered in `ModuleRegistry` alongside the 61 existing modules, and all GMPL state flows through the standard `WorkflowData` bus.
 
 ---
 
@@ -20,7 +20,7 @@ Singleton registry for composable workflow pattern definitions. Each pattern has
 - Required roles from `RoleRegistry`
 - Observability SSE event types
 
-**Pre-registered patterns**: `structured_debate`, `clarification_pipeline`, `parallel_analysis`
+**Pre-registered patterns**: `structured_debate`, `clarification_pipeline`, `parallel_analysis`, `peer_review`, `red_team`, `delphi_panel`
 
 ### RoleRegistry (`gmpl/RoleRegistry.ts`)
 
@@ -169,6 +169,74 @@ Two-phase outcome memory extending the existing `OutcomeLearnerModule` with a fu
 
 ---
 
+### PeerReviewModule (Pattern D: Peer Review)
+
+| | |
+|---|---|
+| **File** | `gmpl/modules/PeerReviewModule.ts` |
+| **Input** | `query` (draft content) |
+| **Output** | `peerReviewState`, `finalAnswer` |
+
+Iterative peer review cycle with N configurable reviewers. Each cycle:
+1. All reviewers evaluate the current draft and produce assessments (`accept`, `minor_revision`, `major_revision`, `reject`)
+2. If acceptance ratio meets threshold → accept and finalize
+3. Otherwise → LLM revises draft incorporating feedback, then next cycle
+
+**Config**:
+- `reviewers` — Array of `{id, persona}` (minimum 1)
+- `maxCycles` — 1–10 (default: 3)
+- `acceptanceThreshold` — 0–1 (default: 0.6) — fraction of reviewers that must accept
+
+---
+
+### RedTeamModule (Pattern E: Red Team)
+
+| | |
+|---|---|
+| **File** | `gmpl/modules/RedTeamModule.ts` |
+| **Input** | `query` (proposal content) |
+| **Output** | `redTeamState`, `finalAnswer` |
+
+Adversarial stress-testing with red (attack) and blue (defense) teams. Each round:
+1. Red team generates freeform LLM attack seeded by a strategy string for traceability
+2. Blue team produces defense with mitigations and confidence
+3. Judge evaluates resilience and produces a `ResilienceReport`
+4. If resilience score exceeds threshold → conclude; otherwise → next round
+
+**Config**:
+- `redTeam` — Array of `{id, persona}` (attackers)
+- `blueTeam` — Array of `{id, persona}` (defenders)
+- `attackStrategies` — Array of strategy seed strings (default: `["adversarial", "edge_case", "scalability", "security", "consistency"]`)
+- `maxRounds` — 1–10 (default: 3)
+- `resilienceThreshold` — 0–1 (default: 0.7)
+
+---
+
+### DelphiPanelModule (Pattern F: Delphi Expert Panel)
+
+| | |
+|---|---|
+| **File** | `gmpl/modules/DelphiPanelModule.ts` |
+| **Input** | `query` |
+| **Output** | `delphiPanelState`, `finalAnswer` |
+
+Anonymous expert polling with statistical aggregation and convergence detection. Each round:
+1. All panelists respond independently with confidence scores
+2. Responses are aggregated (mean, median, std_dev, convergence score)
+3. If convergence metric is below threshold → converged; otherwise → re-poll with prior-round statistics as context
+
+**Config**:
+- `panelists` — Optional array of `{id, persona}` (auto-generated if omitted)
+- `panelSize` — Number of panelists when auto-generating (default: 5)
+- `maxRounds` — 1–10 (default: 3)
+- `convergenceMetric` — `std_dev` | `interquartile_range` | `entropy` | custom (default: `std_dev`)
+- `convergenceThreshold` — 0–1 (default: 0.15)
+- `anonymize` — boolean (default: `true`)
+
+**Pluggable Convergence**: Custom convergence functions can be registered via `DelphiPanelModule.registerConvergence(name, fn)`. The function receives an array of confidence values and returns a dispersion score (lower = more converged).
+
+---
+
 ## Pattern Sub-Workflows
 
 ### structured-debate.json
@@ -185,7 +253,7 @@ DebateModule → ConsensusJudge → FinalSynthesizer
 MultiTurnClarifier → QueryClarifier → WebSearchAgent → DualSourceFusion → AnswerGenerator → HallucinationValidator → CitationInjector
 ```
 
-7-stage pipeline extending the existing PriHA `priha-fusion.json` with a user-facing clarification step. Adds the `MultiTurnClarifier` as the first stage for intent disambiguation before the standard retrieval-generation flow.
+7-stage pipeline extending the PriHA `priha-fusion.json` with a user-facing clarification step. The `MultiTurnClarifier` serves as the first stage for intent disambiguation before the standard retrieval-generation flow.
 
 ### parallel-analysis.json
 
@@ -194,6 +262,31 @@ ParallelDispatcher → FinalSynthesizer
 ```
 
 2-stage pipeline: parallel analyst dispatch with ranked synthesis merge. Default: 2 analysts, 30s timeout, ranked_synthesis merge strategy.
+
+### peer-review.json
+
+```
+PeerReviewModule → FinalSynthesizer
+```
+
+2-stage pipeline: iterative review cycle with configurable reviewers and acceptance threshold, followed by final synthesis.
+
+### red-team.json
+
+```
+RedTeamModule → FinalSynthesizer
+```
+
+2-stage pipeline: adversarial red/blue team stress-testing with resilience scoring, followed by final synthesis.
+
+### delphi-panel.json
+
+```
+DelphiPanelModule → FinalSynthesizer
+```
+
+2-stage pipeline: multi-round anonymous expert polling with convergence detection, followed by final synthesis.
+
 
 ---
 
@@ -211,6 +304,15 @@ GMPL prompt templates in `src/prompts/gmpl/`:
 | `clarification/question.toml` | MultiTurnClarifier | User-facing clarification question generation |
 | `clarification/resolve.toml` | MultiTurnClarifier | Intent resolution from conversation history |
 | `outcome/reflection.toml` | OutcomeMemory | Reflection and lesson extraction from outcomes |
+| `peer-review/review.toml` | PeerReviewModule | Reviewer assessment generation |
+| `peer-review/revision.toml` | PeerReviewModule | Draft revision from review feedback |
+| `red-team/attack.toml` | RedTeamModule | Adversarial attack generation |
+| `red-team/defense.toml` | RedTeamModule | Defense and mitigation response |
+| `red-team/resilience.toml` | RedTeamModule | Resilience scoring and verdict |
+| `delphi-panel/poll.toml` | DelphiPanelModule | Expert poll response generation |
+| `delphi-panel/aggregate.toml` | DelphiPanelModule | Panel synthesis and aggregation |
+
+All GMPL TOML files include a `[meta]` section with independent versioning (`version`, `pattern`, `role`).
 
 ---
 
@@ -226,6 +328,18 @@ All GMPL inter-module data is defined as Zod schemas in `gmpl/types.ts`:
 | `ClarificationStateSchema` | MultiTurnClarifier | originalQuery, turns[], intentResolved, refinedQuery |
 | `AnalystReportSchema` | ParallelDispatcher | analystId, analysis, confidence, sources, recommendations |
 | `MergedAnalysisSchema` | ParallelDispatcher | synthesis, reportCount, mergeStrategy, averageConfidence |
+| `ReviewCycleSchema` | PeerReviewModule | cycleNumber, feedback[], revisedDraft |
+| `ReviewFeedbackSchema` | PeerReviewModule | reviewerId, assessment, feedback, issues, strengths |
+| `PeerReviewStateSchema` | PeerReviewModule | currentCycle, maxCycles, accepted, acceptanceThreshold, cycles[], currentDraft |
+| `AttackSchema` | RedTeamModule | attackerId, attack, strategy, targetWeakness, round |
+| `DefenseSchema` | RedTeamModule | defenderId, defense, mitigations, confidence, round |
+| `ResilienceReportSchema` | RedTeamModule | resilienceScore, vulnerabilities, strengths, verdict, action |
+| `RedTeamStateSchema` | RedTeamModule | currentRound, maxRounds, concluded, attacks[], defenses[], resilienceReport |
+| `PanelResponseSchema` | DelphiPanelModule | panelistId, response, confidence, reasoning, round |
+| `AggregatedResultSchema` | DelphiPanelModule | mean, median, stdDev, convergenceScore, responses[] |
+| `DelphiPanelStateSchema` | DelphiPanelModule | currentRound, maxRounds, converged, convergenceThreshold, rounds[] |
 | `PendingDecisionSchema` | OutcomeMemory | id, patternId, domainId, content, entityIds, timestamp |
 | `DecisionSchema` | OutcomeMemory | pendingId, content, outcome, reflection, resolvedAt |
 | `ReflectionSchema` | OutcomeMemory | decisionId, content, lessons, confidenceAdjustment |
+| `PatternCompositionSchema` | PatternComposer | name, domain, orchestration, stages[], memory |
+| `PatternStageSchema` | PatternComposer | id, pattern, module, config |

@@ -68,7 +68,8 @@ export class DebateModule implements BaseModule<DebateConfig> {
     context: unknown,
   ): Promise<ModuleOutput> {
     const ctx = context as WorkflowContext;
-    const mergedConfig = { ...this.config, ...ConfigSchema.parse(input.config) };
+    const inputConfig = Object.keys(input.config).length > 0 ? ConfigSchema.parse(input.config) : {};
+    const mergedConfig = { ...this.config, ...inputConfig };
     const query = (input.data.query as string) ?? "";
 
     const state: DebateState = {

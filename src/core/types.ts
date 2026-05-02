@@ -199,6 +199,15 @@ export interface WorkflowData {
   outcomeResolution?: unknown;
   outcomeContext?: string;
 
+  // GMPL: Peer Review state
+  peerReviewState?: unknown;
+
+  // GMPL: Red Team state
+  redTeamState?: unknown;
+
+  // GMPL: Delphi Panel state
+  delphiPanelState?: unknown;
+
   // Escape hatch for custom data
   [key: string]: unknown;
 }

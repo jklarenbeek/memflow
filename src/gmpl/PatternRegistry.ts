@@ -138,6 +138,99 @@ function createBuiltinPatterns(): WorkflowPattern[] {
         "analysis:merged",
       ],
     },
+    {
+      id: "peer_review",
+      version: "0.5.1",
+      description:
+        "Iterative peer review cycle: submit draft → N reviewers provide feedback → " +
+        "author revises → repeat until accepted or max cycles reached.",
+      workflowRef: "src/workflows/sub/patterns/peer-review.json",
+      configSchema: z.object({
+        reviewers: z.array(
+          z.object({
+            id: z.string(),
+            persona: z.string(),
+            promptPack: z.string().optional(),
+          }),
+        ).min(1),
+        maxCycles: z.number().min(1).max(10).default(3),
+        acceptanceThreshold: z.number().min(0).max(1).default(0.7),
+        revisionModel: z.string().optional(),
+      }),
+      requiredRoles: ["critic"],
+      inputContract: z.object({
+        query: z.string(),
+      }),
+      outputContract: z.object({
+        peerReviewState: z.unknown(),
+        finalAnswer: z.string().optional(),
+      }),
+      observabilityEvents: [
+        "review:cycle_start",
+        "review:feedback_received",
+        "review:draft_revised",
+        "review:accepted",
+      ],
+    },
+    {
+      id: "red_team",
+      version: "0.5.1",
+      description:
+        "Adversarial stress-testing: red team attacks (freeform LLM, seeded by strategy) → " +
+        "blue team defends → judge evaluates resilience. Repeats until threshold met.",
+      workflowRef: "src/workflows/sub/patterns/red-team.json",
+      configSchema: z.object({
+        attackStrategies: z.array(z.string()).default(["adversarial_reframing", "edge_case_injection", "assumption_challenge"]),
+        redTeam: z.array(z.object({ id: z.string(), persona: z.string() })).min(1),
+        blueTeam: z.array(z.object({ id: z.string(), persona: z.string() })).min(1),
+        maxRounds: z.number().min(1).max(10).default(3),
+        resilienceThreshold: z.number().min(0).max(1).default(0.7),
+      }),
+      requiredRoles: ["opposing_researcher", "critic"],
+      inputContract: z.object({
+        query: z.string(),
+      }),
+      outputContract: z.object({
+        redTeamState: z.unknown(),
+        finalAnswer: z.string().optional(),
+      }),
+      observabilityEvents: [
+        "redteam:round_start",
+        "redteam:attack",
+        "redteam:defense",
+        "redteam:resilience_evaluated",
+      ],
+    },
+    {
+      id: "delphi_panel",
+      version: "0.5.1",
+      description:
+        "Delphi expert panel: anonymous polling → statistical aggregation → " +
+        "share results → re-poll → converge. Supports pluggable convergence metrics.",
+      workflowRef: "src/workflows/sub/patterns/delphi-panel.json",
+      configSchema: z.object({
+        panelSize: z.number().min(2).max(20).default(5),
+        maxRounds: z.number().min(1).max(10).default(3),
+        anonymize: z.boolean().default(true),
+        convergenceMetric: z.string().default("std_dev"),
+        convergenceThreshold: z.number().min(0).max(1).default(0.2),
+        panelists: z.array(z.object({ id: z.string(), persona: z.string(), promptPack: z.string().optional() })).optional(),
+      }),
+      requiredRoles: ["domain_analyst"],
+      inputContract: z.object({
+        query: z.string(),
+      }),
+      outputContract: z.object({
+        delphiPanelState: z.unknown(),
+        finalAnswer: z.string().optional(),
+      }),
+      observabilityEvents: [
+        "delphi:poll_start",
+        "delphi:response_received",
+        "delphi:aggregated",
+        "delphi:converged",
+      ],
+    },
   ];
 }
 

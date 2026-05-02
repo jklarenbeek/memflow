@@ -32,7 +32,7 @@ graph TD
     CTX --> EMB["Embedding Provider"]
     CTX --> LOG["Winston Logger"]
     
-    WE --> MR["ModuleRegistry (66 modules)"]
+    WE --> MR["ModuleRegistry (69 modules)"]
     WE --> EE["WorkflowEventEmitter"]
     EE --> METRICS["Prometheus Metrics"]
     EE --> SSE["SSE Endpoint"]
@@ -63,12 +63,19 @@ graph TD
         MR --> CLARIFY["MultiTurnClarifier"]
         MR --> PARALLEL["ParallelDispatcher"]
         MR --> OUTCOME["OutcomeMemory"]
-        GMPL_PR["PatternRegistry"] --> DEBATE
+        MR --> PEERREV["PeerReviewModule"]
+        MR --> REDTEAM["RedTeamModule"]
+        MR --> DELPHI["DelphiPanelModule"]
+        GMPL_PR["PatternRegistry (6 patterns)"] --> DEBATE
         GMPL_PR --> CLARIFY
         GMPL_PR --> PARALLEL
+        GMPL_PR --> PEERREV
+        GMPL_PR --> REDTEAM
+        GMPL_PR --> DELPHI
         GMPL_RR["RoleRegistry"] --> DEBATE
         GMPL_RR --> PARALLEL
         GMPL_DR["DomainRegistry"] -.-> GMPL_PR
+        GMPL_PC["PatternComposer"] -.-> GMPL_PR
     end
     
     WE -->|"learning loop"| WE
@@ -136,7 +143,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **66 built-in modules**: 7 composite wrappers (thin delegation layers), 42 atomic pipeline modules, 5 GMPL pattern modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 1 query module.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **69 built-in modules**: 7 composite wrappers (thin delegation layers), 42 atomic pipeline modules, 8 GMPL pattern modules, 3 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 1 query module.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -168,6 +175,9 @@ Meta-module that wraps any sub-workflow in an iterative diagnosis → mutation �
 | **GMPL: Structured Debate** | DebateModule → ConsensusJudge → FinalSynthesizer | `patterns/structured-debate.json` | TradingAgents |
 | **GMPL: Clarification Pipeline** | MultiTurnClarifier → QueryClarifier → WebSearch → DualSourceFusion → Generate → Validate → Cite | `patterns/clarification-pipeline.json` | PriHA + GMPL |
 | **GMPL: Parallel Analysis** | ParallelDispatcher → FinalSynthesizer | `patterns/parallel-analysis.json` | TradingAgents |
+| **GMPL: Peer Review** | PeerReviewModule → FinalSynthesizer | `patterns/peer-review.json` | GMPL |
+| **GMPL: Red Team** | RedTeamModule → FinalSynthesizer | `patterns/red-team.json` | GMPL |
+| **GMPL: Delphi Panel** | DelphiPanelModule → FinalSynthesizer | `patterns/delphi-panel.json` | GMPL |
 
 ### Key Algorithmic Behaviors
 
@@ -240,6 +250,9 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 - **:Citation** — Traceable source URLs with title, accessedAt, verified status
 - **:ModuleState** — persistent module state (workflowId, moduleKey, value JSON, updatedAt)
 - **:DebateSession** — GMPL debate sessions (id, query, rounds, verdict, convergenceScore, timestamp)
+- **:ReviewSession** — GMPL peer review sessions (id, cycles, accepted, timestamp)
+- **:RedTeamSession** — GMPL red team sessions (id, rounds, concluded, resilienceScore, verdict, timestamp)
+- **:DelphiSession** — GMPL Delphi panel sessions (id, rounds, converged, finalConvergence, timestamp)
 - **:PendingDecision** — GMPL two-phase outcome memory: unresolved decision proposals
 - **:Decision** — GMPL resolved decisions with outcome data
 - **:Reflection** — GMPL LLM-generated reflections on resolved outcomes
@@ -278,6 +291,9 @@ The `WorkflowData` interface provides typed fields for all inter-module data:
 | GMPL: Debate | `debateState`, `consensusReport` |
 | GMPL: Clarification | `clarificationState`, `userClarificationResponse` |
 | GMPL: Analysis | `analystReports`, `mergedAnalysis` |
+| GMPL: Peer Review | `peerReviewState` |
+| GMPL: Red Team | `redTeamState` |
+| GMPL: Delphi Panel | `delphiPanelState` |
 | GMPL: Outcome | `pendingDecision`, `outcomeResolution`, `outcomeContext` |
 | Telemetry | `metrics.tokenUsage`, `metrics.memgraphQueries`, `metrics.embeddingCalls` |
 | Meta | `metrics`, `[key: string]: unknown` (escape hatch) |
@@ -328,15 +344,19 @@ Each TOML file contains `[meta]` (name, version), `[config]` (temperature, max_t
 
 ## GMPL — Generic Multi-Agent Pattern Library
 
-GMPL is an extension layer that provides composable, reusable multi-agent workflow patterns. It adds three registries and five modules without modifying existing MemFlow core code.
+GMPL is an extension layer that provides composable, reusable multi-agent workflow patterns. It adds three registries, the `PatternComposer` API, and eight modules without modifying existing MemFlow core code.
 
 ### Registries
 
 | Registry | Purpose | Pre-registered |
 |---|---|---|
-| `PatternRegistry` | Composable workflow pattern definitions with Zod-validated input/output contracts | 3 patterns (Structured Debate, Clarification Pipeline, Parallel Analysis) |
+| `PatternRegistry` | Composable workflow pattern definitions with Zod-validated input/output contracts | 6 patterns (Structured Debate, Clarification Pipeline, Parallel Analysis, Peer Review, Red Team, Delphi Panel) |
 | `RoleRegistry` | Domain-agnostic agent role library with extension support | 8 roles (domain_analyst, opposing_researcher, synthesizer, risk_assessor, decision_maker, critic, clarifier, outcome_evaluator) |
 | `DomainRegistry` | Domain adapter plugins (data providers, evaluators, prompt packs, entity schemas) | None (populated at runtime) |
+
+### PatternComposer (`gmpl/PatternComposer.ts`)
+
+Programmatic API for composing multi-pattern workflows. `generateWorkflow()` accepts a `PatternComposition` schema, resolves pattern references from `PatternRegistry`, wires stages sequentially, and optionally appends an `OutcomeMemory` tail stage. Produces a valid `WorkflowConfig` JSON ready for `WorkflowEngine`.
 
 ### Pattern Modules
 
@@ -347,16 +367,22 @@ GMPL is an extension layer that provides composable, reusable multi-agent workfl
 | `MultiTurnClarifier` | Clarification Pipeline | User-facing clarification with stateful conversation history and complexity gate |
 | `ParallelDispatcher` | Parallel Analysis | Dispatches to N analyst agents in parallel with timeout and configurable merge strategies |
 | `OutcomeMemory` | Cross-pattern | Two-phase (pending → resolution) outcome memory with LLM reflections and KG persistence |
+| `PeerReviewModule` | Peer Review | Iterative review cycles with N reviewers, acceptance threshold, and LLM-powered draft revision |
+| `RedTeamModule` | Red Team | Adversarial stress-testing with freeform LLM attacks seeded by strategy strings for traceability, blue team defense, and resilience judging |
+| `DelphiPanelModule` | Delphi Expert Panel | Anonymous expert polling with pluggable convergence functions (built-in: std_dev, interquartile_range, entropy), statistical aggregation, and iterative re-polling |
 
 ### Pattern Sub-Workflows
 
-Three GMPL pattern sub-workflows in `src/workflows/sub/patterns/`:
+Six GMPL pattern sub-workflows in `src/workflows/sub/patterns/`:
 
 | File | Pipeline | Inspired By |
 |---|---|---|
 | `structured-debate.json` | DebateModule → ConsensusJudge → FinalSynthesizer | TradingAgents (arXiv:2412.20138v7) |
 | `clarification-pipeline.json` | MultiTurnClarifier → QueryClarifier → WebSearch → DualSourceFusion → Generate → Validate → Cite | PriHA + GMPL |
 | `parallel-analysis.json` | ParallelDispatcher → FinalSynthesizer | TradingAgents |
+| `peer-review.json` | PeerReviewModule → FinalSynthesizer | GMPL |
+| `red-team.json` | RedTeamModule → FinalSynthesizer | GMPL |
+| `delphi-panel.json` | DelphiPanelModule → FinalSynthesizer | GMPL |
 
 ### Prompt Packs
 
@@ -368,7 +394,12 @@ src/prompts/gmpl/
   analysis/      analyst.toml, merge.toml
   clarification/ question.toml, resolve.toml
   outcome/       reflection.toml
+  peer-review/   review.toml, revision.toml
+  red-team/      attack.toml, defense.toml, resilience.toml
+  delphi-panel/  poll.toml, aggregate.toml
 ```
+
+All GMPL TOML prompt files include a `[meta]` section with independent versioning (`version`, `pattern`, `role`).
 
 ## Workflow Versioning
 
@@ -423,15 +454,16 @@ src/
     WorkflowEngine.ts         — DAG executor with parallel, retry, learning loops, sub-workflow support
     WorkflowContext.ts         — DI container (Memgraph, LLM, Embeddings, StateStore, Logger)
     WorkflowEventEmitter.ts    — Typed event system for streaming and Prometheus metrics
-    ModuleRegistry.ts          — Lazy-loading singleton with 66 registered modules
+    ModuleRegistry.ts          — Lazy-loading singleton with 69 registered modules
     StateStore.ts              — Memgraph-backed persistent state with LRU cache
     types.ts                   — All interfaces (WorkflowData, BaseModule, StreamEvent, etc.)
     errors.ts                  — 7 typed error classes
   gmpl/
     types.ts                   — GMPL Zod schemas and TypeScript interfaces
-    PatternRegistry.ts         — Composable workflow pattern registry (3 built-in patterns)
+    PatternRegistry.ts         — Composable workflow pattern registry (6 built-in patterns)
     RoleRegistry.ts            — Agent role library (8 core roles) with extension support
     DomainRegistry.ts          — Domain adapter plugin registry
+    PatternComposer.ts         — Programmatic multi-pattern workflow generation API
     index.ts                   — Public API barrel export
     modules/
       DebateModule.ts          — Structured multi-round debate (Pattern A)
@@ -439,6 +471,9 @@ src/
       MultiTurnClarifierModule.ts — User-facing clarification (Pattern B)
       ParallelDispatcherModule.ts — Parallel analyst dispatch (Pattern C)
       OutcomeMemoryModule.ts   — Two-phase outcome memory
+      PeerReviewModule.ts      — Iterative peer review cycle (Pattern D)
+      RedTeamModule.ts         — Adversarial stress-testing (Pattern E)
+      DelphiPanelModule.ts     — Anonymous expert polling (Pattern F)
   modules/
     core/                      SubWorkflowModule, AutonomousLoopModule, AgentContextModule
     chunking/                  S2ChunkerModule, MarkdownSpatialParserModule, ParentChildChunkerModule
@@ -472,15 +507,16 @@ src/
                                hera-orchestration.json, hybrid-retrieval.json, graph-indexing.json,
                                priha-fusion.json
     sub/patterns/              structured-debate.json, clarification-pipeline.json,
-                               parallel-analysis.json
+                               parallel-analysis.json, peer-review.json,
+                               red-team.json, delphi-panel.json
     service/                   ingest.json, recall.json, search.json (REST API backing workflows)
   prompts/                     TOML prompt templates (see Prompt System section)
-    gmpl/                      debate/, analysis/, clarification/, outcome/ (GMPL prompts)
+    gmpl/                      debate/, analysis/, clarification/, outcome/, peer-review/, red-team/, delphi-panel/ (GMPL prompts)
   providers/                   LLMProvider.ts, EmbeddingProvider.ts, MemgraphClient.ts
   server/                      Hono HTTP server, metrics.ts, mcp.ts, acp.ts, api.ts
   utils/                       promptLoader.ts, similarity.ts, tokens.ts
   tests/
-    unit/                      22 unit test files (including 8 GMPL pattern tests)
+    unit/                      26 unit test files (including 12 GMPL pattern tests)
     integration/               3 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e)
     helpers/                   Shared mock factory (mocks.ts)
 ```

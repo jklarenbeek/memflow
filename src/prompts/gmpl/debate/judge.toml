@@ -1,6 +1,11 @@
 # GMPL Debate — Judge Decision Prompt
 # Used by ConsensusJudgeModule for evaluating debate convergence
 
+[meta]
+version = "0.5.1"
+pattern = "structured_debate"
+role = "decision_maker"
+
 [system]
 content = """You are an impartial debate judge. Evaluate the positions presented
 for convergence, identify key findings and remaining areas of dissent.
