@@ -73,6 +73,8 @@ describe("PriHAFusionModule", () => {
   });
 
   it("should add inline citations when missing", async () => {
+    // With enableTriage=false, QueryClarifier skips its LLM call (maxClarificationDepth=0).
+    // Only AnswerGenerator and HallucinationValidator invoke the LLM.
     const { ctx } = createMockContext({
       llm: { responses: ["Answer without any citations.", "VALID"] },
     });
@@ -122,6 +124,6 @@ describe("PriHAFusionModule", () => {
     );
 
     expect(output.data.finalAnswer).toBeDefined();
-    expect(output.metrics?.hasClarifications).toBe(1);
+    expect(output.metrics?.subQueries).toBe(1);
   });
 });

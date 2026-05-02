@@ -22,7 +22,8 @@
     {
       "id": "passthrough",
       "module": "NoveltyGate",
-      "config": { "noveltyThreshold": 1.0 }
+      "config": { "noveltyThreshold": 1.0 },
+      "next": "segment"
     },
     {
       "id": "novelty",

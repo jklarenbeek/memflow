@@ -110,6 +110,8 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
 
     let sensoryFlushed = 0;
     let ltmPromoted = 0;
+    let flushMetrics: Record<string, unknown> = {};
+    let consolMetrics: Record<string, unknown> = {};
 
     // Tier 1→2: Flush sensory to STM when buffer reaches capacity
     if (this.sensoryBuffer.length >= this.config.sensoryBufferSize) {
@@ -132,6 +134,7 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
       const processed = (result.data.memoryUnits ?? []) as MemoryUnit[];
       this.stmUnits.push(...processed);
       this.sensoryBuffer = [];
+      flushMetrics = result.metrics ?? {};
     }
 
     // Tier 2→3: Promote STM to LTM when STM reaches capacity
@@ -156,6 +159,7 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
       const consolidated = (consolResult.data.memoryUnits ?? []) as MemoryUnit[];
       this.ltm.push(...consolidated);
       ltmPromoted = consolidated.length;
+      consolMetrics = consolResult.metrics ?? {};
     }
 
     // Cap LTM
@@ -175,6 +179,8 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
         ltmUnits: this.ltm.length,
         ltmPromoted,
         totalMemories: allMemories.length,
+        ...flushMetrics,
+        ...consolMetrics,
         delegated: true,
       },
     };
@@ -186,6 +192,9 @@ export class LightMemModule implements BaseModule<LightMemConfig> {
 
   private buildStageConfigs(): Record<string, Record<string, unknown>> {
     return {
+      sensory_buffer: {
+        bufferCapacity: 1, // always flush so the full pipeline runs
+      },
       novelty: {
         noveltyThreshold: this.config.noveltyThreshold,
       },

@@ -85,8 +85,17 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
     ctx.depth++;
     try {
       const childEngine = new WorkflowEngine(workflowConfig);
-      await childEngine.initializeWithContext(ctx);
 
+      // Apply per-stage config overrides from parent (_stageConfigs) BEFORE
+      // initialization so modules are constructed with the overridden configs.
+      const stageOverrides = (input.data as Record<string, unknown>)._stageConfigs as
+        | Record<string, Record<string, unknown>>
+        | undefined;
+      if (stageOverrides) {
+        childEngine.setStageConfigOverrides(stageOverrides);
+      }
+
+      await childEngine.initializeWithContext(ctx);
       const childState = await childEngine.run(childInput);
 
       // Map child output → parent data

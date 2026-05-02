@@ -124,6 +124,7 @@ export class WorkflowEngine {
   private context?: WorkflowContext;
   private modules = new Map<string, BaseModule>();
   private initialized = false;
+  private stageConfigOverrides: Record<string, Record<string, unknown>> = {};
 
   constructor(config: WorkflowConfig) {
     try {
@@ -172,6 +173,11 @@ export class WorkflowEngine {
   // Lifecycle
   // -----------------------------------------------------------------------
 
+  /** Apply per-stage config overrides (used by SubWorkflowModule for _stageConfigs). */
+  setStageConfigOverrides(overrides: Record<string, Record<string, unknown>>): void {
+    this.stageConfigOverrides = overrides;
+  }
+
   /** Initialise context and all modules. Must be called before `run()`. */
   async initialize(globalConfigOverride?: GlobalConfig): Promise<void> {
     const globalConfig = {
@@ -187,9 +193,13 @@ export class WorkflowEngine {
 
     // Resolve and init all modules
     for (const stage of this.config.stages) {
+      const effectiveConfig = {
+        ...buildStageConfig(stage),
+        ...this.stageConfigOverrides[stage.id],
+      };
       const mod = await this.registry.getModule(
         stage.module,
-        buildStageConfig(stage),
+        effectiveConfig,
         stage.id,
       );
       if (mod.init) {
@@ -230,9 +240,13 @@ export class WorkflowEngine {
 
     // Resolve and init all modules using the shared context
     for (const stage of this.config.stages) {
+      const effectiveConfig = {
+        ...buildStageConfig(stage),
+        ...this.stageConfigOverrides[stage.id],
+      };
       const mod = await this.registry.getModule(
         stage.module,
-        buildStageConfig(stage),
+        effectiveConfig,
         stage.id,
       );
       if (mod.init) {
@@ -496,7 +510,10 @@ export class WorkflowEngine {
 
         const input: ModuleInput = {
           data: this.state.data,
-          config: buildStageConfig(stage),
+          config: {
+            ...buildStageConfig(stage),
+            ...this.stageConfigOverrides[stage.id],
+          },
         };
 
         const output: ModuleOutput = await mod.process(input, this.context!);
@@ -665,7 +682,10 @@ export class WorkflowEngine {
 
         const input: ModuleInput = {
           data: this.state.data,
-          config: stage.config as Record<string, unknown>,
+          config: {
+            ...buildStageConfig(stage),
+            ...this.stageConfigOverrides[stage.id],
+          },
         };
 
         let output: ModuleOutput;
@@ -829,15 +849,19 @@ export class WorkflowEngine {
 
     for (const stage of this.config.stages) {
       try {
+        const effectiveConfig = {
+          ...buildStageConfig(stage),
+          ...this.stageConfigOverrides[stage.id],
+        };
         const mod = await this.registry.getModule(
           stage.module,
-          buildStageConfig(stage),
+          effectiveConfig,
           `__validate__${stage.id}`,
         );
 
         // Attempt schema validation
         const schema = mod.getConfigSchema();
-        schema.parse(buildStageConfig(stage));
+        schema.parse(effectiveConfig);
       } catch (err) {
         errors.push({
           stageId: stage.id,

@@ -5,8 +5,14 @@ import type { MemoryUnit } from "../../core/types.js";
 
 describe("StructMemModule", () => {
   it("should add temporal anchoring and entities to units", async () => {
-    const { ctx } = createMockContext();
-    const mod = new StructMemModule({ persistToGraph: false });
+    const { ctx } = createMockContext({
+      llm: {
+        responses: [
+          '{"temporal": "2023-01-01T00:00:00Z", "entities": ["Hong Kong", "Primary Healthcare Blueprint"], "eventType": "policy"}',
+        ],
+      },
+    });
+    const mod = new StructMemModule({ persistToGraph: false, consolidationThreshold: 1 });
     await mod.init(ctx);
 
     const units: MemoryUnit[] = [
@@ -32,7 +38,7 @@ describe("StructMemModule", () => {
 
   it("should bind relations between similar units", async () => {
     const { ctx } = createMockContext();
-    const mod = new StructMemModule({ relationThreshold: 0.5, persistToGraph: false });
+    const mod = new StructMemModule({ relationThreshold: 0.5, persistToGraph: false, consolidationThreshold: 2 });
     await mod.init(ctx);
 
     // Two units with identical embeddings → should be linked
@@ -49,12 +55,12 @@ describe("StructMemModule", () => {
     expect(processed[0].relations).toBeDefined();
     expect(processed[0].relations!.length).toBeGreaterThan(0);
     expect(processed[0].relations![0].targetId).toBe("u2");
-    expect(output.metrics?.withRelations).toBeGreaterThan(0);
+    expect(output.metrics?.connections).toBeGreaterThan(0);
   });
 
   it("should persist to Memgraph when enabled", async () => {
     const { ctx, mocks } = createMockContext();
-    const mod = new StructMemModule({ persistToGraph: true, persistBatchSize: 10 });
+    const mod = new StructMemModule({ persistToGraph: true, persistBatchSize: 10, consolidationThreshold: 1 });
     await mod.init(ctx);
 
     const units: MemoryUnit[] = [

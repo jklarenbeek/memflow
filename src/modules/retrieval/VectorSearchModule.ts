@@ -47,10 +47,10 @@ export class VectorSearchModule implements BaseModule<VectorConfig> {
       }));
 
       ctx.logger.info(`VectorSearch: ${candidates.length} hits`);
-      return { data: { candidates: [...existing, ...candidates] }, metrics: { hits: candidates.length } };
+      return { data: { candidates: [...existing, ...candidates] }, metrics: { vectorHits: candidates.length } };
     } catch {
       ctx.logger.debug("VectorSearch: not available");
-      return { data: { candidates: existing }, metrics: { hits: 0 } };
+      return { data: { candidates: existing }, metrics: { vectorHits: 0 } };
     }
   }
 

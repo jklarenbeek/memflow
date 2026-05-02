@@ -118,6 +118,7 @@ export class CrossEventConsolidationModule implements BaseModule<CrossEventConfi
 
     // 4. Synthesize cross-event connections via LLM
     let connections = 0;
+    let useFallback = false;
     try {
       const llm = ctx.getLLM();
       const { messages } = loadAndRender("structmem/consolidation_synthesis", {
@@ -144,7 +145,12 @@ export class CrossEventConsolidationModule implements BaseModule<CrossEventConfi
           connections++;
         }
       }
+      if (connections === 0) useFallback = true;
     } catch {
+      useFallback = true;
+    }
+
+    if (useFallback) {
       // 5. Fallback: pairwise cosine binding
       connections = this.bindRelations(sorted);
     }

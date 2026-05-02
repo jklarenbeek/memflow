@@ -8,7 +8,8 @@ describe("SimpleMemModule", () => {
     const { ctx } = createMockContext({
       llm: {
         responses: [
-          '[{"content": "Healthcare in HK is prevention-focused", "type": "fact", "confidence": 0.9}]',
+          '{"distinct_facts": 3}',                              // DensityGate
+          '[{"content": "Healthcare in HK is prevention-focused", "type": "fact", "confidence": 0.9}]', // FactExtractor
         ],
       },
     });
@@ -39,18 +40,30 @@ describe("SimpleMemModule", () => {
     await mod.init(ctx);
 
     const input = buildInput({
-      chunks: [new Document({ pageContent: "Important fact about LLM agents." })],
+      chunks: [new Document({ pageContent: "Important fact about LLM agents. They use memory systems." })],
     });
 
     const output = await mod.process(input, ctx);
     expect(output.data.memoryUnits!.length).toBe(1);
-    expect(output.data.memoryUnits![0].type).toBe("summary");
-    expect(output.data.memoryUnits![0].metadata.confidence).toBe(0.7);
+    expect(output.data.memoryUnits![0].type).toBe("fact");
   });
 
   it("should synthesize highly similar memories", async () => {
-    const { ctx, mocks } = createMockContext();
-    const mod = new SimpleMemModule({ synthesisThreshold: 0.01 }); // very low threshold = everything merges
+    const { ctx, mocks } = createMockContext({
+      llm: {
+        responses: [
+          '{"distinct_facts": 3}',                              // DensityGate (window 1)
+          '[{"content":"AI agents use memory systems.","type":"fact"}]',        // FactExtractor (window 1)
+          '{"distinct_facts": 3}',                              // DensityGate (window 2)
+          '[{"content":"AI agents use memory systems for recall.","type":"fact"}]', // FactExtractor (window 2)
+          '{"distinct_facts": 3}',                              // DensityGate (window 3)
+          '[{"content":"AI agents use memory systems for long-term storage.","type":"fact"}]', // FactExtractor (window 3)
+          // SemanticSynthesis may use the next response, but with 1 fact per window
+          // there are 3 units total. Their embeddings will be similar enough at threshold 0.01.
+        ],
+      },
+    });
+    const mod = new SimpleMemModule({ synthesisThreshold: 0.01, windowSize: 1 }); // very low threshold = everything merges
     await mod.init(ctx);
 
     const input = buildInput({
@@ -64,7 +77,7 @@ describe("SimpleMemModule", () => {
     const output = await mod.process(input, ctx);
     // With threshold 0.01, almost identical chunks should be synthesized
     expect(output.data.memoryUnits!.length).toBeLessThanOrEqual(3);
-    expect(output.metrics?.synthesized).toBeDefined();
+    expect(output.metrics?.merged).toBeDefined();
   });
 
   it("should return empty for no chunks", async () => {

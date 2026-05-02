@@ -50,10 +50,10 @@ export class KeywordSearchModule implements BaseModule<KeywordConfig> {
       }));
 
       ctx.logger.info(`KeywordSearch (${this.config.searchMode}): ${candidates.length} hits`);
-      return { data: { candidates: [...existing, ...candidates] }, metrics: { hits: candidates.length, searchMode: this.config.searchMode } };
+      return { data: { candidates: [...existing, ...candidates] }, metrics: { keywordHits: candidates.length, searchMode: this.config.searchMode } };
     } catch {
       ctx.logger.debug(`KeywordSearch (${this.config.searchMode}): not available`);
-      return { data: { candidates: existing }, metrics: { hits: 0 } };
+      return { data: { candidates: existing }, metrics: { keywordHits: 0 } };
     }
   }
 

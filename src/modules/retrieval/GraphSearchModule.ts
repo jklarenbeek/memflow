@@ -153,13 +153,13 @@ export class GraphSearchModule implements BaseModule<GraphConfig> {
       return {
         data: { candidates: [...existing, ...candidates] },
         metrics: {
-          hits: candidates.length,
+          graphHits: candidates.length,
           mode: isHighLevel ? "community" : "entity",
         },
       };
     } catch (err) {
       ctx.logger.debug("GraphSearch: not available", { error: (err as Error).message });
-      return { data: { candidates: existing }, metrics: { hits: 0 } };
+      return { data: { candidates: existing }, metrics: { graphHits: 0 } };
     }
   }
 
