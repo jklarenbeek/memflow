@@ -49,7 +49,7 @@ type SimpleMemConfig = z.infer<typeof ConfigSchema>;
 
 export class SimpleMemModule implements BaseModule<SimpleMemConfig> {
   readonly name = "SimpleMem";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: SimpleMemConfig;
   private subWorkflow: SubWorkflowModule;
 

@@ -28,7 +28,7 @@ type GraphPersistConfig = z.infer<typeof ConfigSchema>;
 
 export class GraphPersistModule implements BaseModule<GraphPersistConfig> {
   readonly name = "GraphPersist";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: GraphPersistConfig;
 
   constructor(config: Record<string, unknown> = {}) {

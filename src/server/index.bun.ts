@@ -15,7 +15,7 @@ export async function startBunServer(
 
   console.log(`
 ╔══════════════════════════════════════╗
-║         MemFlow v0.4.0               ║
+║         MemFlow v0.5.0               ║
 ║  Self-Improving RAG Workflow Engine  ║
 ║  Runtime: Bun                        ║
 ╚══════════════════════════════════════╝
@@ -23,6 +23,9 @@ export async function startBunServer(
   HTTP server:  http://localhost:${port}
   Health:       http://localhost:${port}/health
   Metrics:      http://localhost:${port}/metrics
+  MCP:          POST http://localhost:${port}/mcp
+  ACP:          POST http://localhost:${port}/acp
+  REST API:     http://localhost:${port}/api/v1
   Modules:      http://localhost:${port}/modules
   Run workflow:  POST http://localhost:${port}/workflow/run
   Run (stream):  POST http://localhost:${port}/workflow/run/stream

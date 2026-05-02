@@ -23,7 +23,7 @@ type Config = z.infer<typeof ConfigSchema>;
 
 export class AnswerGeneratorModule implements StreamableModule<Config> {
   readonly name = "AnswerGenerator";
-  readonly version = "0.4.0";
+  readonly version = "0.5.0";
   private config: Config;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

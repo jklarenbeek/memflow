@@ -29,7 +29,7 @@ type ReflectorConfig = z.infer<typeof ConfigSchema>;
 
 export class ExperienceReflectorModule implements BaseModule<ReflectorConfig> {
   readonly name = "ExperienceReflector";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: ReflectorConfig;
 
   constructor(config: Record<string, unknown> = {}) {

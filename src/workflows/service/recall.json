@@ -1,0 +1,25 @@
+{
+  "name": "service-recall",
+  "version": "2.0",
+  "description": "Default recall workflow for MCP/REST. Translates query, retrieves with LightRAG, generates LLM brief.",
+  "entry": "translate",
+  "stages": [
+    {
+      "id": "translate",
+      "module": "QueryTranslator",
+      "config": { "techniques": ["hyde", "multi_query"], "useLLM": true },
+      "next": "retrieve"
+    },
+    {
+      "id": "retrieve",
+      "module": "LightRAGRetriever",
+      "config": { "topK": 8, "useGraph": true, "useVector": true, "intentAware": true },
+      "next": "generate"
+    },
+    {
+      "id": "generate",
+      "module": "AnswerGenerator",
+      "config": { "enableDualSource": true, "maxContextTokens": 7000 }
+    }
+  ]
+}

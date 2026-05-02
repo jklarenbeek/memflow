@@ -41,7 +41,7 @@ type PreCompressionConfig = z.infer<typeof ConfigSchema>;
 
 export class PreCompressionModule implements BaseModule<PreCompressionConfig> {
   readonly name = "PreCompression";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: PreCompressionConfig;
 
   constructor(config: Record<string, unknown> = {}) {

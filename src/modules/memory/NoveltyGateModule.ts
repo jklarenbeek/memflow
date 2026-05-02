@@ -32,7 +32,7 @@ type NoveltyGateConfig = z.infer<typeof ConfigSchema>;
 
 export class NoveltyGateModule implements BaseModule<NoveltyGateConfig> {
   readonly name = "NoveltyGate";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: NoveltyGateConfig;
 
   constructor(config: Record<string, unknown> = {}) {

@@ -35,7 +35,7 @@ type PlanGeneratorConfig = z.infer<typeof ConfigSchema>;
 
 export class PlanGeneratorModule implements BaseModule<PlanGeneratorConfig> {
   readonly name = "PlanGenerator";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: PlanGeneratorConfig;
 
   constructor(config: Record<string, unknown> = {}) {

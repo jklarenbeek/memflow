@@ -18,7 +18,7 @@ type MutatorConfig = z.infer<typeof ConfigSchema>;
 
 export class TopologyMutatorModule implements BaseModule<MutatorConfig> {
   readonly name = "TopologyMutator";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: MutatorConfig;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

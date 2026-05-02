@@ -160,6 +160,18 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/providers/EmbedderModule.js").then((m) => m.EmbedderModule as unknown as ModuleFactory),
   LLMProvider: () =>
     import("../modules/providers/LLMProviderModule.js").then((m) => m.LLMProviderModule as unknown as ModuleFactory),
+
+  // Phase 4: Agent abstraction
+  AgentContext: () =>
+    import("../modules/core/AgentContextModule.js").then((m) => m.AgentContextModule as unknown as ModuleFactory),
+  OutcomeLearner: () =>
+    import("../modules/memory/OutcomeLearnerModule.js").then((m) => m.OutcomeLearnerModule as unknown as ModuleFactory),
+
+  // Phase 5: Advanced memory
+  Crystallizer: () =>
+    import("../modules/memory/CrystallizerModule.js").then((m) => m.CrystallizerModule as unknown as ModuleFactory),
+  Contradiction: () =>
+    import("../modules/memory/ContradictionModule.js").then((m) => m.ContradictionModule as unknown as ModuleFactory),
 };
 
 export class ModuleRegistry {

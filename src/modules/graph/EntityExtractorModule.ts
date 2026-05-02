@@ -14,7 +14,7 @@ type Config = z.infer<typeof ConfigSchema>;
 
 export class EntityExtractorModule implements BaseModule<Config> {
   readonly name = "EntityExtractor";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: Config;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

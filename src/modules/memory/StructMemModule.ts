@@ -47,7 +47,7 @@ type StructMemConfig = z.infer<typeof ConfigSchema>;
 
 export class StructMemModule implements BaseModule<StructMemConfig> {
   readonly name = "StructMem";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: StructMemConfig;
   private subWorkflow: SubWorkflowModule;
 

@@ -47,7 +47,7 @@ interface Candidate {
 
 export class SetUnionMergerModule implements BaseModule<SetUnionConfig> {
   readonly name = "SetUnionMerger";
-  readonly version = "0.1.0";
+  readonly version = "0.5.0";
   private config: SetUnionConfig;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

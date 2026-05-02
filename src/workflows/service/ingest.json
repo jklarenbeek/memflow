@@ -1,0 +1,25 @@
+{
+  "name": "service-ingest",
+  "version": "2.0",
+  "description": "Default ingest workflow for MCP/REST memory writes. Chunks input, extracts facts, and persists to Memgraph.",
+  "entry": "chunk",
+  "stages": [
+    {
+      "id": "chunk",
+      "module": "S2Chunker",
+      "config": { "maxTokens": 512, "overlapTokens": 64 },
+      "next": "extract"
+    },
+    {
+      "id": "extract",
+      "module": "FactExtractor",
+      "config": { "maxFactsPerChunk": 8 },
+      "next": "persist"
+    },
+    {
+      "id": "persist",
+      "module": "GraphPersist",
+      "config": { "batchSize": 50, "enabled": true }
+    }
+  ]
+}

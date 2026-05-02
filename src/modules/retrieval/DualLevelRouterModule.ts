@@ -36,7 +36,7 @@ type DualLevelConfig = z.infer<typeof ConfigSchema>;
 
 export class DualLevelRouterModule implements BaseModule<DualLevelConfig> {
   readonly name = "DualLevelRouter";
-  readonly version = "0.1.0";
+  readonly version = "0.5.0";
   private config: DualLevelConfig;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

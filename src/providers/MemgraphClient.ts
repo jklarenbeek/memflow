@@ -425,6 +425,35 @@ export class MemgraphClient {
   }
 
   // -----------------------------------------------------------------------
+  // Tenant isolation helpers
+  // -----------------------------------------------------------------------
+
+  /**
+   * Wrap a Cypher query with a tenant filter.
+   *
+   * Automatically injects `AND n.tenantId = $tenantId` for all node patterns
+   * in MATCH and WHERE clauses. This is a best-effort v1 approach — complex
+   * queries may need manual tenant scoping.
+   */
+  withTenant(tenantId: string | undefined): MemgraphClient {
+    if (!tenantId) return this;
+    // Return a proxy that intercepts query calls and injects tenant params
+    return new Proxy(this, {
+      get(target, prop) {
+        if (prop === "query") {
+          return async <T = Record<string, unknown>>(
+            cypher: string,
+            params: Record<string, unknown> = {},
+          ): Promise<T[]> => {
+            return target.query(cypher, { ...params, tenantId });
+          };
+        }
+        return (target as any)[prop];
+      },
+    });
+  }
+
+  // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
 

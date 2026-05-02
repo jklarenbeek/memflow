@@ -1,0 +1,19 @@
+{
+  "name": "service-search",
+  "version": "2.0",
+  "description": "Default search workflow for MCP/REST. Translates query and retrieves raw hybrid results without LLM generation.",
+  "entry": "translate",
+  "stages": [
+    {
+      "id": "translate",
+      "module": "QueryTranslator",
+      "config": { "techniques": ["hyde", "multi_query"], "useLLM": true },
+      "next": "retrieve"
+    },
+    {
+      "id": "retrieve",
+      "module": "LightRAGRetriever",
+      "config": { "topK": 8, "useGraph": true, "useVector": true, "intentAware": true }
+    }
+  ]
+}

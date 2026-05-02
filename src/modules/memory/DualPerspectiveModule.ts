@@ -30,7 +30,7 @@ type DualPerspectiveConfig = z.infer<typeof ConfigSchema>;
 
 export class DualPerspectiveModule implements BaseModule<DualPerspectiveConfig> {
   readonly name = "DualPerspective";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: DualPerspectiveConfig;
 
   constructor(config: Record<string, unknown> = {}) {

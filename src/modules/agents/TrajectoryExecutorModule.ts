@@ -40,7 +40,7 @@ type TrajectoryConfig = z.infer<typeof ConfigSchema>;
 
 export class TrajectoryExecutorModule implements BaseModule<TrajectoryConfig> {
   readonly name = "TrajectoryExecutor";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: TrajectoryConfig;
 
   constructor(config: Record<string, unknown> = {}) {

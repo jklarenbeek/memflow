@@ -25,7 +25,7 @@ type ParserConfig = z.infer<typeof ConfigSchema>;
 
 export class MarkdownSpatialParserModule implements BaseModule<ParserConfig> {
   readonly name = "MarkdownSpatialParser";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: ParserConfig;
 
   constructor(config: Record<string, unknown> = {}) {

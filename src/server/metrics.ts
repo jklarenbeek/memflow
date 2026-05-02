@@ -84,6 +84,19 @@ interface WorkflowStartInfo {
 }
 const workflowStartInfo = new Map<string, WorkflowStartInfo>();
 
+/** Maximum age (ms) for a workflow start entry before it is considered stale. */
+const WORKFLOW_START_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/** Remove stale entries from the workflowStartInfo map to prevent slow leaks. */
+function sweepStaleEntries(): void {
+  const now = Date.now();
+  for (const [id, info] of workflowStartInfo) {
+    if (now - info.startMs > WORKFLOW_START_TTL_MS) {
+      workflowStartInfo.delete(id);
+    }
+  }
+}
+
 /**
  * Subscribe to a WorkflowEngine's event emitter and record Prometheus metrics.
  *
@@ -97,6 +110,7 @@ export function wireEngineMetrics(engine: WorkflowEngine): void {
   const ee = engine.events;
 
   ee.on("workflow:start", (event: StreamEventWorkflowStart) => {
+    sweepStaleEntries();
     workflowStartInfo.set(event.workflowId, { startMs: Date.now(), name: event.name });
     activeWorkflowsGauge.inc();
   });

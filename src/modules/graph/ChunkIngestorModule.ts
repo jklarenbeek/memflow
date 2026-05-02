@@ -16,7 +16,7 @@ type Config = z.infer<typeof ConfigSchema>;
 
 export class ChunkIngestorModule implements BaseModule<Config> {
   readonly name = "ChunkIngestor";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: Config;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

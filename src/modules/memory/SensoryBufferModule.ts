@@ -45,7 +45,7 @@ interface BufferState {
 
 export class SensoryBufferModule implements BaseModule<SensoryBufferConfig> {
   readonly name = "SensoryBuffer";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: SensoryBufferConfig;
 
   constructor(config: Record<string, unknown> = {}) {

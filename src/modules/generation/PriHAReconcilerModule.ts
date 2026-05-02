@@ -37,7 +37,7 @@ interface SourceSegment {
 
 export class PriHAReconcilerModule implements BaseModule<ReconcilerConfig> {
   readonly name = "PriHAReconciler";
-  readonly version = "0.4.0";
+  readonly version = "0.5.0";
   private config: ReconcilerConfig;
 
   constructor(config: Record<string, unknown> = {}) {

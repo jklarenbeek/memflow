@@ -42,7 +42,7 @@ type PriHAConfig = z.infer<typeof ConfigSchema>;
 
 export class PriHAFusionModule implements BaseModule<PriHAConfig> {
   readonly name = "PriHAFusion";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: PriHAConfig;
   private subWorkflow: SubWorkflowModule;
 

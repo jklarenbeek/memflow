@@ -46,7 +46,7 @@ interface SearchResult {
 
 export class WebSearchAgentModule implements BaseModule<WebSearchConfig> {
   readonly name = "WebSearchAgent";
-  readonly version = "0.4.0";
+  readonly version = "0.5.0";
   private config: WebSearchConfig;
 
   constructor(config: Record<string, unknown> = {}) {

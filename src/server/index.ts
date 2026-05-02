@@ -19,6 +19,9 @@ import type { WorkflowConfig, GlobalConfig } from "../core/types.js";
 import { clearPromptCache, validateAllPrompts } from "../utils/promptLoader.js";
 import { metricsHandler, wireEngineMetrics } from "./metrics.js";
 import { MemgraphClient } from "../providers/MemgraphClient.js";
+import { mountMCPRoutes } from "./mcp.js";
+import { createAPIRouter } from "./api.js";
+import { mountACPRoutes } from "./acp.js";
 
 export function createServer(globalConfig: GlobalConfig = {}): Hono {
   const app = new Hono();
@@ -63,7 +66,7 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
       {
         status: healthy ? "ok" : "degraded",
         service: "memflow",
-        version: "0.4.0",
+        version: "0.5.0",
         modules: registry.listModules(),
         checks,
         timestamp: new Date().toISOString(),
@@ -177,6 +180,21 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
       );
     }
   });
+
+  // -----------------------------------------------------------------------
+  // MCP Server (Model Context Protocol)
+  // -----------------------------------------------------------------------
+  mountMCPRoutes(app, globalConfig);
+
+  // -----------------------------------------------------------------------
+  // Direct REST API
+  // -----------------------------------------------------------------------
+  app.route("/api/v1", createAPIRouter(globalConfig));
+
+  // -----------------------------------------------------------------------
+  // ACP Server (Agent Client Protocol)
+  // -----------------------------------------------------------------------
+  mountACPRoutes(app, globalConfig);
 
   // -----------------------------------------------------------------------
   // Improvement #9: Streaming workflow execution via SSE

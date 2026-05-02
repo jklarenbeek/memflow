@@ -50,7 +50,7 @@ export class QueryTranslatorModule
   implements BaseModule<QueryTranslatorConfig>
 {
   readonly name = "QueryTranslator";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: QueryTranslatorConfig;
   private ctx?: WorkflowContext;
 

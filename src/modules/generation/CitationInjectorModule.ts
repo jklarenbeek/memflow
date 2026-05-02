@@ -21,7 +21,7 @@ type Config = z.infer<typeof ConfigSchema>;
 
 export class CitationInjectorModule implements BaseModule<Config> {
   readonly name = "CitationInjector";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: Config;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

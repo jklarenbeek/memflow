@@ -44,7 +44,7 @@ type CrossEventConfig = z.infer<typeof ConfigSchema>;
 
 export class CrossEventConsolidationModule implements BaseModule<CrossEventConfig> {
   readonly name = "CrossEventConsolidation";
-  readonly version = "0.4.0";
+  readonly version = "0.5.0";
   private config: CrossEventConfig;
 
   constructor(config: Record<string, unknown> = {}) {

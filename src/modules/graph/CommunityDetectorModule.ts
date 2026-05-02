@@ -68,7 +68,7 @@ interface CommunityInfo {
 
 export class CommunityDetectorModule implements BaseModule<CommunityConfig> {
   readonly name = "CommunityDetector";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: CommunityConfig;
 
   constructor(config: Record<string, unknown> = {}) {

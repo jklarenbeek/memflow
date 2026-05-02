@@ -11,7 +11,9 @@ describe("LightRAGRetrieverModule", () => {
     const output = await mod.process(buildInput({ query: "" }), ctx);
     expect(output.data.retrievalResult).toBeDefined();
     expect(output.data.retrievalResult!.chunks.length).toBe(0);
-    expect(output.metrics?.hits).toBe(0);
+    expect(output.metrics?.vectorHits).toBe(0);
+    expect(output.metrics?.graphHits).toBe(0);
+    expect(output.metrics?.keywordHits).toBe(0);
   });
 
   it("should attempt vector, graph, and keyword search", async () => {

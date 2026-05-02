@@ -1,6 +1,6 @@
-# MemFlow Module Reference (v0.4.0)
+# MemFlow Module Reference (v0.5.0)
 
-> Canonical reference for all 56 registered modules. Each module is a self-contained unit with a strict input → output fingerprint on the shared `WorkflowData` bus.
+> Canonical reference for all 59 registered modules. Each module is a self-contained unit with a strict input → output fingerprint on the shared `WorkflowData` bus.
 
 ---
 
@@ -256,7 +256,7 @@ Accumulates topic segments and promotes to LTM format when capacity is reached.
 | **Config** | `ltmMaxSize`, `softUpdateThreshold`, `updateQueueSize`, `enableOfflineQueues`, `similarityFunction` (`"cosine"` / `"euclidean"` / `"dotProduct"`, default `"cosine"`) |
 | **Version** | 0.4.0 |
 
-Parallel LLM summarization of topic segments. Per-entry update queues `Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ)` with `Promise.allSettled`. Soft-update LTM: `newTs >= existingTs` constraint. Legacy sequential mode available via `enableOfflineQueues: false`. **Configurable similarity function** via strategy pattern (Improvement #14).
+Parallel LLM summarization of topic segments. Per-entry update queues `Q(eᵢ) = Topk({eⱼ, sim(vᵢ, vⱼ)} | tⱼ ≥ tᵢ)` with `Promise.allSettled`. Soft-update LTM: `newTs >= existingTs` constraint. Legacy sequential mode available via `enableOfflineQueues: false`. **Configurable similarity function** via strategy pattern.
 
 ### 3.3 StructMem Pipeline
 
@@ -284,7 +284,7 @@ Enriches units with temporal anchoring (ISO timestamps from content) and entity 
 | **Config** | `relationThreshold`, `seedCount`, `timeWindowMs`, `seedSearchWindow`, `similarityFunction` (`"cosine"` / `"euclidean"` / `"dotProduct"`, default `"cosine"`) |
 | **Version** | 0.4.0 |
 
-Full Cbuf = Sortτ pipeline: temporally sort buffer → compute aggregated centroid query → retrieve time-bounded seed entries → LLM synthesizes cross-event connections. Fallback: pairwise similarity binding with typed relation inference. **Configurable similarity function** via strategy pattern (Improvement #14).
+Full Cbuf = Sortτ pipeline: temporally sort buffer → compute aggregated centroid query → retrieve time-bounded seed entries → LLM synthesizes cross-event connections. Fallback: pairwise similarity binding with typed relation inference. **Configurable similarity function** via strategy pattern.
 
 #### GraphPersist
 
@@ -333,6 +333,7 @@ Routes queries to low-level (entity/fact → graph traversal) vs high-level (the
 | **File** | `modules/retrieval/VectorSearchModule.ts` |
 | **Paper** | LightRAG |
 | **Input** | `query` |
+| **Metrics** | `vectorHits` |
 | **Output** | `candidates` (appended, `source="vector"`) |
 | **Config** | `topK`, `weight` |
 
@@ -346,10 +347,11 @@ Memgraph vector index cosine search on `:Chunk` embeddings.
 | **Paper** | LightRAG |
 | **Input** | `query`, `searchScope` |
 | **Output** | `candidates` (appended, `source="graph"` or `source="graph-community"`) |
+| **Metrics** | `graphHits` |
 | **Config** | `topK`, `weight`, `maxHops`, `communityScope` (bool, default false), `maxCommunitySummaries` (5) |
 | **Version** | 0.4.0 |
 
-Entity-centric graph traversal via Memgraph — matches query entities, expands neighbourhood. **Community-aware mode** (Improvement #13): when `communityScope: true` and `searchScope` is `high`/`exploratory`/`analytical`, queries `:Community` node summaries for theme-based retrieval, then retrieves member entity chunks scoped to each matching community.
+Entity-centric graph traversal via Memgraph — matches query entities, expands neighbourhood. **Community-aware mode**: when `communityScope: true` and `searchScope` is `high`/`exploratory`/`analytical`, queries `:Community` node summaries for theme-based retrieval, then retrieves member entity chunks scoped to each matching community.
 
 ### KeywordSearch
 
@@ -357,6 +359,7 @@ Entity-centric graph traversal via Memgraph — matches query entities, expands 
 |---|---|
 | **File** | `modules/retrieval/KeywordSearchModule.ts` |
 | **Paper** | LightRAG / MAGE |
+| **Metrics** | `keywordHits` |
 | **Input** | `query` |
 | **Output** | `candidates` (appended, `source="keyword"`) |
 | **Config** | `topK`, `weight`, `searchMode` (`"text_search"` or `"bm25"`), `bm25K1`, `bm25B` |
@@ -485,7 +488,7 @@ After N consecutive failures, LLM recommends structural changes (replace/augment
 | **Version** | 0.4.0 |
 | **Streaming** | ✅ `processStream()` — yields token-by-token via LangChain `.stream()` |
 
-Synthesizes accumulated agent trajectory steps into a polished, coherent answer. Fallback: returns last step result if LLM synthesis fails. **Implements `StreamableModule`** for real-time token streaming via SSE (Improvement #9).
+Synthesizes accumulated agent trajectory steps into a polished, coherent answer. Fallback: returns last step result if LLM synthesis fails. **Implements `StreamableModule`** for real-time token streaming via SSE.
 
 ---
 
@@ -580,7 +583,7 @@ Iterative query decomposition and optimization.
 | **Version** | 0.4.0 |
 | **Streaming** | ✅ `processStream()` — yields token-by-token via LangChain `.stream()` |
 
-Dual-source fusion (official guidelines + dynamic context) → LLM generation. Supports draft refinement mode when `finalAnswer` is already set. **Implements `StreamableModule`** for real-time token streaming via SSE (Improvement #9).
+Dual-source fusion (official guidelines + dynamic context) → LLM generation. Supports draft refinement mode when `finalAnswer` is already set. **Implements `StreamableModule`** for real-time token streaming via SSE.
 
 ### HallucinationValidator
 
@@ -616,7 +619,20 @@ Inline/footnote citation injection with Memgraph persistence. **Uses `batchQuery
 | **Config** | `maxResults`, `searchProvider`, `urlSafelist` |
 | **Version** | 0.1.0 |
 
-**Stub** — awaiting search API provider integration. The PriHA Reconciler (CLocal + CWeb fusion) depends on this module.
+Stub awaiting search API provider integration. The PriHAReconciler (CLocal + CWeb fusion) depends on this module.
+
+### PriHAReconciler
+
+| | |
+|---|---|
+| **File** | `modules/generation/PriHAReconcilerModule.ts` |
+| **Paper** | PriHA §3.4 |
+| **Input** | `retrievalResult`, `webContext`, `webSources` |
+| **Output** | `fusedContext`, `sources` |
+| **Config** | `localWeight` (0.6), `authorityBoost` (1.3), `stalenessPenalty` (0.05), `maxContextChars` (6000) |
+| **Version** | 0.4.0 |
+
+Dual-source reconciliation: fuses local KB context (CLocal) with web context (CWeb). Applies source priority scoring (official > academic > general web), temporal freshness weighting, and budget-gated segment ranking to produce a unified `fusedContext` string.
 
 ---
 
@@ -660,12 +676,12 @@ LangChain chat model provider (Ollama / OpenAI / OpenRouter). Direct LLM call wi
 
 ## 10 — Composite Wrappers (backward compatibility)
 
-These modules delegate all logic to their respective sub-workflows. They exist solely to preserve backward compatibility for workflows referencing the original monolithic module names.
+These modules delegate all logic to their respective sub-workflows. They exist solely to preserve backward compatibility for workflows referencing the original monolithic module names. Each wrapper constructs per-stage config overrides via `buildStageConfigs()` and passes them to the child engine through the `_stageConfigs` mechanism.
 
 | Module | Delegates To | Sub-Workflow |
 |---|---|---|
-| **SimpleMem** | 6 atomic memory modules | `simplemem-pipeline.json` |
-| **LightMem** | 6 atomic memory modules | `lightmem-pipeline.json` |
+| **SimpleMem** | 5 atomic memory modules | `simplemem-pipeline.json` |
+| **LightMem** | 7 atomic memory modules | `lightmem-pipeline.json` |
 | **StructMem** | 3 atomic memory modules | `structmem-pipeline.json` |
 | **LightRAGRetriever** | 5 atomic retrieval modules | `hybrid-retrieval.json` |
 | **HERAOrchestrator** | 7 atomic agent modules | `hera-orchestration.json` |

@@ -27,7 +27,7 @@ type KeywordConfig = z.infer<typeof ConfigSchema>;
 
 export class KeywordSearchModule implements BaseModule<KeywordConfig> {
   readonly name = "KeywordSearch";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: KeywordConfig;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

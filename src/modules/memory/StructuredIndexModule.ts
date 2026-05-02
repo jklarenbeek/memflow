@@ -32,7 +32,7 @@ type StructuredIndexConfig = z.infer<typeof ConfigSchema>;
 
 export class StructuredIndexModule implements BaseModule<StructuredIndexConfig> {
   readonly name = "StructuredIndex";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: StructuredIndexConfig;
 
   constructor(config: Record<string, unknown> = {}) {

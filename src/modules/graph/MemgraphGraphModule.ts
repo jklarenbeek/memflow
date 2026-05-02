@@ -45,7 +45,7 @@ type GraphConfig = z.infer<typeof ConfigSchema>;
 
 export class MemgraphGraphModule implements BaseModule<GraphConfig> {
   readonly name = "MemgraphGraph";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: GraphConfig;
   private subWorkflow: SubWorkflowModule;
 

@@ -41,7 +41,7 @@ type AttentionScoreConfig = z.infer<typeof ConfigSchema>;
 
 export class AttentionScoreModule implements BaseModule<AttentionScoreConfig> {
   readonly name = "AttentionScore";
-  readonly version = "0.1.0";
+  readonly version = "0.5.0";
   private config: AttentionScoreConfig;
 
   constructor(config: Record<string, unknown> = {}) {

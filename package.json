@@ -1,6 +1,6 @@
 {
   "name": "memflow",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MemFlow: Self-Improving RAG & Lifelong Memory Workflow Engine — S2 Chunking, LightRAG, SimpleMem, LightMem, StructMem, HERA, PriHA, and AutoResearchClaw",
   "type": "module",
   "main": "src/index.ts",

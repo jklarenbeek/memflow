@@ -27,7 +27,7 @@ type SlidingWindowConfig = z.infer<typeof ConfigSchema>;
 
 export class SlidingWindowModule implements BaseModule<SlidingWindowConfig> {
   readonly name = "SlidingWindow";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: SlidingWindowConfig;
 
   constructor(config: Record<string, unknown> = {}) {

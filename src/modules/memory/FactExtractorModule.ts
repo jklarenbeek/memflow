@@ -31,7 +31,7 @@ type FactExtractorConfig = z.infer<typeof ConfigSchema>;
 
 export class FactExtractorModule implements BaseModule<FactExtractorConfig> {
   readonly name = "FactExtractor";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: FactExtractorConfig;
 
   constructor(config: Record<string, unknown> = {}) {

@@ -47,7 +47,7 @@ interface SymbolicFilter {
 
 export class SymbolicSearchModule implements BaseModule<SymbolicSearchConfig> {
   readonly name = "SymbolicSearch";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: SymbolicSearchConfig;
 
   constructor(config: Record<string, unknown> = {}) {

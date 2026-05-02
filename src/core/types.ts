@@ -65,6 +65,7 @@ export interface GlobalConfig {
   tokenBudget?: number;
   logLevel?: "debug" | "info" | "warn" | "error";
   enableMetrics?: boolean;
+  tenantId?: string;
 }
 
 export interface WorkflowMeta {
@@ -176,6 +177,10 @@ export interface WorkflowData {
   evolvedRolePrompts?: Record<string, string>;
   mutatedTopology?: { addAgents: string[]; removeAgents: string[] };
   experienceLibrary?: ExperienceEntry[];
+
+  // Agent abstraction (Phase 4)
+  agentIdentity?: AgentIdentity;
+  outcomeReport?: OutcomeReport;
 
   // Escape hatch for custom data
   [key: string]: unknown;
@@ -328,6 +333,37 @@ export interface ExperienceEntry {
   insight: string;
   /** Utility score — reinforced or decayed over time */
   utility: number;
+}
+
+// ---------------------------------------------------------------------------
+// Agent Abstraction Types (Phase 4)
+// ---------------------------------------------------------------------------
+
+export interface AgentIdentity {
+  id: string;
+  name: string;
+  fleetId?: string;
+  tenantId: string;
+  trustLevel: 0 | 1 | 2 | 3;
+  retrievalProfile?: RetrievalProfile;
+  createdAt: string;
+}
+
+export interface RetrievalProfile {
+  topK: number;
+  minSimilarity: number;
+  graphMaxHops: number;
+  semanticWeight: number;
+  keywordWeight: number;
+  freshnessDecay: number;
+}
+
+export interface OutcomeReport {
+  agentId: string;
+  memoryIds: string[];
+  outcome: "success" | "failure" | "partial";
+  context: string;
+  timestamp: string;
 }
 
 // ---------------------------------------------------------------------------

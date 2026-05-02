@@ -50,7 +50,7 @@ type RetrieverConfig = z.infer<typeof ConfigSchema>;
 
 export class LightRAGRetrieverModule implements BaseModule<RetrieverConfig> {
   readonly name = "LightRAGRetriever";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: RetrieverConfig;
   private subWorkflow: SubWorkflowModule;
 
@@ -80,7 +80,7 @@ export class LightRAGRetrieverModule implements BaseModule<RetrieverConfig> {
     const query = (input.data.query as string) ?? "";
 
     if (!query.trim()) {
-      return { data: { retrievalResult: emptyResult() }, metrics: { hits: 0 } };
+      return { data: { retrievalResult: emptyResult() }, metrics: { vectorHits: 0, graphHits: 0, keywordHits: 0, finalChunks: 0, avgScore: 0 } };
     }
 
     ctx?.logger.info(

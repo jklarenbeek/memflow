@@ -1,0 +1,25 @@
+{
+  "name": "acp-default-rag",
+  "version": "2.0",
+  "description": "Default RAG workflow for ACP sessions. Query translation → hybrid retrieval → answer generation.",
+  "entry": "translate",
+  "stages": [
+    {
+      "id": "translate",
+      "module": "QueryTranslator",
+      "config": { "techniques": ["hyde", "multi_query"], "useLLM": true },
+      "next": "retrieve"
+    },
+    {
+      "id": "retrieve",
+      "module": "LightRAGRetriever",
+      "config": { "topK": 8, "useGraph": true, "useVector": true, "intentAware": true },
+      "next": "generate"
+    },
+    {
+      "id": "generate",
+      "module": "AnswerGenerator",
+      "config": { "enableDualSource": true, "maxContextTokens": 7000 }
+    }
+  ]
+}

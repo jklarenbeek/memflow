@@ -32,7 +32,7 @@ type GraphConfig = z.infer<typeof ConfigSchema>;
 
 export class GraphSearchModule implements BaseModule<GraphConfig> {
   readonly name = "GraphSearch";
-  readonly version = "0.4.0";
+  readonly version = "0.5.0";
   private config: GraphConfig;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

@@ -52,7 +52,7 @@ interface ChunkRelation {
 
 export class ParentChildChunkerModule implements BaseModule<ParentChildConfig> {
   readonly name = "ParentChildChunker";
-  readonly version = "0.1.0";
+  readonly version = "0.5.0";
   private config: ParentChildConfig;
 
   constructor(config: Record<string, unknown> = {}) {

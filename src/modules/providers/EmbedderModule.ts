@@ -23,7 +23,7 @@ type EmbedderConfig = z.infer<typeof ConfigSchema>;
 
 export class EmbedderModule implements BaseModule<EmbedderConfig> {
   readonly name = "Embedder";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: EmbedderConfig;
 
   constructor(config: Record<string, unknown> = {}) {

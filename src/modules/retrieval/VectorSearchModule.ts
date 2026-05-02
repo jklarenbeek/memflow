@@ -19,7 +19,7 @@ type VectorConfig = z.infer<typeof ConfigSchema>;
 
 export class VectorSearchModule implements BaseModule<VectorConfig> {
   readonly name = "VectorSearch";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: VectorConfig;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

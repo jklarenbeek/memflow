@@ -42,7 +42,7 @@ type SleepConsolidationConfig = z.infer<typeof ConfigSchema>;
 
 export class SleepConsolidationModule implements BaseModule<SleepConsolidationConfig> {
   readonly name = "SleepConsolidation";
-  readonly version = "0.4.0";
+  readonly version = "0.5.0";
   private config: SleepConsolidationConfig;
 
   constructor(config: Record<string, unknown> = {}) {

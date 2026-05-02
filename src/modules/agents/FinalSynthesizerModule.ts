@@ -28,7 +28,7 @@ type FinalSynthesizerConfig = z.infer<typeof ConfigSchema>;
 
 export class FinalSynthesizerModule implements StreamableModule<FinalSynthesizerConfig> {
   readonly name = "FinalSynthesizer";
-  readonly version = "0.4.0";
+  readonly version = "0.5.0";
   private config: FinalSynthesizerConfig;
 
   constructor(config: Record<string, unknown> = {}) {

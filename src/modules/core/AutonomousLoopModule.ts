@@ -54,7 +54,7 @@ type AutonomousLoopConfig = z.infer<typeof ConfigSchema>;
 
 export class AutonomousLoopModule implements BaseModule<AutonomousLoopConfig> {
   readonly name = "AutonomousLoop";
-  readonly version = "0.1.0";
+  readonly version = "0.5.0";
   private config: AutonomousLoopConfig;
 
   constructor(config: Record<string, unknown> = {}) {

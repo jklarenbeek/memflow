@@ -15,7 +15,7 @@ type Entity = { name: string; type: string; description: string };
 
 export class EntityProfilerModule implements BaseModule<Config> {
   readonly name = "EntityProfiler";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: Config;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

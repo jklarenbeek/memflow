@@ -15,7 +15,7 @@ type IntentConfig = z.infer<typeof ConfigSchema>;
 
 export class IntentClassifierModule implements BaseModule<IntentConfig> {
   readonly name = "IntentClassifier";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: IntentConfig;
   constructor(config: Record<string, unknown> = {}) { this.config = ConfigSchema.parse(config); }
 

@@ -31,7 +31,7 @@ type DensityGateConfig = z.infer<typeof ConfigSchema>;
 
 export class DensityGateModule implements BaseModule<DensityGateConfig> {
   readonly name = "DensityGate";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: DensityGateConfig;
 
   constructor(config: Record<string, unknown> = {}) {

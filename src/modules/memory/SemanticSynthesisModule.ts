@@ -41,7 +41,7 @@ type SemanticSynthesisConfig = z.infer<typeof ConfigSchema>;
 
 export class SemanticSynthesisModule implements BaseModule<SemanticSynthesisConfig> {
   readonly name = "SemanticSynthesis";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: SemanticSynthesisConfig;
 
   constructor(config: Record<string, unknown> = {}) {

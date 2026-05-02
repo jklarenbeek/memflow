@@ -496,6 +496,8 @@ export class WorkflowEngine {
     const mod = this.modules.get(stage.id);
     if (!mod) return;
 
+    this.state.currentStage = stage.id;
+
     const maxAttempts = (stage.retry ?? 0) + 1;
     const baseDelay = stage.retryDelayMs ?? 1000;
     let lastError: Error | undefined;
@@ -650,6 +652,8 @@ export class WorkflowEngine {
   ): AsyncGenerator<StreamEvent, void, undefined> {
     const mod = this.modules.get(stage.id);
     if (!mod) return;
+
+    this.state.currentStage = stage.id;
 
     const maxAttempts = (stage.retry ?? 0) + 1;
     const baseDelay = stage.retryDelayMs ?? 1000;

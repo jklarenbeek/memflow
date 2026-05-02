@@ -39,7 +39,7 @@ type IntentAwarePlannerConfig = z.infer<typeof ConfigSchema>;
 
 export class IntentAwarePlannerModule implements BaseModule<IntentAwarePlannerConfig> {
   readonly name = "IntentAwarePlanner";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: IntentAwarePlannerConfig;
 
   constructor(config: Record<string, unknown> = {}) {

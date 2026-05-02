@@ -39,6 +39,7 @@ services:
     image: grafana/grafana:latest
     container_name: memflow-grafana
     volumes:
+      - ./grafana/dashboard.json:/var/lib/grafana/dashboards/memflow.json:ro
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
     ports:

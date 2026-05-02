@@ -35,7 +35,7 @@ type RewardConfig = z.infer<typeof ConfigSchema>;
 
 export class RewardComputerModule implements BaseModule<RewardConfig> {
   readonly name = "RewardComputer";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: RewardConfig;
 
   constructor(config: Record<string, unknown> = {}) {

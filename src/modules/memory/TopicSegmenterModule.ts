@@ -36,7 +36,7 @@ type TopicSegmenterConfig = z.infer<typeof ConfigSchema>;
 
 export class TopicSegmenterModule implements BaseModule<TopicSegmenterConfig> {
   readonly name = "TopicSegmenter";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: TopicSegmenterConfig;
 
   constructor(config: Record<string, unknown> = {}) {

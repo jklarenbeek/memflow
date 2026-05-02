@@ -44,7 +44,7 @@ interface STMState {
 
 export class STMBufferModule implements BaseModule<STMBufferConfig> {
   readonly name = "STMBuffer";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: STMBufferConfig;
 
   constructor(config: Record<string, unknown> = {}) {

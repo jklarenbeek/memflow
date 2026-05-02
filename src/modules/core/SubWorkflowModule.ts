@@ -48,7 +48,7 @@ type SubWorkflowConfig = z.input<typeof ConfigSchema>;
 
 export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
   readonly name = "SubWorkflow";
-  readonly version = "0.2.0";
+  readonly version = "0.5.0";
   private config: SubWorkflowConfig;
 
   constructor(config: Record<string, unknown> = {}) {

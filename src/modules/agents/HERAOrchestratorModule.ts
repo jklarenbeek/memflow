@@ -72,7 +72,7 @@ type HERAConfig = z.infer<typeof ConfigSchema>;
 
 export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
   readonly name = "HERAOrchestrator";
-  readonly version = "0.3.0";
+  readonly version = "0.5.0";
   private config: HERAConfig;
   private subWorkflow: SubWorkflowModule;
 
