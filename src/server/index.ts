@@ -17,6 +17,8 @@ import { WorkflowEngine } from "../core/WorkflowEngine.js";
 import { ModuleRegistry } from "../core/ModuleRegistry.js";
 import type { WorkflowConfig, GlobalConfig } from "../core/types.js";
 import { clearPromptCache, validateAllPrompts } from "../utils/promptLoader.js";
+import { metricsHandler, wireEngineMetrics } from "./metrics.js";
+import { MemgraphClient } from "../providers/MemgraphClient.js";
 
 export function createServer(globalConfig: GlobalConfig = {}): Hono {
   const app = new Hono();
@@ -25,17 +27,55 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
   app.use("/*", cors());
 
   // Health check
-  app.get("/health", (c) =>
-    c.json({
-      status: "ok",
-      service: "memflow",
-      version: "0.4.0",
-      modules: registry.listModules(),
-      timestamp: new Date().toISOString(),
-    }),
-  );
+  app.get("/health", async (c) => {
+    // Lightweight dependency checks
+    const checks: Record<string, string> = {};
+
+    // Memgraph
+    try {
+      const mgUri = globalConfig.memgraphUri ?? process.env.MEMGRAPH_URI ?? "bolt://localhost:7687";
+      const mgUser = globalConfig.memgraphUser ?? process.env.MEMGRAPH_USER ?? "memgraph";
+      const mgPass = globalConfig.memgraphPassword ?? process.env.MEMGRAPH_PASSWORD ?? "memgraph";
+      const dummyLogger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+      const mg = new MemgraphClient({ uri: mgUri, user: mgUser, password: mgPass }, dummyLogger as any);
+      await mg.query("RETURN 1 AS n");
+      checks.memgraph = "connected";
+      await mg.close();
+    } catch {
+      checks.memgraph = "disconnected";
+    }
+
+    // Tavily API key
+    checks.tavily = process.env.TAVILY_API_KEY ? "configured" : "missing";
+
+    // Ollama reachability
+    try {
+      const ollamaUrl = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+      const res = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
+      checks.ollama = res.ok ? "reachable" : "unreachable";
+    } catch {
+      checks.ollama = "unreachable";
+    }
+
+    const healthy = checks.memgraph === "connected";
+
+    return c.json(
+      {
+        status: healthy ? "ok" : "degraded",
+        service: "memflow",
+        version: "0.4.0",
+        modules: registry.listModules(),
+        checks,
+        timestamp: new Date().toISOString(),
+      },
+      healthy ? 200 : 503,
+    );
+  });
 
   // List modules
+  // Prometheus metrics endpoint
+  app.get("/metrics", metricsHandler);
+
   app.get("/modules", (c) =>
     c.json({
       modules: registry.listModules(),
@@ -85,6 +125,10 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
 
       const engine = new WorkflowEngine(body.workflow);
       await engine.initialize(globalConfig);
+
+      if (globalConfig.enableMetrics !== false) {
+        wireEngineMetrics(engine);
+      }
 
       try {
         const state = await engine.run(body.input ?? {});
@@ -167,6 +211,10 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
       try {
         engine = new WorkflowEngine(body.workflow);
         await engine.initialize(globalConfig);
+
+        if (globalConfig.enableMetrics !== false) {
+          wireEngineMetrics(engine);
+        }
 
         // Create an AbortController for client disconnect handling
         const abortController = new AbortController();

@@ -1,0 +1,55 @@
+# docker-compose.observability.yml — Prometheus + Grafana sidecar for MemFlow
+#
+# Usage:
+#   docker compose -f docker/docker-compose.observability.yml up -d
+#
+# Then open:
+#   - Prometheus: http://localhost:9090
+#   - Grafana:    http://localhost:3001 (login: admin / admin)
+#
+# This stack scrapes the MemFlow /metrics endpoint at http://host.docker.internal:3000/metrics
+# (assumes MemFlow is running locally on port 3000).
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  observability:
+    driver: bridge
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: memflow-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: memflow-grafana
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    networks:
+      - observability
+    restart: unless-stopped
+    depends_on:
+      - prometheus

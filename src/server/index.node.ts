@@ -23,6 +23,7 @@ export async function startNodeServer(
 
   HTTP server:  http://localhost:${port}
   Health:       http://localhost:${port}/health
+  Metrics:      http://localhost:${port}/metrics
   Modules:      http://localhost:${port}/modules
   Run workflow:  POST http://localhost:${port}/workflow/run
   Run (stream):  POST http://localhost:${port}/workflow/run/stream

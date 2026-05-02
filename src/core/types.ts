@@ -64,6 +64,7 @@ export interface GlobalConfig {
   maxConcurrency?: number;
   tokenBudget?: number;
   logLevel?: "debug" | "info" | "warn" | "error";
+  enableMetrics?: boolean;
 }
 
 export interface WorkflowMeta {
