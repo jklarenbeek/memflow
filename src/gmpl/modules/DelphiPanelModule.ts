@@ -13,6 +13,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { emitPatternEvent } from "../emitPatternEvent.js";
 import {
   PanelResponseSchema,
   AggregatedResultSchema,
@@ -136,6 +137,12 @@ export class DelphiPanelModule implements BaseModule<Config> {
       state.currentRound = round;
       ctx.logger.info(`DelphiPanelModule: Round ${round}/${mergedConfig.maxRounds}`);
 
+      // Emit poll start event
+      emitPatternEvent(context, "delphi_panel", "delphi:poll_start", this.name, {
+        round,
+        panelSize: panelists.length,
+      });
+
       // Previous round context (anonymized if configured)
       const prevContext = state.rounds.length > 0
         ? this.buildPreviousRoundContext(state.rounds[state.rounds.length - 1], mergedConfig.anonymize)
@@ -146,6 +153,13 @@ export class DelphiPanelModule implements BaseModule<Config> {
       for (const panelist of panelists) {
         const resp = await this.pollPanelist(ctx, question, panelist, round, prevContext, mergedConfig.anonymize);
         responses.push(resp);
+
+        // Emit response event
+        emitPatternEvent(context, "delphi_panel", "delphi:response", this.name, {
+          panelistId: resp.panelistId,
+          confidence: resp.confidence,
+          round,
+        });
       }
 
       // Aggregate
@@ -162,6 +176,14 @@ export class DelphiPanelModule implements BaseModule<Config> {
         state.converged = true;
         state.finalAggregation = aggregated;
         ctx.logger.info(`DelphiPanelModule: Converged at round ${round}`);
+
+        // Emit converged event
+        emitPatternEvent(context, "delphi_panel", "delphi:converged", this.name, {
+          round,
+          convergenceScore: aggregated.convergenceScore,
+          metric: mergedConfig.convergenceMetric,
+        });
+
         break;
       }
     }

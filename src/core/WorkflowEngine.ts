@@ -186,6 +186,7 @@ export class WorkflowEngine {
     };
 
     this.context = await WorkflowContext.create(globalConfig);
+    this.context.eventEmitter = this.emitter;
 
     // Improvement #11: Validate all module configs before execution begins.
     // This surfaces config errors at startup instead of mid-pipeline.
@@ -234,6 +235,7 @@ export class WorkflowEngine {
    */
   async initializeWithContext(parentContext: WorkflowContext): Promise<void> {
     this.context = parentContext;
+    this.context.eventEmitter = this.emitter;
 
     // Improvement #11: Validate all module configs before execution begins.
     await this.validateModuleConfigs();

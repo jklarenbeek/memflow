@@ -19,6 +19,8 @@ function makeEvent(type: StreamEvent["type"], overrides: Partial<StreamEvent> = 
       return { type, workflowId: "w1", totalDurationMs: 1, ...base } as StreamEvent;
     case "workflow:error":
       return { type, workflowId: "w1", error: "err", ...base } as StreamEvent;
+    case "pattern:event":
+      return { type, patternId: "test", eventName: "test:event", stageId: "s1", payload: {}, ...base } as StreamEvent;
   }
 }
 

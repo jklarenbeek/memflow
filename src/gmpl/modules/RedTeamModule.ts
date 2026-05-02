@@ -14,6 +14,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { emitPatternEvent } from "../emitPatternEvent.js";
 import {
   AttackSchema,
   DefenseSchema,
@@ -85,6 +86,13 @@ export class RedTeamModule implements BaseModule<Config> {
         const attack = await this.generateAttack(ctx, proposal, attacker, strategy, round, state.defenses);
         roundAttacks.push(attack);
         state.attacks.push(attack);
+
+        // Emit attack event
+        emitPatternEvent(context, "red_team", "redteam:attack", this.name, {
+          attackerId: attacker.id,
+          strategy,
+          round,
+        });
       }
 
       // Blue team defends
@@ -93,6 +101,13 @@ export class RedTeamModule implements BaseModule<Config> {
         const defense = await this.generateDefense(ctx, proposal, defender, roundAttacks, round);
         roundDefenses.push(defense);
         state.defenses.push(defense);
+
+        // Emit defense event
+        emitPatternEvent(context, "red_team", "redteam:defense", this.name, {
+          defenderId: defender.id,
+          confidence: defense.confidence,
+          round,
+        });
       }
 
       // Judge evaluates
@@ -100,6 +115,14 @@ export class RedTeamModule implements BaseModule<Config> {
       if (report && report.resilienceScore >= mergedConfig.resilienceThreshold) {
         state.concluded = true;
         state.resilienceReport = report;
+
+        // Emit resilience judged event
+        emitPatternEvent(context, "red_team", "redteam:resilience_judged", this.name, {
+          resilienceScore: report.resilienceScore,
+          action: report.action,
+          round,
+        });
+
         ctx.logger.info(`RedTeamModule: Concluded at round ${round} — resilience ${report.resilienceScore.toFixed(2)}`);
         break;
       }

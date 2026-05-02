@@ -11,6 +11,7 @@
 import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { emitPatternEvent } from "../emitPatternEvent.js";
 import { AnalystReportSchema, MergedAnalysisSchema, type AnalystReport, type MergedAnalysis } from "../types.js";
 
 const AnalystConfigSchema = z.object({
@@ -52,6 +53,12 @@ export class ParallelDispatcherModule implements BaseModule<Config> {
       this.runAnalyst(ctx, query, analyst, timeoutMs),
     );
 
+    // Emit dispatched event
+    emitPatternEvent(context, "parallel_analysis", "analysis:dispatched", this.name, {
+      analysts: mergedConfig.analysts.map((a) => a.id),
+      timeout: mergedConfig.timeout,
+    });
+
     const results = await Promise.allSettled(reportPromises);
 
     const reports: AnalystReport[] = [];
@@ -59,6 +66,10 @@ export class ParallelDispatcherModule implements BaseModule<Config> {
       const result = results[i];
       if (result.status === "fulfilled") {
         reports.push(result.value);
+        emitPatternEvent(context, "parallel_analysis", "analysis:report_received", this.name, {
+          analystId: result.value.analystId,
+          confidence: result.value.confidence,
+        });
       } else {
         ctx.logger.warn(`ParallelDispatcher: Analyst ${mergedConfig.analysts[i].id} failed: ${result.reason}`);
       }
@@ -75,6 +86,13 @@ export class ParallelDispatcherModule implements BaseModule<Config> {
     const merged = await this.mergeReports(ctx, reports, mergedConfig.mergeStrategy);
 
     ctx.logger.info(`ParallelDispatcher: Merged ${reports.length} reports via ${mergedConfig.mergeStrategy}`);
+
+    // Emit merged event
+    emitPatternEvent(context, "parallel_analysis", "analysis:merged", this.name, {
+      reportCount: reports.length,
+      mergeStrategy: mergedConfig.mergeStrategy,
+      averageConfidence: merged.averageConfidence,
+    });
 
     return {
       data: {

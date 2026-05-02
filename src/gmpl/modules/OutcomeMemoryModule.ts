@@ -14,6 +14,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { emitPatternEvent } from "../emitPatternEvent.js";
 import type { PendingDecision, OutcomeResult } from "../types.js";
 
 const ConfigSchema = z.object({
@@ -66,6 +67,13 @@ export class OutcomeMemoryModule implements BaseModule<Config> {
     // Mode 1: Log a pending proposal
     if (pendingData) {
       await this.logPendingProposal(ctx, pendingData);
+
+      // Emit pending logged event
+      emitPatternEvent(context, "outcome_memory", "memory:pending_logged", this.name, {
+        pendingId: pendingData.id,
+        patternId: pendingData.patternId,
+      });
+
       return {
         data: { pendingDecision: pendingData },
         metrics: { mode: "log_pending", pendingId: pendingData.id },
@@ -75,6 +83,13 @@ export class OutcomeMemoryModule implements BaseModule<Config> {
     // Mode 2: Resolve with outcome
     if (outcomeData) {
       const reflection = await this.resolveWithOutcome(ctx, outcomeData.pendingId, outcomeData.result);
+
+      // Emit resolved event
+      emitPatternEvent(context, "outcome_memory", "memory:resolved", this.name, {
+        pendingId: outcomeData.pendingId,
+        outcome: outcomeData.result.outcome,
+      });
+
       return {
         data: { outcomeResolution: { pendingId: outcomeData.pendingId, reflection } },
         metrics: { mode: "resolve", pendingId: outcomeData.pendingId },
@@ -84,6 +99,12 @@ export class OutcomeMemoryModule implements BaseModule<Config> {
     // Mode 3: Get augmented context
     if (wantsContext) {
       const augmentedContext = await this.getOutcomeAugmentedContext(ctx);
+
+      // Emit context injected event
+      emitPatternEvent(context, "outcome_memory", "memory:context_injected", this.name, {
+        decisionCount: augmentedContext.split("---").length,
+      });
+
       return {
         data: { outcomeContext: augmentedContext },
         metrics: { mode: "inject", contextLength: augmentedContext.length },

@@ -12,6 +12,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { emitPatternEvent } from "../emitPatternEvent.js";
 import {
   ReviewFeedbackSchema,
   PeerReviewStateSchema,
@@ -76,11 +77,25 @@ export class PeerReviewModule implements BaseModule<Config> {
 
       ctx.logger.info(`PeerReviewModule: Cycle ${cycle}/${mergedConfig.maxCycles}`);
 
+      // Emit cycle start event
+      emitPatternEvent(context, "peer_review", "review:cycle_start", this.name, {
+        cycle,
+        maxCycles: mergedConfig.maxCycles,
+        reviewerCount: mergedConfig.reviewers.length,
+      });
+
       // Collect feedback from all reviewers
       const feedback: ReviewFeedback[] = [];
       for (const reviewer of mergedConfig.reviewers) {
         const fb = await this.getReviewerFeedback(ctx, state.draft, reviewer, cycle);
         feedback.push(fb);
+
+        // Emit assessment event
+        emitPatternEvent(context, "peer_review", "review:assessment", this.name, {
+          reviewerId: reviewer.id,
+          assessment: fb.assessment,
+          cycle,
+        });
       }
 
       const reviewCycle: ReviewCycle = {
@@ -108,6 +123,12 @@ export class PeerReviewModule implements BaseModule<Config> {
       if (cycle < mergedConfig.maxCycles) {
         state.draft = await this.reviseDraft(ctx, state.draft, feedback, mergedConfig);
         ctx.logger.info(`PeerReviewModule: Draft revised for cycle ${cycle + 1}`);
+
+        // Emit revision event
+        emitPatternEvent(context, "peer_review", "review:revision", this.name, {
+          cycle,
+          accepted: false,
+        });
       }
     }
 

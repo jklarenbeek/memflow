@@ -13,6 +13,9 @@ export { DomainRegistry } from "./DomainRegistry.js";
 // Pattern composer
 export { generateWorkflow } from "./PatternComposer.js";
 
+// Pattern event utility
+export { emitPatternEvent } from "./emitPatternEvent.js";
+
 // Error types
 export {
   GmplError,

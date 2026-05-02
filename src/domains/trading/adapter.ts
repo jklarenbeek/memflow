@@ -307,53 +307,71 @@ async function seedKnowledge(): Promise<KGSeed> {
 // Adapter export
 // ---------------------------------------------------------------------------
 
+import { createProviders, type ProviderCacheConfig } from "./providers.js";
+
 /**
- * Trading domain adapter — register via DomainRegistry.
+ * Create a trading domain adapter with pluggable data providers.
+ *
+ * When API keys are available (`ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`),
+ * uses live API integrations with TTL caching. Falls back to stub data
+ * when keys are missing — no runtime errors for optional configuration.
  *
  * ```typescript
  * import { DomainRegistry } from '@memflow/gmpl';
- * import { tradingAdapter } from './domains/trading/adapter.js';
- * DomainRegistry.getInstance().register(tradingAdapter);
+ * import { createTradingAdapter } from './domains/trading/adapter.js';
+ * DomainRegistry.getInstance().register(createTradingAdapter());
  * ```
  */
-export const tradingAdapter: DomainAdapter = {
-  id: "trading",
-  version: "0.5.1",
+export function createTradingAdapter(cacheConfig?: ProviderCacheConfig): DomainAdapter {
+  const resolved = createProviders(cacheConfig);
 
-  dataProviders: {
-    getMarketData: getMarketData as DataProviderFn,
-    getEarningsReport: getEarningsReport as DataProviderFn,
-    getSentiment: getSentiment as DataProviderFn,
-    getTechnicalIndicators: getTechnicalIndicators as DataProviderFn,
-  },
+  return {
+    id: "trading",
+    version: "0.5.1",
 
-  entitySchemas: [
-    TickerSchema,
-    SectorSchema,
-    EarningsReportSchema,
-    TechnicalIndicatorSchema,
-    MarketDataSchema,
-    SentimentDataSchema,
-    NewsEventSchema,
-  ],
+    dataProviders: {
+      getMarketData: resolved.getMarketData as DataProviderFn,
+      getEarningsReport: resolved.getEarningsReport as DataProviderFn,
+      getSentiment: resolved.getSentiment as DataProviderFn,
+      getTechnicalIndicators: resolved.getTechnicalIndicators as DataProviderFn,
+    },
 
-  outcomeEvaluator,
-  metricsCalculator,
+    entitySchemas: [
+      TickerSchema,
+      SectorSchema,
+      EarningsReportSchema,
+      TechnicalIndicatorSchema,
+      MarketDataSchema,
+      SentimentDataSchema,
+      NewsEventSchema,
+    ],
 
-  promptPacks: {
-    fundamentals: { path: "trading/fundamentals", version: "0.5.1" },
-    technical: { path: "trading/technical", version: "0.5.1" },
-    sentiment: { path: "trading/sentiment", version: "0.5.1" },
-    debate: { path: "trading/debate", version: "0.5.1" },
-    research: { path: "trading/research", version: "0.5.1" },
-  },
+    outcomeEvaluator,
+    metricsCalculator,
 
-  seedKnowledge,
+    promptPacks: {
+      fundamentals: { path: "trading/fundamentals", version: "0.5.1" },
+      technical: { path: "trading/technical", version: "0.5.1" },
+      sentiment: { path: "trading/sentiment", version: "0.5.1" },
+      debate: { path: "trading/debate", version: "0.5.1" },
+      research: { path: "trading/research", version: "0.5.1" },
+    },
 
-  customMetrics: {
-    sharpeRatio: "gauge",
-    maxDrawdown: "gauge",
-    winRate: "gauge",
-    totalDecisions: "counter",
-  },
-};
+    seedKnowledge,
+
+    customMetrics: {
+      sharpeRatio: "gauge",
+      maxDrawdown: "gauge",
+      winRate: "gauge",
+      totalDecisions: "counter",
+    },
+  };
+}
+
+/**
+ * Default trading adapter instance (backward-compatible export).
+ *
+ * Uses live providers when API keys are set, stubs otherwise.
+ */
+export const tradingAdapter: DomainAdapter = createTradingAdapter();
+

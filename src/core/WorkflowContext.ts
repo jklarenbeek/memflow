@@ -27,6 +27,7 @@ import { MemgraphClient, type Logger } from "../providers/MemgraphClient.js";
 import { createLLM } from "../providers/LLMProvider.js";
 import { createEmbeddings } from "../providers/EmbeddingProvider.js";
 import { validateAllPrompts, startPromptWatcher } from "../utils/promptLoader.js";
+import type { WorkflowEventEmitter } from "./WorkflowEventEmitter.js";
 
 // ---------------------------------------------------------------------------
 // Trace entry for observability
@@ -50,6 +51,15 @@ export class WorkflowContext {
   readonly memgraph: MemgraphClient;
   readonly trace: TraceEntry[] = [];
   readonly globalConfig: GlobalConfig;
+
+  /**
+   * Event emitter for streaming pattern events.
+   *
+   * Injected by WorkflowEngine during initialize() / initializeWithContext().
+   * Pattern modules use this (via `emitPatternEvent()` utility) instead of
+   * duck-typed access. `undefined` in non-streaming or test contexts.
+   */
+  eventEmitter?: WorkflowEventEmitter;
 
   /** Sub-workflow recursion depth tracker (per workflow tree) */
   depth = 0;

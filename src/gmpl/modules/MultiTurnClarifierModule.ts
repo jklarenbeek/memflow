@@ -12,6 +12,7 @@
 import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { emitPatternEvent } from "../emitPatternEvent.js";
 import { ClarificationStateSchema, type ClarificationState } from "../types.js";
 
 const ConfigSchema = z.object({
@@ -67,6 +68,13 @@ export class MultiTurnClarifierModule implements BaseModule<Config> {
         state.refinedQuery = resolution.refinedQuery;
         state.detectedIntent = resolution.intent;
         state.expandedQueries = resolution.subQueries;
+
+        // Emit resolved event
+        emitPatternEvent(context, "clarification_pipeline", "clarification:resolved", this.name, {
+          turns: state.currentTurn,
+          refinedQuery: resolution.refinedQuery,
+        });
+
         return {
           data: {
             clarificationState: state,
@@ -99,6 +107,12 @@ export class MultiTurnClarifierModule implements BaseModule<Config> {
     });
 
     ctx.logger.info(`MultiTurnClarifier: Generated ${questions.length} questions (turn ${state.currentTurn})`);
+
+    // Emit question event
+    emitPatternEvent(context, "clarification_pipeline", "clarification:question", this.name, {
+      turn: state.currentTurn,
+      questionCount: questions.length,
+    });
 
     return {
       data: {
