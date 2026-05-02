@@ -1,8 +1,9 @@
 # GMPL — Generic Multi-Agent Pattern Library
 
 > **Inspired by**: TradingAgents (arXiv:2412.20138v7), PriHA, HERA  
-> **Package**: `src/gmpl/` — public API via `import { PatternRegistry, RoleRegistry, DomainRegistry, generateWorkflow } from './gmpl/index.js'`  
-> **Sub-Workflows**: `src/workflows/sub/patterns/` — structured-debate.json, clarification-pipeline.json, parallel-analysis.json, peer-review.json, red-team.json, delphi-panel.json
+> **Package**: `src/gmpl/` — public API via `import { PatternRegistry, RoleRegistry, DomainRegistry, generateWorkflow, GmplError } from './gmpl/index.js'`  
+> **Sub-Workflows**: `src/workflows/sub/patterns/` — structured-debate.json, clarification-pipeline.json, parallel-analysis.json, peer-review.json, red-team.json, delphi-panel.json  
+> **Domain Example**: `src/domains/trading/` — reference `DomainAdapter` implementation
 
 GMPL is a composable extension layer that provides reusable multi-agent workflow patterns. Instead of implementing domain-specific orchestration logic directly, GMPL defines generic pattern templates (debate, clarification, analysis, peer review, red team, Delphi panel) that can be specialized per domain through the `DomainRegistry` adapter plugin system and composed programmatically via the `PatternComposer` API.
 
@@ -26,11 +27,20 @@ Singleton registry for composable workflow pattern definitions. Each pattern has
 
 Library of domain-agnostic agent roles. Supports **role extension** — domain-specific roles inherit from base roles and override fields.
 
-**Pre-registered roles**: `domain_analyst`, `opposing_researcher`, `synthesizer`, `risk_assessor`, `decision_maker`, `critic`, `clarifier`, `outcome_evaluator`
+**Pre-registered roles** (11 core): `domain_analyst`, `opposing_researcher`, `synthesizer`, `risk_assessor`, `decision_maker`, `critic`, `clarifier`, `outcome_evaluator`, `fundamentals_analyst`, `technical_analyst`, `sentiment_analyst` + 4 trading-domain extensions: `trading_fundamentals_analyst`, `trading_technical_analyst`, `trading_sentiment_analyst`, `trading_risk_assessor` (15 total)
 
 ### DomainRegistry (`gmpl/DomainRegistry.ts`)
 
 Registry for domain adapter plugins. Adapters bundle data providers, entity schemas, outcome evaluators, metrics calculators, prompt packs, and seed knowledge into a single registration unit.
+
+**Pre-registered adapters**: `trading` (reference implementation based on TradingAgents, arXiv:2412.20138v7)
+
+### Error Types (`gmpl/errors.ts`)
+
+7 structured error classes with machine-readable `code`, `context` bag, and `cause` chaining:
+- `GmplError` (base), `PatternNotFoundError`, `RoleNotFoundError`, `DomainNotRegisteredError`, `PatternValidationError`, `CompositionError`, `OutcomeResolutionError`, `ConvergenceError`
+
+All registries and the PatternComposer throw these typed errors instead of generic `Error`.
 
 ---
 
@@ -313,6 +323,18 @@ GMPL prompt templates in `src/prompts/gmpl/`:
 | `delphi-panel/aggregate.toml` | DelphiPanelModule | Panel synthesis and aggregation |
 
 All GMPL TOML files include a `[meta]` section with independent versioning (`version`, `pattern`, `role`).
+
+### Trading Domain Prompt Packs
+
+Domain-specific prompt templates in `src/prompts/trading/`:
+
+| File | Used By | Purpose |
+|---|---|---|
+| `trading/fundamentals.toml` | `trading_fundamentals_analyst` | Earnings, revenue, P/E, ROE, margin analysis |
+| `trading/technical.toml` | `trading_technical_analyst` | RSI, MACD, Bollinger Bands, SMA, ADX analysis |
+| `trading/sentiment.toml` | `trading_sentiment_analyst` | Social media, news, insider sentiment gauging |
+| `trading/debate.toml` | `opposing_researcher` | Bull/bear investment thesis with financial evidence |
+| `trading/research.toml` | `trading_risk_assessor` | Risk assessment from risky/neutral/safe perspectives |
 
 ---
 

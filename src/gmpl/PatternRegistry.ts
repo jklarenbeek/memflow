@@ -14,6 +14,7 @@
 
 import { z, type ZodSchema } from "zod";
 import type { WorkflowPattern } from "./types.js";
+import { PatternValidationError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // Built-in pattern definitions (auto-registered)
@@ -285,9 +286,10 @@ export class PatternRegistry {
     this.ensureBuiltins();
 
     if (this.patterns.has(pattern.id)) {
-      throw new Error(
-        `PatternRegistry: Pattern "${pattern.id}" is already registered. ` +
-          `Use a unique ID or call remove() first.`,
+      throw new PatternValidationError(
+        pattern.id,
+        "id",
+        `Pattern "${pattern.id}" is already registered. Use a unique ID or call remove() first.`,
       );
     }
 
@@ -344,9 +346,10 @@ export class PatternRegistry {
     for (const field of schemaFields) {
       const schema = pattern[field] as ZodSchema;
       if (!schema || typeof schema.parse !== "function") {
-        throw new Error(
-          `PatternRegistry: Pattern "${pattern.id}" has invalid ${field} — ` +
-            `must be a Zod schema with a parse() method.`,
+        throw new PatternValidationError(
+          pattern.id,
+          field as string,
+          "Must be a Zod schema with a parse() method.",
         );
       }
     }

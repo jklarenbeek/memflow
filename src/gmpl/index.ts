@@ -13,6 +13,18 @@ export { DomainRegistry } from "./DomainRegistry.js";
 // Pattern composer
 export { generateWorkflow } from "./PatternComposer.js";
 
+// Error types
+export {
+  GmplError,
+  PatternNotFoundError,
+  RoleNotFoundError,
+  DomainNotRegisteredError,
+  PatternValidationError,
+  CompositionError,
+  OutcomeResolutionError,
+  ConvergenceError,
+} from "./errors.js";
+
 // Type system
 export type {
   // Pattern types

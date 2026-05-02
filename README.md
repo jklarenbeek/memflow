@@ -4,7 +4,7 @@
 
 MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It registers **69 modules** — 42 atomic pipeline modules, 7 composite wrappers, 8 GMPL pattern modules, and 12 standalone/infrastructure modules — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience. The engine exposes MCP, ACP, and REST interfaces for integration with LLM-powered tools and agents.
 
-The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with 6 composable workflow patterns (Structured Debate, Clarification Pipeline, Parallel Analysis, Peer Review, Red Team, Delphi Expert Panel) that can be orchestrated, composed via the `PatternComposer` API, and specialized per domain.
+The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with 6 composable workflow patterns (Structured Debate, Clarification Pipeline, Parallel Analysis, Peer Review, Red Team, Delphi Expert Panel) that can be orchestrated, composed via the `PatternComposer` API, and specialized per domain. A reference **Trading Domain Adapter** (based on TradingAgents, arXiv:2412.20138v7) demonstrates the full plugin contract with 4 data providers, 7 entity schemas, an outcome evaluator, Sharpe/drawdown/win-rate metrics, and 5 domain-specific prompt packs.
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ WorkflowEngine ← JSON config
   ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
   ├── WorkflowEventEmitter (typed event system for streaming + metrics)
   ├── Config Validation (Zod schemas validated at initialize(), not mid-pipeline)
-  ├── GMPL (PatternRegistry, RoleRegistry, DomainRegistry)
+  ├── GMPL (PatternRegistry, RoleRegistry, DomainRegistry, ErrorTypes)
   └── Stages → Module.process() → shared WorkflowData bus (with telemetry counters)
         ├── SubWorkflow stages → nested WorkflowEngine (shared context)
         ├── _stageConfigs override mechanism for per-stage config tuning
@@ -75,6 +75,7 @@ MemFlow registers **69 modules** across 11 categories:
 | Graph | 6 | `ChunkIngestor`, `EntityExtractor`, `EntityDeduplicator`, `EntityProfiler`, `CommunityDetector` + wrapper |
 | Generation | 7 | `QueryClarifier`, `AnswerGenerator`, `HallucinationValidator`, `CitationInjector`, `WebSearchAgent`, `DualSourceFusion` + wrapper |
 | GMPL Patterns | 8 | `DebateModule`, `ConsensusJudge`, `MultiTurnClarifier`, `ParallelDispatcher`, `OutcomeMemory`, `PeerReviewModule`, `RedTeamModule`, `DelphiPanelModule` |
+| Trading Domain | — | `tradingAdapter`, `registerTradingRoles()`, 7 entity schemas, 5 prompt packs, 4 extended roles |
 | Query | 1 | `QueryTranslator` |
 | Providers | 2 | `Embedder`, `LLMProvider` |
 | Advanced | 4 | `AgentContext`, `OutcomeLearner`, `Crystallizer`, `Contradiction` |
@@ -153,7 +154,7 @@ curl -X POST http://localhost:3000/prompts/reload
 curl http://localhost:3000/metrics
 ```
 
-Exposed metrics: `stage_duration_seconds` (histogram), `stage_errors_total` (counter), `workflow_runs_total` (counter), `workflow_duration_seconds` (histogram), `active_workflows` (gauge). Metrics collection is enabled by default and can be disabled via `enableMetrics: false` in `GlobalConfig`.
+Exposed metrics: `stage_duration_seconds` (histogram), `stage_errors_total` (counter), `workflow_runs_total` (counter), `workflow_duration_seconds` (histogram), `active_workflows` (gauge), `gmpl_pattern_rounds_total` (counter), `gmpl_pattern_duration_seconds` (histogram). Metrics collection is enabled by default and can be disabled via `enableMetrics: false` in `GlobalConfig`.
 
 ## Observability Stack
 
@@ -207,7 +208,7 @@ GitHub Actions CI runs on every push and pull request:
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The test suite covers unit tests (26 files, including 12 GMPL tests), integration tests (3 files), and workflow JSON validation.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The test suite covers 211 tests across 33 files: 29 unit test files (15 GMPL pattern, adapter, and error tests), 4 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e), and workflow JSON validation.
 
 ## License
 

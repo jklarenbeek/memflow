@@ -29,6 +29,7 @@ import type {
   StreamEventStageError,
   StreamEventWorkflowComplete,
   StreamEventWorkflowError,
+  StreamEventPatternEvent,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,8 @@ export interface WorkflowEventMap {
   "stage:error": StreamEventStageError;
   "workflow:complete": StreamEventWorkflowComplete;
   "workflow:error": StreamEventWorkflowError;
+  /** GMPL pattern-level events (debate:*, analysis:*, etc.) */
+  "pattern:event": StreamEventPatternEvent;
   /** Wildcard — receives ALL events for pass-through consumers */
   "*": StreamEvent;
 }

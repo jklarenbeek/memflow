@@ -97,6 +97,7 @@ Detailed per-module documentation (input/output fingerprints, config schemas, pa
 | **Graph Indexing** | [graph.md](modules/graph.md) | ChunkIngestor, EntityExtractor, EntityDeduplicator, EntityProfiler, CommunityDetector | `MemgraphGraph` |
 | **PriHA Generation** | [priha.md](modules/priha.md) | QueryClarifier, AnswerGenerator, HallucinationValidator, CitationInjector, WebSearchAgent, DualSourceFusion | `PriHAFusion` |
 | **GMPL Patterns** | [gmpl.md](modules/gmpl.md) | DebateModule, ConsensusJudge, MultiTurnClarifier, ParallelDispatcher, OutcomeMemory, PeerReviewModule, RedTeamModule, DelphiPanelModule | — |
+| **Trading Domain** | [GMPL_TUTORIAL.md](GMPL_TUTORIAL.md) | `tradingAdapter`, `registerTradingRoles()`, 7 entity schemas, 5 prompt packs | — |
 
 ## Standalone Modules
 
@@ -130,3 +131,19 @@ Three top-level example workflows demonstrate how the sub-workflow system compos
 | `rag-memory-pipeline.json` | translate → parse → chunk → embed → graph → SimpleMem → LightMem → StructMem → retrieve → fuse | Full 10-stage RAG pipeline |
 | `quick-qa.json` | translate → embed → retrieve → fuse | Minimal 4-stage QA |
 | `multi-agent-research.json` | parallel retrieval → HERA with learning + RoPE + topology mutation | Autonomous multi-agent research |
+
+## Trading Domain Adapter
+
+Reference implementation of the `DomainAdapter` contract in `src/domains/trading/`, based on TradingAgents (arXiv:2412.20138v7). Demonstrates the full plugin lifecycle:
+
+| Component | File | Detail |
+|---|---|---|
+| Entity schemas | `schemas.ts` | 7 Zod schemas: Ticker, Sector, EarningsReport, TechnicalIndicator, MarketData, SentimentData, NewsEvent |
+| Data providers | `adapter.ts` | `getMarketData()`, `getEarningsReport()`, `getSentiment()`, `getTechnicalIndicators()` |
+| Outcome evaluator | `adapter.ts` | Direction + tolerance comparison (success/partial/failure) |
+| Metrics calculator | `adapter.ts` | Sharpe Ratio, Maximum Drawdown, Win Rate |
+| Extended roles | `roles.ts` | 4 roles via `RoleRegistry.extend()` from core analyst roles: fundamentals, technical, sentiment, risk |
+| Prompt packs | `src/prompts/trading/` | 5 TOML files: fundamentals, technical, sentiment, debate, research |
+| Seed knowledge | `adapter.ts` | 11 S&P 500 sectors + 4 major indices |
+
+See [GMPL_TUTORIAL.md](GMPL_TUTORIAL.md) for a step-by-step guide to building a domain adapter.

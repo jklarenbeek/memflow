@@ -22,6 +22,7 @@ import type {
   StreamEventWorkflowStart,
   StreamEventWorkflowComplete,
   StreamEventWorkflowError,
+  StreamEventPatternEvent,
 } from "../core/types.js";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +68,23 @@ export const workflowDurationHistogram = new Histogram({
 export const activeWorkflowsGauge = new Gauge({
   name: "active_workflows",
   help: "Number of workflows currently running",
+  registers: [register],
+});
+
+// GMPL pattern metrics
+
+export const gmplPatternRoundsCounter = new Counter({
+  name: "gmpl_pattern_rounds_total",
+  help: "Total rounds executed across GMPL patterns",
+  labelNames: ["pattern_id", "event_name"],
+  registers: [register],
+});
+
+export const gmplPatternDurationHistogram = new Histogram({
+  name: "gmpl_pattern_duration_seconds",
+  help: "GMPL pattern execution latency in seconds",
+  labelNames: ["pattern_id"],
+  buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120],
   registers: [register],
 });
 
@@ -150,6 +168,14 @@ export function wireEngineMetrics(engine: WorkflowEngine): void {
       workflowStartInfo.delete(event.workflowId);
     }
     workflowRunsCounter.inc({ workflow_name: info?.name ?? event.workflowId, status: "error" });
+  });
+
+  // GMPL pattern events
+  ee.on("pattern:event", (event: StreamEventPatternEvent) => {
+    gmplPatternRoundsCounter.inc({
+      pattern_id: event.patternId,
+      event_name: event.eventName,
+    });
   });
 }
 

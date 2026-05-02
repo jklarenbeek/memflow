@@ -12,8 +12,9 @@
 
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
-import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
+import type { BaseModule, ModuleInput, ModuleOutput, StreamEventPatternEvent } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import type { WorkflowEventEmitter } from "../../core/WorkflowEventEmitter.js";
 import {
   DebatePositionSchema,
   DebateStateSchema,
@@ -85,6 +86,13 @@ export class DebateModule implements BaseModule<DebateConfig> {
 
       ctx.logger.info(`DebateModule: Round ${round}/${mergedConfig.maxRounds}`);
 
+      // Emit pattern:event for observability
+      this.emitPatternEvent(context, "debate:round_start", {
+        round,
+        maxRounds: mergedConfig.maxRounds,
+        roles: mergedConfig.roles.map((r) => r.id),
+      });
+
       // Collect positions from all roles for this round
       const roundPositions: DebatePosition[] = [];
 
@@ -99,6 +107,14 @@ export class DebateModule implements BaseModule<DebateConfig> {
         );
         roundPositions.push(position);
         state.positions.push(position);
+
+        // Emit position event
+        this.emitPatternEvent(context, "debate:position", {
+          round,
+          roleId: role.id,
+          stance: position.stance,
+          confidence: position.confidence,
+        });
       }
 
       // Check termination
@@ -411,5 +427,29 @@ export class DebateModule implements BaseModule<DebateConfig> {
   }
   supportsLearning() {
     return true;
+  }
+
+  // -----------------------------------------------------------------------
+  // Pattern event emission (optional — fires when emitter is available)
+  // -----------------------------------------------------------------------
+
+  private emitPatternEvent(
+    context: unknown,
+    eventName: string,
+    payload: Record<string, unknown>,
+  ): void {
+    // Duck-type check for event emitter on context or engine reference
+    const emitter = (context as Record<string, unknown>)?.eventEmitter as WorkflowEventEmitter | undefined;
+    if (emitter && typeof emitter.emit === "function") {
+      const event: StreamEventPatternEvent = {
+        type: "pattern:event",
+        patternId: "structured_debate",
+        eventName,
+        stageId: this.name,
+        payload,
+        timestamp: new Date().toISOString(),
+      };
+      emitter.emit(event);
+    }
   }
 }

@@ -212,6 +212,8 @@ The `wireEngineMetrics()` function subscribes to a `WorkflowEventEmitter` and re
 | `workflow_runs_total` | Counter | `workflow_name`, `status` |
 | `workflow_duration_seconds` | Histogram | `workflow_name` |
 | `active_workflows` | Gauge | — |
+| `gmpl_pattern_rounds_total` | Counter | `pattern_id`, `event_name` |
+| `gmpl_pattern_duration_seconds` | Histogram | `pattern_id` |
 
 The metrics subsystem includes a TTL sweep that clears stale workflow tracking entries older than 1 hour, preventing memory accumulation from abnormally terminated workflows.
 
@@ -223,7 +225,7 @@ A pre-provisioned Grafana dashboard (`docker/grafana/dashboard.json`) provides 5
 
 ### SSE Streaming
 
-The `WorkflowEventEmitter` emits 7 discriminated event types:
+The `WorkflowEventEmitter` emits 8 discriminated event types:
 
 | Event | When | Key Fields |
 |---|---|---|
@@ -234,8 +236,9 @@ The `WorkflowEventEmitter` emits 7 discriminated event types:
 | `stage:error` | Stage failed | `stageId`, `error`, `willRetry` |
 | `workflow:complete` | Workflow finished | `totalDurationMs`, `finalAnswer` |
 | `workflow:error` | Workflow-level failure | `error`, `stage` |
+| `pattern:event` | GMPL pattern milestone | `patternId`, `eventName`, `payload` |
 
-Modules opt into token-level streaming by implementing `processStream()` (currently: `AnswerGenerator`, `FinalSynthesizer`).
+Modules opt into token-level streaming by implementing `processStream()` (currently: `AnswerGenerator`, `FinalSynthesizer`). GMPL modules emit `pattern:event` for domain-specific observability (e.g. `debate:round_start`, `debate:position`).
 
 ## Data Model in Memgraph
 
@@ -300,7 +303,9 @@ The `WorkflowData` interface provides typed fields for all inter-module data:
 
 ## Error Handling
 
-7 typed error classes: `MemFlowError`, `WorkflowStageError`, `WorkflowConfigError`, `WorkflowDAGError`, `ModuleNotFoundError`, `ProviderError`, `MemgraphError`.
+**Core errors** (7 classes): `MemFlowError`, `WorkflowStageError`, `WorkflowConfigError`, `WorkflowDAGError`, `ModuleNotFoundError`, `ProviderError`, `MemgraphError`.
+
+**GMPL errors** (7 classes in `gmpl/errors.ts`): `GmplError` (base), `PatternNotFoundError`, `RoleNotFoundError`, `DomainNotRegisteredError`, `PatternValidationError`, `CompositionError`, `OutcomeResolutionError`, `ConvergenceError`. Each carries a machine-readable `code`, structured `context` bag, and optional `cause` for chained diagnostics.
 
 All module error boundaries use structured logging instead of bare `catch {}` blocks. Errors include the originating module name, error message, and relevant context (node IDs, query details, batch sizes) for actionable debugging.
 
@@ -344,15 +349,15 @@ Each TOML file contains `[meta]` (name, version), `[config]` (temperature, max_t
 
 ## GMPL — Generic Multi-Agent Pattern Library
 
-GMPL is an extension layer that provides composable, reusable multi-agent workflow patterns. It adds three registries, the `PatternComposer` API, and eight modules without modifying existing MemFlow core code.
+GMPL is an extension layer that provides composable, reusable multi-agent workflow patterns. It adds three registries, a structured error hierarchy, the `PatternComposer` API, and eight modules without modifying existing MemFlow core code. A reference **Trading Domain Adapter** (`src/domains/trading/`) demonstrates the full `DomainAdapter` plugin contract.
 
 ### Registries
 
 | Registry | Purpose | Pre-registered |
 |---|---|---|
 | `PatternRegistry` | Composable workflow pattern definitions with Zod-validated input/output contracts | 6 patterns (Structured Debate, Clarification Pipeline, Parallel Analysis, Peer Review, Red Team, Delphi Panel) |
-| `RoleRegistry` | Domain-agnostic agent role library with extension support | 8 roles (domain_analyst, opposing_researcher, synthesizer, risk_assessor, decision_maker, critic, clarifier, outcome_evaluator) |
-| `DomainRegistry` | Domain adapter plugins (data providers, evaluators, prompt packs, entity schemas) | None (populated at runtime) |
+| `RoleRegistry` | Domain-agnostic agent role library with extension support | 11 core roles + 4 trading-domain extensions (15 total) |
+| `DomainRegistry` | Domain adapter plugins (data providers, evaluators, prompt packs, entity schemas) | 1 adapter (`trading`) |
 
 ### PatternComposer (`gmpl/PatternComposer.ts`)
 
@@ -386,7 +391,7 @@ Six GMPL pattern sub-workflows in `src/workflows/sub/patterns/`:
 
 ### Prompt Packs
 
-GMPL prompt templates in `src/prompts/gmpl/`:
+GMPL prompt templates in `src/prompts/gmpl/` and domain prompts in `src/prompts/trading/`:
 
 ```
 src/prompts/gmpl/
@@ -397,9 +402,25 @@ src/prompts/gmpl/
   peer-review/   review.toml, revision.toml
   red-team/      attack.toml, defense.toml, resilience.toml
   delphi-panel/  poll.toml, aggregate.toml
+src/prompts/trading/
+  fundamentals.toml, technical.toml, sentiment.toml, debate.toml, research.toml
 ```
 
-All GMPL TOML prompt files include a `[meta]` section with independent versioning (`version`, `pattern`, `role`).
+All TOML prompt files include a `[meta]` section with independent versioning (`version`, `pattern` or `domain`, `role`).
+
+### Trading Domain Adapter
+
+Reference implementation of the `DomainAdapter` contract in `src/domains/trading/`, based on TradingAgents (arXiv:2412.20138v7):
+
+| Component | Detail |
+|---|---|
+| **Entity schemas** | `Ticker`, `Sector`, `EarningsReport`, `TechnicalIndicator`, `MarketData`, `SentimentData`, `NewsEvent` (7 Zod schemas) |
+| **Data providers** | `getMarketData()`, `getEarningsReport()`, `getSentiment()`, `getTechnicalIndicators()` |
+| **Outcome evaluator** | Direction + tolerance comparison (success/partial/failure) |
+| **Metrics calculator** | Sharpe Ratio, Maximum Drawdown, Win Rate (paper §S1.2) |
+| **Extended roles** | `trading_fundamentals_analyst`, `trading_technical_analyst`, `trading_sentiment_analyst`, `trading_risk_assessor` (via `RoleRegistry.extend()` from core analyst roles) |
+| **Seed knowledge** | 11 S&P 500 sectors + 4 major indices |
+| **Prompt packs** | 5 TOML files with multi-shot examples and chain-of-thought |
 
 ## Workflow Versioning
 
@@ -460,8 +481,9 @@ src/
     errors.ts                  — 7 typed error classes
   gmpl/
     types.ts                   — GMPL Zod schemas and TypeScript interfaces
+    errors.ts                  — 7 GMPL error classes (GmplError hierarchy)
     PatternRegistry.ts         — Composable workflow pattern registry (6 built-in patterns)
-    RoleRegistry.ts            — Agent role library (8 core roles) with extension support
+    RoleRegistry.ts            — Agent role library (11 core + 4 trading roles) with extension support
     DomainRegistry.ts          — Domain adapter plugin registry
     PatternComposer.ts         — Programmatic multi-pattern workflow generation API
     index.ts                   — Public API barrel export
@@ -510,14 +532,17 @@ src/
                                parallel-analysis.json, peer-review.json,
                                red-team.json, delphi-panel.json
     service/                   ingest.json, recall.json, search.json (REST API backing workflows)
+  domains/
+    trading/                   adapter.ts, schemas.ts, roles.ts, index.ts (reference DomainAdapter)
   prompts/                     TOML prompt templates (see Prompt System section)
     gmpl/                      debate/, analysis/, clarification/, outcome/, peer-review/, red-team/, delphi-panel/ (GMPL prompts)
+    trading/                   fundamentals.toml, technical.toml, sentiment.toml, debate.toml, research.toml
   providers/                   LLMProvider.ts, EmbeddingProvider.ts, MemgraphClient.ts
   server/                      Hono HTTP server, metrics.ts, mcp.ts, acp.ts, api.ts
   utils/                       promptLoader.ts, similarity.ts, tokens.ts
   tests/
-    unit/                      26 unit test files (including 12 GMPL pattern tests)
-    integration/               3 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e)
+    unit/                      29 unit test files (including 15 GMPL pattern, adapter, and error tests)
+    integration/               4 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e)
     helpers/                   Shared mock factory (mocks.ts)
 ```
 

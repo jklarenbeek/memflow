@@ -6,10 +6,10 @@ describe("RoleRegistry", () => {
     RoleRegistry.reset();
   });
 
-  it("should auto-register 8 builtin roles", () => {
+  it("should auto-register 11 builtin roles", () => {
     const registry = RoleRegistry.getInstance();
     const roles = registry.list();
-    expect(roles.length).toBe(8);
+    expect(roles.length).toBe(11);
     expect(roles).toContain("domain_analyst");
     expect(roles).toContain("opposing_researcher");
     expect(roles).toContain("synthesizer");
@@ -18,6 +18,9 @@ describe("RoleRegistry", () => {
     expect(roles).toContain("critic");
     expect(roles).toContain("clarifier");
     expect(roles).toContain("outcome_evaluator");
+    expect(roles).toContain("fundamentals_analyst");
+    expect(roles).toContain("technical_analyst");
+    expect(roles).toContain("sentiment_analyst");
   });
 
   it("should retrieve a role by ID", () => {
@@ -72,6 +75,6 @@ describe("RoleRegistry", () => {
     const registry = RoleRegistry.getInstance();
     registry.remove("risk_assessor");
     expect(registry.has("risk_assessor")).toBe(false);
-    expect(registry.list().length).toBe(7);
+    expect(registry.list().length).toBe(10);
   });
 });

@@ -8,6 +8,7 @@
  */
 
 import type { DomainAdapter } from "./types.js";
+import { DomainNotRegisteredError, PatternValidationError } from "./errors.js";
 
 export class DomainRegistry {
   private static instance: DomainRegistry;
@@ -42,9 +43,10 @@ export class DomainRegistry {
     this.validate(adapter);
 
     if (this.adapters.has(adapter.id)) {
-      throw new Error(
-        `DomainRegistry: Adapter "${adapter.id}" is already registered. ` +
-          `Use a unique ID or call remove() first.`,
+      throw new PatternValidationError(
+        adapter.id,
+        "id",
+        `Adapter "${adapter.id}" is already registered. Use a unique ID or call remove() first.`,
       );
     }
 
@@ -86,19 +88,19 @@ export class DomainRegistry {
 
   private validate(adapter: DomainAdapter): void {
     if (!adapter.id || typeof adapter.id !== "string") {
-      throw new Error("DomainRegistry: Adapter must have a non-empty string 'id'.");
+      throw new PatternValidationError("<unknown>", "id", "Adapter must have a non-empty string 'id'.");
     }
     if (!adapter.version || typeof adapter.version !== "string") {
-      throw new Error(`DomainRegistry: Adapter "${adapter.id}" must have a 'version'.`);
+      throw new PatternValidationError(adapter.id, "version", "Adapter must have a 'version'.");
     }
     if (!adapter.dataProviders || typeof adapter.dataProviders !== "object") {
-      throw new Error(`DomainRegistry: Adapter "${adapter.id}" must have 'dataProviders'.`);
+      throw new PatternValidationError(adapter.id, "dataProviders", "Adapter must have 'dataProviders'.");
     }
     if (typeof adapter.outcomeEvaluator !== "function") {
-      throw new Error(`DomainRegistry: Adapter "${adapter.id}" must have an 'outcomeEvaluator' function.`);
+      throw new PatternValidationError(adapter.id, "outcomeEvaluator", "Adapter must have an 'outcomeEvaluator' function.");
     }
     if (typeof adapter.metricsCalculator !== "function") {
-      throw new Error(`DomainRegistry: Adapter "${adapter.id}" must have a 'metricsCalculator' function.`);
+      throw new PatternValidationError(adapter.id, "metricsCalculator", "Adapter must have a 'metricsCalculator' function.");
     }
   }
 }

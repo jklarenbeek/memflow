@@ -5,12 +5,13 @@
  * capabilities, tool declarations, and typed contracts for each agent.
  *
  * Supports role extension: a domain-specific role can extend a base role
- * (e.g., `trading_fundamentals_analyst` extends `domain_analyst`) by
+ * (e.g., `trading_fundamentals_analyst` extends `fundamentals_analyst`) by
  * inheriting defaults and overriding specific fields.
  */
 
 import { z, type ZodSchema } from "zod";
 import type { AgentRole } from "./types.js";
+import { RoleNotFoundError, PatternValidationError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // Built-in core roles
@@ -89,6 +90,33 @@ function createBuiltinRoles(): AgentRole[] {
       outputSchema: z.object({ reflection: z.string(), lessons: z.array(z.string()) }),
       requiredModules: ["OutcomeMemory"],
     },
+    {
+      id: "fundamentals_analyst",
+      description: "Analyzes foundational data, core metrics, and structural factors to assess intrinsic value or baseline characteristics of a subject.",
+      persona: "fundamentals_analyst",
+      promptPack: "gmpl/analysis/analyst",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), keyMetrics: z.record(z.unknown()).optional() }),
+      requiredModules: ["EntityExtractor", "VectorSearch"],
+    },
+    {
+      id: "technical_analyst",
+      description: "Analyzes patterns, indicators, and quantitative signals to forecast trends and identify inflection points.",
+      persona: "technical_analyst",
+      promptPack: "gmpl/analysis/analyst",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), signals: z.record(z.unknown()).optional() }),
+      requiredModules: ["EntityExtractor"],
+    },
+    {
+      id: "sentiment_analyst",
+      description: "Gauges sentiment from public discourse, media, and stakeholder activity to predict behavioral impact on outcomes.",
+      persona: "sentiment_analyst",
+      promptPack: "gmpl/analysis/analyst",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), sentimentBreakdown: z.record(z.unknown()).optional() }),
+      requiredModules: ["EntityExtractor", "VectorSearch"],
+    },
   ];
 }
 
@@ -143,9 +171,10 @@ export class RoleRegistry {
     this.ensureBuiltins();
 
     if (this.roles.has(role.id)) {
-      throw new Error(
-        `RoleRegistry: Role "${role.id}" is already registered. ` +
-          `Use a unique ID or call remove() first.`,
+      throw new PatternValidationError(
+        role.id,
+        "id",
+        `Role "${role.id}" is already registered. Use a unique ID or call remove() first.`,
       );
     }
 
@@ -174,10 +203,7 @@ export class RoleRegistry {
 
     const base = this.roles.get(baseId);
     if (!base) {
-      throw new Error(
-        `RoleRegistry: Cannot extend — base role "${baseId}" not found. ` +
-          `Available: ${this.list().join(", ")}`,
-      );
+      throw new RoleNotFoundError(baseId, this.list());
     }
 
     const extended: AgentRole = {

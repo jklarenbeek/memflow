@@ -18,6 +18,7 @@
 
 import { PatternCompositionSchema } from "./types.js";
 import { PatternRegistry } from "./PatternRegistry.js";
+import { PatternNotFoundError, CompositionError } from "./errors.js";
 import type { WorkflowConfig, WorkflowStage } from "../core/types.js";
 import type { z } from "zod";
 
@@ -40,7 +41,7 @@ export function generateWorkflow(composition: PatternCompositionInput): Workflow
   const registry = PatternRegistry.getInstance();
 
   if (validated.stages.length === 0) {
-    throw new Error("PatternComposer: Composition must have at least one stage.");
+    throw new CompositionError(validated.name, "Composition must have at least one stage.");
   }
 
   const stages: WorkflowStage[] = [];
@@ -58,10 +59,7 @@ export function generateWorkflow(composition: PatternCompositionInput): Workflow
       // Resolve pattern from registry
       const pattern = registry.get(stageDef.pattern);
       if (!pattern) {
-        throw new Error(
-          `PatternComposer: Pattern "${stageDef.pattern}" not found in PatternRegistry. ` +
-          `Available: ${registry.list().join(", ")}`,
-        );
+        throw new PatternNotFoundError(stageDef.pattern, registry.list());
       }
 
       stages.push({
@@ -83,8 +81,9 @@ export function generateWorkflow(composition: PatternCompositionInput): Workflow
         next: nextStageId,
       });
     } else {
-      throw new Error(
-        `PatternComposer: Stage "${stageDef.id}" must specify either 'pattern' or 'module'.`,
+      throw new CompositionError(
+        validated.name,
+        `Stage "${stageDef.id}" must specify either 'pattern' or 'module'.`,
       );
     }
   }

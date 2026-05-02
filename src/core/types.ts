@@ -424,7 +424,8 @@ export type StreamEvent =
   | StreamEventStageComplete
   | StreamEventStageError
   | StreamEventWorkflowComplete
-  | StreamEventWorkflowError;
+  | StreamEventWorkflowError
+  | StreamEventPatternEvent;
 
 export interface StreamEventWorkflowStart {
   type: "workflow:start";
@@ -492,6 +493,27 @@ export interface StreamEventWorkflowError {
   workflowId: string;
   error: string;
   stage?: string;
+  timestamp: string;
+}
+
+/**
+ * GMPL pattern-level event.
+ *
+ * Carries domain-specific event data from pattern modules
+ * (e.g., debate:round_start, analysis:dispatched, delphi:converged).
+ * The eventName field is free-form; pattern modules define their own
+ * vocabulary per the observabilityEvents in WorkflowPattern.
+ */
+export interface StreamEventPatternEvent {
+  type: "pattern:event";
+  /** Pattern ID from PatternRegistry */
+  patternId: string;
+  /** Pattern-specific event name (e.g. 'debate:round_start') */
+  eventName: string;
+  /** Stage ID where this event originated */
+  stageId: string;
+  /** Free-form payload */
+  payload: Record<string, unknown>;
   timestamp: string;
 }
 
