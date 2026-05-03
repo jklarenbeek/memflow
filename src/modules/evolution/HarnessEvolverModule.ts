@@ -20,6 +20,10 @@ import { v4 as uuidv4 } from "uuid";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
+import {
+  evolutionHarnessVersionsCounter,
+  evolutionHarnessRetrospectiveCounter,
+} from "../../server/metrics.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -81,6 +85,10 @@ export class HarnessEvolverModule implements BaseModule<Config> {
     // Mode 3: Retrospective — validate against real outcome
     if (outcomeData && typeof harnessRequest === "object" && harnessRequest?.id) {
       const result = await this.retrospectiveCheck(ctx, config, harnessRequest, outcomeData.result);
+
+      // §8: Record Prometheus metrics
+      evolutionHarnessRetrospectiveCounter.inc({ result: result.validated ? "validated" : "rolled_back" });
+
       return {
         data: {
           predictionHarness: result.validated
@@ -105,6 +113,7 @@ export class HarnessEvolverModule implements BaseModule<Config> {
     if (!existing) {
       // Mode 1: Create — new harness
       const harness = await this.createHarness(ctx, config, query, topicId);
+      evolutionHarnessVersionsCounter.inc();
       return {
         data: {
           predictionHarness: harness,
@@ -115,6 +124,7 @@ export class HarnessEvolverModule implements BaseModule<Config> {
 
     // Mode 2: Evolve — generate internal feedback and provisional update
     const evolved = await this.evolveHarness(ctx, config, existing, query);
+    evolutionHarnessVersionsCounter.inc();
     return {
       data: {
         predictionHarness: evolved.harness,
@@ -326,8 +336,11 @@ export class HarnessEvolverModule implements BaseModule<Config> {
   // -----------------------------------------------------------------------
 
   private computeTopicId(query: string): string {
-    // Simple hash-based topic ID from query
-    return query.toLowerCase().replace(/[^a-z0-9]+/g, "-").substring(0, 50);
+    // §5.4: Use SHA-256 hash to prevent collisions from queries that
+    // differ only in non-alphanumeric characters or casing
+    const { createHash } = require("node:crypto");
+    const hash = createHash("sha256").update(query.toLowerCase().trim()).digest("hex");
+    return hash.substring(0, 16);
   }
 
   private async getLatestHarness(

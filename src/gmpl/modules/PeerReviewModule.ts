@@ -248,17 +248,26 @@ export class PeerReviewModule implements BaseModule<Config> {
   private async persistReviewSession(ctx: WorkflowContext, state: PeerReviewState): Promise<void> {
     try {
       const sessionId = `review-${uuidv4()}`;
+      // Collect feedback summary for SLMDatasetExporter compatibility (§3.2)
+      const feedbackSummary = state.cycles
+        .flatMap((c) => c.feedback.map((f) => `[${f.reviewerId}] ${f.assessment}: ${f.feedback}`))
+        .join("\n");
+
       await ctx.memgraph.query(
         `CREATE (r:ReviewSession {
            id: $id,
            cycles: $cycles,
            accepted: $accepted,
+           content: $content,
+           feedback: $feedback,
            timestamp: $timestamp
          })`,
         {
           id: sessionId,
           cycles: state.currentCycle,
           accepted: state.accepted,
+          content: state.draft,
+          feedback: feedbackSummary,
           timestamp: new Date().toISOString(),
         },
       );

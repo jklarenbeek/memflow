@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
+import { evolutionSkillsDistilledCounter } from "../../server/metrics.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -57,6 +58,15 @@ export class SkillMergeModule implements BaseModule<Config> {
 
   constructor(config: Record<string, unknown> = {}) {
     this.config = ConfigSchema.parse(config);
+  }
+
+  async init(context: unknown): Promise<void> {
+    const ctx = context as WorkflowContext;
+    try {
+      await ctx.memgraph.query(`CREATE INDEX ON :Skill(id)`);
+    } catch {
+      ctx.logger.debug("SkillMerge: Index creation skipped (may already exist)");
+    }
   }
 
   async process(input: ModuleInput<Config>, context: unknown): Promise<ModuleOutput> {
@@ -111,6 +121,9 @@ export class SkillMergeModule implements BaseModule<Config> {
     }
 
     ctx.logger.info(`SkillMerge: Distilled ${skills.length} skills from ${clusters.length} clusters`);
+
+    // §8: Record Prometheus metrics
+    if (skills.length > 0) evolutionSkillsDistilledCounter.inc(skills.length);
 
     return {
       data: { distilledSkills: skills },

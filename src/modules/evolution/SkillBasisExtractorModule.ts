@@ -127,8 +127,17 @@ export class SkillBasisExtractorModule implements BaseModule<Config> {
     experiences: ExperienceEntry[],
     config: Config,
   ): Promise<Array<{ axisId: number; variance: number; topSamples: string[]; label: string }>> {
-    // Dynamic import of ml-matrix
-    const { PCA } = await import("ml-pca" as string);
+    // Dynamic import of ml-pca (optional dependency)
+    let PCA: any;
+    try {
+      const mlPca = await import("ml-pca" as string);
+      PCA = mlPca.PCA;
+    } catch {
+      throw new Error(
+        "SkillBasisExtractor requires the 'ml-pca' package for PCA analysis. " +
+        "Install it with: bun add ml-pca",
+      );
+    }
 
     const pca = new PCA(vectors);
     const eigenvalues = pca.getEigenvalues();

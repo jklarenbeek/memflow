@@ -326,7 +326,7 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
   });
 
   // -----------------------------------------------------------------------
-  // Dataset Export
+  // Dataset Export (§7.1 — hardened)
   // -----------------------------------------------------------------------
 
   app.post("/datasets/export", async (c) => {
@@ -340,6 +340,12 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
         requireRetrospectiveValidation?: boolean;
       }>().catch(() => ({}));
 
+      // §7.1: Basic validation
+      const format = body.format ?? "both";
+      if (!["sft", "dpo", "both"].includes(format)) {
+        return c.json({ success: false, error: "Invalid format: must be 'sft', 'dpo', or 'both'" }, 400);
+      }
+
       const exportWorkflow = {
         name: "slm-dataset-export",
         version: "1.0",
@@ -348,7 +354,7 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
           id: "export",
           module: "SLMDatasetExporter",
           config: {
-            format: body.format ?? "both",
+            format,
             domainFilter: body.domain,
             maxSamples: body.maxSamples ?? 10000,
             trigger: { type: "on_demand" },
@@ -367,7 +373,166 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
       return c.json({
         success: true,
         path: data.datasetExportPath,
-        manifest: data.datasetManifest,
+        manifest: data.datasetManifest ?? {
+          exportedAt: new Date().toISOString(),
+          sftCount: 0,
+          dpoCount: 0,
+          sources: {},
+        },
+      });
+    } catch (err) {
+      return c.json({ success: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Skills (§7.2)
+  // -----------------------------------------------------------------------
+
+  app.get("/skills", async (c) => {
+    try {
+      const limit = Math.min(Number(c.req.query("limit") ?? "50"), 200);
+
+      const skills = await withMemgraph(globalConfig, async (client) => {
+        return client.query<{
+          id: string; name: string; description: string;
+          applicableWhen: string; version: number; createdAt: string;
+        }>(`
+          MATCH (s:Skill)
+          RETURN s.id AS id, s.name AS name, s.description AS description,
+                 s.applicableWhen AS applicableWhen, s.version AS version,
+                 s.createdAt AS createdAt
+          ORDER BY s.createdAt DESC
+          LIMIT $limit
+        `, { limit });
+      });
+
+      return c.json({ success: true, skills, count: skills.length });
+    } catch (err) {
+      return c.json({ success: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  app.get("/skills/gaps", async (c) => {
+    try {
+      // Return latest skill basis info from ModuleState
+      const result = await withMemgraph(globalConfig, async (client) => {
+        const states = await client.query<{ data: string }>(`
+          MATCH (ms:ModuleState)
+          WHERE ms.moduleKey STARTS WITH 'SkillGapAnalyzer'
+          RETURN ms.data AS data
+          ORDER BY ms.updatedAt DESC
+          LIMIT 1
+        `);
+        return states[0]?.data ? JSON.parse(states[0].data) : { skillGaps: [] };
+      });
+
+      return c.json({ success: true, ...result });
+    } catch (err) {
+      return c.json({ success: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  app.post("/skills/distill", async (c) => {
+    try {
+      const body = await c.req.json<{
+        k?: number;
+        maxSkillsPerCluster?: number;
+        persistToGraph?: boolean;
+      }>().catch(() => ({}));
+
+      const distillWorkflow = {
+        name: "trace2skill-distill",
+        version: "1.0",
+        entry: "distill",
+        stages: [{
+          id: "distill",
+          module: "Trace2Skill",
+          config: {
+            k: body.k ?? 5,
+            maxSkillsPerCluster: body.maxSkillsPerCluster ?? 3,
+            persistToGraph: body.persistToGraph ?? true,
+          },
+          next: null,
+        }],
+      };
+
+      const data = await runServiceWorkflow(distillWorkflow, { query: "distill" }, globalConfig);
+
+      return c.json({
+        success: true,
+        skillCount: data.distilledSkills?.length ?? 0,
+        skills: data.distilledSkills?.map((s) => ({ id: s.id, name: s.name, description: s.description })) ?? [],
+      });
+    } catch (err) {
+      return c.json({ success: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Harness Evolution (§7.2)
+  // -----------------------------------------------------------------------
+
+  app.post("/harness/evolve", async (c) => {
+    try {
+      const body = await c.req.json<{ query: string }>().catch(() => ({ query: "" }));
+      if (!body.query || typeof body.query !== "string") {
+        return c.json({ success: false, error: "Missing required field: query (string)" }, 400);
+      }
+
+      const evolveWorkflow = {
+        name: "harness-evolve",
+        version: "1.0",
+        entry: "evolve",
+        stages: [{
+          id: "evolve",
+          module: "HarnessEvolver",
+          config: {},
+          next: null,
+        }],
+      };
+
+      const data = await runServiceWorkflow(evolveWorkflow, { query: body.query }, globalConfig);
+
+      return c.json({
+        success: true,
+        harness: data.predictionHarness,
+        feedback: data.internalFeedback,
+      });
+    } catch (err) {
+      return c.json({ success: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Workflow Compilation (§7.2)
+  // -----------------------------------------------------------------------
+
+  app.post("/workflows/compile", async (c) => {
+    try {
+      const body = await c.req.json<{ intent: string }>().catch(() => ({ intent: "" }));
+      if (!body.intent || typeof body.intent !== "string") {
+        return c.json({ success: false, error: "Missing required field: intent (string)" }, 400);
+      }
+
+      const compileWorkflow = {
+        name: "intent-compile",
+        version: "1.0",
+        entry: "compile",
+        stages: [{
+          id: "compile",
+          module: "IntentCompiler",
+          config: {},
+          next: null,
+        }],
+      };
+
+      const data = await runServiceWorkflow(compileWorkflow, { query: body.intent }, globalConfig);
+
+      return c.json({
+        success: true,
+        compiled: data.compiledWorkflow != null,
+        workflow: data.compiledWorkflow,
       });
     } catch (err) {
       return c.json({ success: false, error: (err as Error).message }, 500);

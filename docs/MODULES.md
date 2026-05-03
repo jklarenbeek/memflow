@@ -1,6 +1,6 @@
 # MemFlow Module System (v0.5.1)
 
-> How the WorkflowEngine, ModuleRegistry, GMPL, and Sub-Workflow system combine 70 modules into composable research-aligned pipelines.
+> How the WorkflowEngine, ModuleRegistry, GMPL, and Sub-Workflow system combine 80 modules into composable research-aligned pipelines.
 
 ---
 
@@ -40,7 +40,7 @@ Key capabilities:
 
 ## ModuleRegistry
 
-The `ModuleRegistry` is a singleton factory that manages all 70 registered modules:
+The `ModuleRegistry` is a singleton factory that manages all 80 registered modules:
 
 - **Lazy loading**: Modules are loaded via dynamic `import()` on first use — no upfront loading penalty
 - **Instance caching**: Instances are keyed by `moduleName::stageId` to ensure stateful modules maintain their state across stages
@@ -64,7 +64,7 @@ Sub-workflows are the primary composition mechanism. Any workflow stage can dele
 
 The `SubWorkflowModule` reads `_stageConfigs` from the parent input data and applies them to the child engine via `setStageConfigOverrides()` before initialization. This enables composite wrappers to fine-tune individual stage configs without modifying sub-workflow JSON files.
 
-Fourteen pre-built sub-workflows are provided in `src/workflows/sub/`:
+Eighteen pre-built sub-workflows are provided in `src/workflows/sub/`:
 
 | Sub-Workflow | Pipeline | Paper |
 |---|---|---|
@@ -82,6 +82,10 @@ Fourteen pre-built sub-workflows are provided in `src/workflows/sub/`:
 | [`patterns/peer-review.json`](modules/gmpl.md) | PeerReviewModule → FinalSynthesizer | GMPL |
 | [`patterns/red-team.json`](modules/gmpl.md) | RedTeamModule → FinalSynthesizer | GMPL |
 | [`patterns/delphi-panel.json`](modules/gmpl.md) | DelphiPanelModule → FinalSynthesizer | GMPL |
+| [`trace2skill-pipeline.json`](modules/evolution.md) | TraceCluster → SkillMerge (→ persist to graph) | Trace2Skill + AutoSkill |
+| [`slm-dataset-export.json`](modules/evolution.md) | SLMDatasetExporter | Memo |
+| [`harness-evolution.json`](modules/evolution.md) | HarnessEvolver | Milkyway |
+| [`intent-compiler.json`](modules/evolution.md) | IntentCompiler | LSE |
 
 ## Pipeline Reference
 
@@ -89,7 +93,7 @@ Detailed per-module documentation (input/output fingerprints, config schemas, pa
 
 | Pipeline | Doc | Atomic Modules | Wrapper |
 |---|---|---|---|
-| **Chunking** | [chunking.md](modules/chunking.md) | S2Chunker, MarkdownSpatialParser, PDFSpatialParser, ParentChildChunker | — |
+| **Chunking** | [chunking.md](modules/chunking.md) | S2Chunker, MarkdownSpatialParser, PDFSpatialParser, DOCXSpatialParser, ParentChildChunker | — |
 | **SimpleMem** | [simplemem.md](modules/simplemem.md) | SlidingWindow, DensityGate, FactExtractor, SemanticSynthesis, StructuredIndex, IntentAwarePlanner | `SimpleMem` |
 | **LightMem** | [lightmem.md](modules/lightmem.md) | PreCompression, SensoryBuffer, NoveltyGate, TopicSegmenter, AttentionScore, STMBuffer, SleepConsolidation | `LightMem` |
 | **StructMem** | [structmem.md](modules/structmem.md) | DualPerspective, CrossEventConsolidation, GraphPersist | `StructMem` |
@@ -98,6 +102,7 @@ Detailed per-module documentation (input/output fingerprints, config schemas, pa
 | **Graph Indexing** | [graph.md](modules/graph.md) | ChunkIngestor, EntityExtractor, EntityDeduplicator, EntityProfiler, CommunityDetector | `MemgraphGraph` |
 | **PriHA Generation** | [priha.md](modules/priha.md) | QueryClarifier, AnswerGenerator, HallucinationValidator, CitationInjector, WebSearchAgent, DualSourceFusion | `PriHAFusion` |
 | **GMPL Patterns** | [gmpl.md](modules/gmpl.md) | DebateModule, ConsensusJudge, MultiTurnClarifier, ParallelDispatcher, OutcomeMemory, PeerReviewModule, RedTeamModule, DelphiPanelModule | — |
+| **Evolution** | [evolution.md](modules/evolution.md) | SLMDatasetExporter, TraceCluster, SkillMerge, SkillInjector, Trace2Skill, HarnessEvolver, IntentCompiler, SkillBasisExtractor, SkillGapAnalyzer | — |
 | **Trading Domain** | [GMPL_TUTORIAL.md](GMPL_TUTORIAL.md) | `tradingAdapter`, `registerTradingRoles()`, 7 entity schemas, 5 prompt packs | — |
 
 ## Standalone Modules
@@ -110,6 +115,7 @@ These modules operate independently outside of the sub-workflow pipelines:
 | **MarkdownSpatialParser** | Converts Markdown into spatial elements with layout-aware position metadata | [chunking.md](modules/chunking.md) |
 | **PDFSpatialParser** | Extracts text + bounding boxes from PDFs via `unpdf`, produces layout-aware Documents for S2 clustering | [chunking.md](modules/chunking.md) |
 | **ParentChildChunker** | Two-tier chunking with `:BELONGS_TO` graph edges for parent-child retrieval | [chunking.md](modules/chunking.md) |
+| **DOCXSpatialParser** | Extracts text + layout structure from DOCX files via `officeparser`, produces layout-aware Documents with spatial coordinates for S2 clustering | [chunking.md](modules/chunking.md) |
 | **QueryTranslator** | Five strategies: HyDE, Multi-Query, Step-Back, Query Rewriting, Intent Clarification | — |
 | **AutonomousLoop** | Iterative diagnosis → mutation → re-execution loop (OMNI-SIMPLEMEM §3) | — |
 | **Embedder** | LangChain embedding provider (Ollama / OpenAI / OpenRouter) | — |
@@ -124,9 +130,25 @@ These modules operate independently outside of the sub-workflow pipelines:
 | **Crystallizer** | Memory crystallization for long-term knowledge distillation |
 | **Contradiction** | Contradiction detection and resolution across memory units |
 
+## Evolution Modules
+
+The Self-Evolution Layer adds 9 modules for autonomous skill distillation, dataset export, and workflow compilation:
+
+| Module | Description | Deep Dive |
+|---|---|---|
+| **SLMDatasetExporter** | Exports GMPL session data as SFT/DPO training samples for downstream SLM fine-tuning | [evolution.md](modules/evolution.md) |
+| **TraceCluster** | Clusters experience library entries via k-means on embeddings | [evolution.md](modules/evolution.md) |
+| **SkillMerge** | LLM-powered merging of trace clusters into declarative skill artifacts | [evolution.md](modules/evolution.md) |
+| **SkillInjector** | Retrieves relevant skills from Memgraph by vector similarity and injects into context | [evolution.md](modules/evolution.md) |
+| **Trace2Skill** | Orchestrates the full TraceCluster → SkillMerge pipeline | [evolution.md](modules/evolution.md) |
+| **HarnessEvolver** | Maintains versioned prediction harnesses with retrospective validation (Milkyway) | [evolution.md](modules/evolution.md) |
+| **IntentCompiler** | Compiles natural language intents into executable workflow JSON | [evolution.md](modules/evolution.md) |
+| **SkillBasisExtractor** | PCA-based embedding space decomposition for skill characterization | [evolution.md](modules/evolution.md) |
+| **SkillGapAnalyzer** | Projects experience library onto skill basis to identify coverage gaps | [evolution.md](modules/evolution.md) |
+
 ## Example Workflows
 
-Six top-level example workflows demonstrate how the sub-workflow system composes pipelines:
+Nine top-level example workflows demonstrate how the sub-workflow system composes pipelines:
 
 | Workflow | Stages | Use Case |
 |---|---|---|
@@ -136,6 +158,9 @@ Six top-level example workflows demonstrate how the sub-workflow system composes
 | `trading-analysis.json` | parallel analyst dispatch → bull/bear debate → risk debate → outcome logging | TradingAgents-inspired multi-pattern pipeline |
 | `healthcare-assistant.json` | multi-turn clarification → retrieval → DualSourceFusion → peer review → generation | Clinical assistant with medical authority safelist |
 | `autonomous-research.json` | parallel analysis → Delphi expert consensus → red team validation → outcome memory | 4-pattern autonomous research pipeline |
+| `self-improving-research.json` | HERA + Trace2Skill + SkillInjector learning loop | Self-improving agent with skill distillation |
+| `skill-distillation-batch.json` | TraceCluster → SkillMerge → SkillBasisExtractor → SkillGapAnalyzer | Batch skill analytics pipeline |
+| `trading-harness-evolution.json` | HarnessEvolver for trading domain prediction harnesses | Milkyway-inspired market prediction |
 
 ## Trading Domain Adapter
 

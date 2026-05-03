@@ -31,14 +31,14 @@ graph TD
     CTX --> LLM["LLM Provider"]
     CTX --> EMB["Embedding Provider"]
     CTX --> LOG["Winston Logger"]
-    
-    WE --> MR["ModuleRegistry (70 modules)"]
+
+    WE --> MR["ModuleRegistry (80 modules)"]
     WE --> EE["WorkflowEventEmitter"]
     EE --> METRICS["Prometheus Metrics"]
     EE --> SSE["SSE Endpoint"]
-    
+
     MR --> SUB["SubWorkflow"]
-    
+
     subgraph "Atomic Modules"
         MR --> M_MEM["Memory (16 atomic)"]
         MR --> M_AGT["Agents (7 atomic)"]
@@ -46,7 +46,7 @@ graph TD
         MR --> M_GRF["Graph (5 atomic)"]
         MR --> M_GEN["Generation (6 atomic)"]
     end
-    
+
     subgraph "Composite Wrappers"
         MR --> SM["SimpleMem"]
         MR --> LM["LightMem"]
@@ -56,7 +56,7 @@ graph TD
         MR --> PH["PriHAFusion"]
         MR --> MGMOD["MemgraphGraph"]
     end
-    
+
     subgraph "GMPL Pattern Layer"
         MR --> DEBATE["DebateModule"]
         MR --> JUDGE["ConsensusJudge"]
@@ -77,13 +77,25 @@ graph TD
         GMPL_DR["DomainRegistry"] -.-> GMPL_PR
         GMPL_PC["PatternComposer"] -.-> GMPL_PR
     end
-    
+
+    subgraph "Self-Evolution Layer"
+        MR --> EVO_DS["SLMDatasetExporter"]
+        MR --> EVO_TC["TraceCluster"]
+        MR --> EVO_SM_EVO["SkillMerge"]
+        MR --> EVO_SI["SkillInjector"]
+        MR --> EVO_T2S["Trace2Skill"]
+        MR --> EVO_HE["HarnessEvolver"]
+        MR --> EVO_IC["IntentCompiler"]
+        MR --> EVO_SBE["SkillBasisExtractor"]
+        MR --> EVO_SGA["SkillGapAnalyzer"]
+    end
+
     WE -->|"learning loop"| WE
     WE --> API["Hono HTTP Server"]
     API --> MCP["MCP Server"]
     API --> ACP["ACP Server"]
     API --> REST["REST API /api/v1"]
-    
+
     SS -->|"flush/restore"| MG
 ```
 
@@ -143,7 +155,7 @@ Persistent module state for stateful components (LightMem tiers, HERA experience
 - **Scoped** by `workflowId + moduleKey` for isolation
 
 ### ModuleRegistry (`core/ModuleRegistry.ts`)
-Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **70 built-in modules**: 7 composite wrappers (thin delegation layers), 42 atomic pipeline modules, 8 GMPL pattern modules, 4 standalone modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 1 query module.
+Singleton factory with lazy dynamic imports, instance caching by `module::stageId`, `clearInstances()` for validation cleanup, and runtime plugin registration. Registers **80 built-in modules**: 7 composite wrappers (thin delegation layers), 42 atomic pipeline modules, 8 GMPL pattern modules, 9 evolution modules, 5 chunking modules, 2 provider modules, 2 core modules (SubWorkflow + AutonomousLoop), 4 advanced modules (AgentContext, OutcomeLearner, Crystallizer, Contradiction), and 1 query module.
 
 ### SubWorkflowModule (`modules/core/SubWorkflowModule.ts`)
 Enables workflows-within-workflows:
@@ -480,15 +492,16 @@ Pre-built sub-workflows in `src/workflows/sub/`:
 
 ## Workflow Examples
 
-Three top-level example workflows in `src/workflows/examples/`:
+Nine top-level example workflows in `src/workflows/examples/`:
 - `rag-memory-pipeline.json` — Full 10-stage pipeline: translate → parse → chunk → embed → graph → SimpleMem → LightMem → StructMem → retrieve → fuse
 - `quick-qa.json` — Minimal 4-stage QA: translate → embed → retrieve → fuse
 - `multi-agent-research.json` — Advanced: parallel retrieval branches → HERA with learning + RoPE + topology mutation
-
-Three GMPL reference composition workflows demonstrating multi-pattern pipelines:
 - `trading-analysis.json` — TradingAgents-inspired: parallel analyst dispatch → bull/bear debate → risk debate → outcome logging
 - `healthcare-assistant.json` — Clinical assistant: multi-turn clarification → retrieval → DualSourceFusion (with medical authority safelist) → peer review → generation
 - `autonomous-research.json` — Research pipeline: parallel analysis → Delphi expert consensus → red team validation → outcome memory
+- `self-improving-research.json` — Self-improving agent: HERA + Trace2Skill + SkillInjector learning loop
+- `skill-distillation-batch.json` — Batch skill analytics: TraceCluster → SkillMerge → SkillBasisExtractor → SkillGapAnalyzer
+- `trading-harness-evolution.json` — Milkyway-inspired: HarnessEvolver for trading domain prediction harnesses
 
 ## File Structure
 
@@ -498,7 +511,7 @@ src/
     WorkflowEngine.ts         — DAG executor with parallel, retry, learning loops, sub-workflow support
     WorkflowContext.ts         — DI container (Memgraph, LLM, Embeddings, StateStore, Logger)
     WorkflowEventEmitter.ts    — Typed event system for streaming and Prometheus metrics
-    ModuleRegistry.ts          — Lazy-loading singleton with 70 registered modules
+    ModuleRegistry.ts          — Lazy-loading singleton with 80 registered modules
     StateStore.ts              — Memgraph-backed persistent state with LRU cache
     types.ts                   — All interfaces (WorkflowData, BaseModule, StreamEvent, etc.)
     errors.ts                  — 7 typed error classes
@@ -522,8 +535,9 @@ src/
       RedTeamModule.ts         — Adversarial stress-testing (Pattern E)
       DelphiPanelModule.ts     — Anonymous expert polling (Pattern F)
   modules/
-    core/                      SubWorkflowModule, AutonomousLoopModule, AgentContextModule
-    chunking/                  S2ChunkerModule, MarkdownSpatialParserModule, PDFSpatialParserModule, ParentChildChunkerModule
+    core/                      SubWorkflowModule, AutonomousLoopModule, AgentContextModule,
+                               IntentCompilerModule
+    chunking/                  S2ChunkerModule, MarkdownSpatialParserModule, PDFSpatialParserModule, DOCXSpatialParserModule, ParentChildChunkerModule
     memory/                    SimpleMemModule, LightMemModule, StructMemModule,
                                SlidingWindowModule, DensityGateModule, FactExtractorModule,
                                SemanticSynthesisModule, NoveltyGateModule, TopicSegmenterModule,
@@ -545,15 +559,21 @@ src/
                                CitationInjectorModule, WebSearchAgentModule
     query/                     QueryTranslatorModule
     providers/                 EmbedderModule, LLMProviderModule
+    evolution/                 SLMDatasetExporterModule, TraceClusterModule, SkillMergeModule,
+                               SkillInjectorModule, Trace2SkillModule, HarnessEvolverModule,
+                               SkillBasisExtractorModule, SkillGapAnalyzerModule
   mcp/                         MCP server implementation (7 tools: write, recall, search, manage, entity_get, gmpl_run_pattern, gmpl_resolve_outcome)
   acp/                         ACP server implementation
   workflows/
     examples/                  rag-memory-pipeline.json, quick-qa.json, multi-agent-research.json,
-                               trading-analysis.json, healthcare-assistant.json, autonomous-research.json
+                               trading-analysis.json, healthcare-assistant.json, autonomous-research.json,
+                               self-improving-research.json, skill-distillation-batch.json,
+                               trading-harness-evolution.json
     sub/                       simplemem-pipeline.json, simplemem-retrieval.json,
                                lightmem-pipeline.json, structmem-pipeline.json,
                                hera-orchestration.json, hybrid-retrieval.json, graph-indexing.json,
-                               priha-fusion.json
+                               priha-fusion.json, trace2skill-pipeline.json, slm-dataset-export.json,
+                               harness-evolution.json, intent-compiler.json
     sub/patterns/              structured-debate.json, clarification-pipeline.json,
                                parallel-analysis.json, peer-review.json,
                                red-team.json, delphi-panel.json
@@ -563,14 +583,34 @@ src/
   prompts/                     TOML prompt templates (see Prompt System section)
     gmpl/                      debate/, analysis/, clarification/, outcome/, peer-review/, red-team/, delphi-panel/ (GMPL prompts)
     trading/                   fundamentals.toml, technical.toml, sentiment.toml, debate.toml, research.toml
+    dataset/                   synthesis.toml
+    trace2skill/               analyst.toml, merger.toml, injection.toml
+    harness/                   internal_feedback.toml, retrospective_check.toml, harness_init.toml
+    intent-compiler/           role_assigner.toml, topology_designer.toml, semantic_completer.toml
   providers/                   LLMProvider.ts, EmbeddingProvider.ts, MemgraphClient.ts
   server/                      Hono HTTP server, metrics.ts, mcp.ts, acp.ts, api.ts
-  utils/                       promptLoader.ts, similarity.ts, tokens.ts
+  utils/                       promptLoader.ts, similarity.ts, tokens.ts, clustering.ts, datasetFormatters.ts
   tests/
-    unit/                      34 unit test files (including 19 GMPL pattern, adapter, and error tests; 20 PDFSpatialParser tests)
-    integration/               5 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e, composed-workflow-e2e)
+    unit/                      47 unit test files (19 GMPL pattern/adapter/error, 12 evolution, 16 core/memory/retrieval/chunking)
+    unit/evolution/             12 files (SLMDatasetExporter, DatasetFormatters, TraceCluster, SkillMerge, SkillInjector, Trace2Skill, Clustering, HarnessEvolver, IntentCompiler, SkillBasisExtractor, SkillGapAnalyzer, workflow validation)
+    unit/gmpl/                 19 files (DebateModule, PeerReview, RedTeam, Delphi, Clarifier, Dispatcher, OutcomeMemory, PatternComposer, PatternRegistry, RoleRegistry, DomainRegistry, Errors, Events, TradingAdapter, TradingRoles, LiveProviders, ConsensusJudge, emitPatternEvent, WorkflowContextEmitter)
+    integration/               12 integration test files (5 mock + 7 real-services)
     helpers/                   Shared mock factory (mocks.ts)
 ```
+
+## Evolution Layer — Memgraph Schema
+
+The Self-Evolution Layer introduces the following graph labels and relationships:
+
+| Label | Properties | Index | Description |
+|---|---|---|---|
+| `:Skill` | `id`, `name`, `description`, `applicableWhen`, `doPatterns`, `dontPatterns`, `embedding`, `version`, `createdAt` | `:Skill(id)` | Distilled skill artifact from Trace2Skill pipeline |
+| `:PredictionHarness` | `id`, `topicId`, `content`, `version`, `retrospectiveValidated`, `createdAt` | `:PredictionHarness(id)`, `:PredictionHarness(topicId)` | Versioned prediction harness (Milkyway) |
+
+| Relationship | From → To | Description |
+|---|---|---|
+| `:VERSION_OF` | `:PredictionHarness` → `:PredictionHarness` | Links harness versions in a chain |
+| `:GUIDED_BY` | `:AgentTrajectory` → `:Skill` | Records which skills influenced an execution |
 
 ---
 

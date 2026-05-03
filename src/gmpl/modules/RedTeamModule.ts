@@ -302,15 +302,26 @@ export class RedTeamModule implements BaseModule<Config> {
 
   private async persistSession(ctx: WorkflowContext, state: RedTeamState): Promise<void> {
     try {
+      // Summarize attacks and defenses for SLMDatasetExporter compatibility (§3.2)
+      const attackSummary = state.attacks
+        .map((a) => `[${a.attackerId}] (${a.strategy}): ${a.attack}`)
+        .join("\n");
+      const defenseSummary = state.defenses
+        .map((d) => `[${d.defenderId}]: ${d.defense}`)
+        .join("\n");
+
       await ctx.memgraph.query(
         `CREATE (rt:RedTeamSession {
            id: $id, rounds: $rounds, concluded: $concluded,
-           resilienceScore: $resilienceScore, verdict: $verdict, timestamp: $timestamp
+           resilienceScore: $resilienceScore, verdict: $verdict,
+           attack: $attack, defense: $defense, timestamp: $timestamp
          })`,
         {
           id: `redteam-${uuidv4()}`, rounds: state.currentRound, concluded: state.concluded,
           resilienceScore: state.resilienceReport?.resilienceScore ?? 0,
-          verdict: state.resilienceReport?.verdict ?? "", timestamp: new Date().toISOString(),
+          verdict: state.resilienceReport?.verdict ?? "",
+          attack: attackSummary, defense: defenseSummary,
+          timestamp: new Date().toISOString(),
         },
       );
     } catch (err) {

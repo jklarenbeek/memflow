@@ -19,6 +19,7 @@ import type { BaseModule, ModuleInput, ModuleOutput, WorkflowConfig } from "../.
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { ModuleRegistry } from "../../core/ModuleRegistry.js";
 import { loadAndRender } from "../../utils/promptLoader.js";
+import { evolutionIntentCompilationsCounter } from "../../server/metrics.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -26,8 +27,30 @@ import { loadAndRender } from "../../utils/promptLoader.js";
 
 const ConfigSchema = z.object({
   maxRetries: z.number().default(3),
-  /** Available module names for topology design */
-  moduleAllowlist: z.array(z.string()).optional(),
+  /** Available module names for topology design.
+   *  §5.5: Defaults to user-facing modules, excluding internal/infrastructure ones. */
+  moduleAllowlist: z.array(z.string()).default([
+    // Memory
+    "SimpleMem", "LightMem", "StructMem",
+    // Retrieval
+    "LightRAGRetriever",
+    // Agents
+    "HERAOrchestrator",
+    // Generation
+    "PriHAFusion", "DualSourceFusion", "AnswerGenerator", "WebSearchAgent",
+    // Graph
+    "MemgraphGraph",
+    // Chunking
+    "S2Chunker", "MarkdownSpatialParser", "PDFSpatialParser", "ParentChildChunker",
+    // Query
+    "QueryTranslator",
+    // GMPL Patterns
+    "DebateModule", "PeerReviewModule", "RedTeamModule", "DelphiPanelModule",
+    "ParallelDispatcher", "MultiTurnClarifier",
+    // Evolution
+    "SLMDatasetExporter", "Trace2Skill", "SkillInjector", "HarnessEvolver",
+    "SkillBasisExtractor", "SkillGapAnalyzer",
+  ]),
   /** Available pattern IDs for composition */
   patternAllowlist: z.array(z.string()).optional(),
   outputDir: z.string().default("src/workflows/generated"),
@@ -99,18 +122,22 @@ export class IntentCompilerModule implements BaseModule<Config> {
 
     if (!workflowJson) {
       ctx.logger.warn(`IntentCompiler: All ${config.maxRetries} attempts failed`);
+      evolutionIntentCompilationsCounter.inc({ result: "failure" });
       return { data: { compiledWorkflow: undefined }, metrics: { success: false, attempts: config.maxRetries } };
     }
+
+    // §8: Record Prometheus metrics
+    evolutionIntentCompilationsCounter.inc({ result: "success" });
 
     // Optionally write to disk
     if (config.outputDir) {
       try {
-        const fs = await import("node:fs");
+        const fs = await import("node:fs/promises");
         const path = await import("node:path");
         const filename = `${workflowJson.name.replace(/\s+/g, "-")}.json`;
         const outputPath = path.resolve(config.outputDir, filename);
-        fs.mkdirSync(path.resolve(config.outputDir), { recursive: true });
-        fs.writeFileSync(outputPath, JSON.stringify(workflowJson, null, 2));
+        await fs.mkdir(path.resolve(config.outputDir), { recursive: true });
+        await fs.writeFile(outputPath, JSON.stringify(workflowJson, null, 2));
         ctx.logger.info(`IntentCompiler: Wrote workflow to ${outputPath}`);
       } catch (err) {
         ctx.logger.warn(`IntentCompiler: Failed to write workflow: ${(err as Error).message}`);

@@ -19,6 +19,10 @@
 import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import {
+  evolutionDatasetExportsCounter,
+  evolutionDatasetSamplesCounter,
+} from "../../server/metrics.js";
 import { cosineSimilarity } from "../../utils/similarity.js";
 import {
   formatSamples,
@@ -102,6 +106,11 @@ export class SLMDatasetExporterModule implements BaseModule<Config> {
           retrospectiveValidation: config.quality.requireRetrospectiveValidation,
         })
       : undefined;
+
+    // §8: Record Prometheus metrics
+    evolutionDatasetExportsCounter.inc();
+    if (sftSamples.length > 0) evolutionDatasetSamplesCounter.inc({ type: "sft" }, sftSamples.length);
+    if (dpoSamples.length > 0) evolutionDatasetSamplesCounter.inc({ type: "dpo" }, dpoSamples.length);
 
     return {
       data: { datasetExportPath: exportPath, datasetManifest: manifest },
@@ -332,20 +341,20 @@ export class SLMDatasetExporterModule implements BaseModule<Config> {
     const exportDir = `${config.outputDir}/${timestamp}`;
 
     try {
-      // Ensure output directory exists
-      const fs = await import("node:fs");
+      // Use async I/O to avoid blocking the event loop (§5.3)
+      const fs = await import("node:fs/promises");
       const path = await import("node:path");
-      fs.mkdirSync(path.resolve(exportDir), { recursive: true });
+      await fs.mkdir(path.resolve(exportDir), { recursive: true });
 
       if (sftSamples.length > 0) {
         const sftPath = path.resolve(exportDir, "sft.jsonl");
-        fs.writeFileSync(sftPath, toJSONL(sftSamples as unknown as Record<string, unknown>[]));
+        await fs.writeFile(sftPath, toJSONL(sftSamples as unknown as Record<string, unknown>[]));
         ctx.logger.info(`SLMDatasetExporter: Wrote ${sftSamples.length} SFT samples to ${sftPath}`);
       }
 
       if (dpoSamples.length > 0) {
         const dpoPath = path.resolve(exportDir, "dpo.jsonl");
-        fs.writeFileSync(dpoPath, toJSONL(dpoSamples as unknown as Record<string, unknown>[]));
+        await fs.writeFile(dpoPath, toJSONL(dpoSamples as unknown as Record<string, unknown>[]));
         ctx.logger.info(`SLMDatasetExporter: Wrote ${dpoSamples.length} DPO samples to ${dpoPath}`);
       }
     } catch (err) {

@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { cosineSimilarity } from "../../utils/similarity.js";
+import { evolutionSkillInjectionsCounter } from "../../server/metrics.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -128,6 +129,9 @@ export class SkillInjectorModule implements BaseModule<Config> {
     ctx.logger.info(
       `SkillInjector: Injected ${scored.length} skills (mode: ${config.mode}): ${scored.map((s) => s.name).join(", ")}`,
     );
+
+    // §8: Record Prometheus metrics
+    evolutionSkillInjectionsCounter.inc(scored.length);
 
     return {
       data: {

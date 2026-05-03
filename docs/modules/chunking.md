@@ -6,7 +6,7 @@
 
 ## Overview
 
-MemFlow provides four chunking modules that transform raw documents into semantically coherent, token-bounded chunks. At the core is the **S2Chunker** — a spectral-clustering chunker based on the arXiv paper "S2 Chunking: A Hybrid Framework for Document Segmentation Through Integrated Spatial and Semantic Analysis" (Verma 2025, arXiv:2501.05485v1). Two spatial parsers (**MarkdownSpatialParser** and **PDFSpatialParser**) extend S2Chunker with format-specific layout extraction, while **ParentChildChunker** implements a two-tier chunking strategy for parent-child retrieval.
+MemFlow provides five chunking modules that transform raw documents into semantically coherent, token-bounded chunks. At the core is the **S2Chunker** — a spectral-clustering chunker based on the arXiv paper "S2 Chunking: A Hybrid Framework for Document Segmentation Through Integrated Spatial and Semantic Analysis" (Verma 2025, arXiv:2501.05485v1). Three spatial parsers (**MarkdownSpatialParser**, **PDFSpatialParser**, and **DOCXSpatialParser**) extend S2Chunker with format-specific layout extraction, while **ParentChildChunker** implements a two-tier chunking strategy for parent-child retrieval.
 
 ### Architecture
 
@@ -36,7 +36,7 @@ MemFlow provides four chunking modules that transform raw documents into semanti
                      └──────────────────────┘│
 ```
 
-All four modules are registered in the `ModuleRegistry` and can be used as standalone pipeline stages or composed into sub-workflows.
+All five modules are registered in the `ModuleRegistry` and can be used as standalone pipeline stages or composed into sub-workflows.
 
 ---
 
@@ -257,12 +257,82 @@ Two-tier chunking strategy: small children for precision retrieval, large parent
 
 ---
 
+## DOCXSpatialParser
+
+**Module name**: `DOCXSpatialParser` · **File**: `src/modules/chunking/DOCXSpatialParser.ts` · **Paper**: arXiv:2501.05485v1 + DOCX extension · **Dependency**: `officeparser`
+
+S2Chunker subclass that extracts text and structural layout from DOCX (Open XML) documents using [officeparser](https://github.com/nicktop/officeparser). Produces atomic `Document[]` with spatial coordinates derived from DOCX structural elements, then delegates to the inherited S2 spectral-clustering pipeline.
+
+### Spatial Coordinate Model
+
+The parser assigns a 2D coordinate to each DOCX block based on its structural role:
+
+- **x-axis** → structural depth (heading depth):
+  - `Heading 1 = 0`, `Heading 2 = 1`, `Heading 3 = 2`, …
+  - List items: `headingDepth + nestLevel + 1`
+  - Table cells: `headingDepth + 0.5`
+- **y-axis** → sequential reading order (element index, 0-based)
+
+Both axes are scaled by `xScale` / `yScale` before normalization.
+
+### Block Types
+
+`heading_1`–`heading_6`, `paragraph`, `list_item`, `table_cell`, `table_row`
+
+### Config Schema
+
+Extends S2ChunkerParams:
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `xScale` | `number` | `2.0` | Multiplier for x-axis (structural depth sensitivity) |
+| `yScale` | `number` | `1.0` | Multiplier for y-axis (sequential position) |
+
+### Input / Output
+
+| Direction | Fields |
+|---|---|
+| **Input** | `Buffer`, `Uint8Array`, `ArrayBuffer`, or base64 `string` of DOCX binary data |
+| **Output (atomic)** | `Document[]` with `metadata.centroid`, `metadata.blockType`, `metadata.headingDepth` |
+| **Output (chunked)** | `Document[]` with S2 chunk metadata (via inherited pipeline) |
+
+### Module Adapter (DOCXSpatialParserModule)
+
+The workflow adapter accepts DOCX data as `Buffer`, `Uint8Array`, `ArrayBuffer`, or base64 string:
+
+```json
+{
+  "id": "parse-docx",
+  "module": "DOCXSpatialParser",
+  "config": {
+    "chunkSize": 512,
+    "alpha": 0.5,
+    "xScale": 2.0,
+    "yScale": 1.0
+  },
+  "next": "chunk"
+}
+```
+
+| Input Field | Type | Description |
+|---|---|---|
+| `data.docxData` | `Buffer \| Uint8Array \| ArrayBuffer \| string (base64)` | DOCX binary data |
+
+| Output Field | Type | Description |
+|---|---|---|
+| `data.documents` | `Document[]` | Spatially-tagged atomic blocks |
+| `metrics.elements` | `number` | Number of atomic elements extracted |
+| `metrics.blocks_*` | `number` | Per-block-type counts |
+
+---
+
 ## Choosing the Right Chunking Strategy
 
 | Scenario | Recommended Module | Why |
 |---|---|---|
 | Plain text or Markdown documents | `MarkdownSpatialParser` | Structure-aware spatial coordinates from heading hierarchy |
 | PDF documents (reports, papers, invoices) | `PDFSpatialParser` | Precise bounding boxes from PDF text layer |
+| DOCX documents (Word files) | `DOCXSpatialParser` | Structural layout extraction from Open XML |
 | Parent-child retrieval (PriHA) | `ParentChildChunker` | Two-tier precision/context chunks with graph edges |
 | Pre-parsed Documents with custom coordinates | `S2Chunker` directly | Base class — accepts any `centroid` or `bbox` metadata |
 | Pure semantic chunking (no layout) | `SemanticChunker` | S2Chunker with `alpha=1.0` |
