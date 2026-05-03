@@ -44,7 +44,49 @@
 
 import { Document } from "@langchain/core/documents";
 import { S2Chunker, type S2ChunkerParams } from "./S2Chunker.js";
-import { parseOffice, type OfficeContentNode, type HeadingMetadata, type ListMetadata } from "officeparser";
+import { unzipSync } from "fflate";
+// Types only — erased at compile time, no runtime module load.
+import type { OfficeContentNode, HeadingMetadata, ListMetadata } from "officeparser";
+
+// ---------------------------------------------------------------------------
+// Bun compat: fflate.unzip (async/worker-based) silently fails on Bun.
+// Patch the CJS cache BEFORE require("officeparser") resolves it.
+// ---------------------------------------------------------------------------
+if (typeof globalThis.Bun !== "undefined") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fflate = require("fflate");
+    if (typeof fflate.unzip === "function") {
+      fflate.unzip = (
+        data: Uint8Array,
+        optsOrCb: any,
+        cb?: any,
+      ) => {
+        const opts = typeof optsOrCb === "function" ? undefined : optsOrCb;
+        const callback = typeof optsOrCb === "function" ? optsOrCb : cb;
+        try {
+          const all = fflate.unzipSync(data);
+          let result: Record<string, Uint8Array> = all;
+          if (opts?.filter) {
+            result = {};
+            for (const [name, content] of Object.entries(all) as [string, Uint8Array][]) {
+              if (opts.filter({ name, size: content.length, originalSize: content.length })) {
+                result[name] = content;
+              }
+            }
+          }
+          queueMicrotask(() => callback(null, result));
+        } catch (e) {
+          queueMicrotask(() => callback(e as Error));
+        }
+      };
+    }
+  } catch { /* fflate not installed — nothing to patch */ }
+}
+
+// Deferred require: runs AFTER the patch above (unlike ESM imports which hoist).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { parseOffice } = require("officeparser") as typeof import("officeparser");
 
 // ---------------------------------------------------------------------------
 // Block type taxonomy (mirrors MarkdownSpatialParser's BlockType)
@@ -130,8 +172,16 @@ export class DOCXSpatialParser extends S2Chunker {
     baseMetadata: Record<string, unknown> = {},
   ): Promise<Document[]> {
     const buffer = DOCXSpatialParser._toBuffer(docxData);
+
+    // Pre-extract heading style map from styles.xml for Google Docs compat.
+    // officeparser only recognises heading styles whose ID starts with
+    // "Heading" (e.g. "Heading1"), but Google Docs/Libre export numeric IDs
+    // (e.g. "749" for "Heading 1"). We build the map ourselves so that
+    // _astToDocuments can reclassify paragraph nodes as headings.
+    const headingStyleMap = DOCXSpatialParser._extractHeadingStyleMap(buffer);
+
     const ast = await parseOffice(buffer);
-    return this._astToDocuments(ast.content, baseMetadata);
+    return this._astToDocuments(ast.content, baseMetadata, headingStyleMap);
   }
 
   /**
@@ -189,6 +239,7 @@ export class DOCXSpatialParser extends S2Chunker {
   private _astToDocuments(
     nodes: OfficeContentNode[],
     baseMetadata: Record<string, unknown>,
+    headingStyleMap: Map<string, number> = new Map(),
   ): Document[] {
     const docs: Document[] = [];
     let y = 0;
@@ -258,9 +309,29 @@ export class DOCXSpatialParser extends S2Chunker {
         // ── Paragraphs / fallback ─────────────────────────────────────────
         case "paragraph":
         default: {
-          blockType = node.type === "paragraph" ? "paragraph" : "other";
           text = node.text ?? "";
-          x = currentDepth;
+
+          // Google Docs / Libre DOCX compat: reclassify paragraph as heading
+          // if its style matches a known heading style ID from styles.xml.
+          const styleId = (node.metadata as Record<string, unknown> | undefined)?.style as string | undefined;
+          const headingLevel = styleId ? headingStyleMap.get(styleId) : undefined;
+
+          if (headingLevel !== undefined) {
+            // Treat as heading (same logic as the "heading" case above)
+            blockType = `heading_${Math.min(headingLevel, 6)}` as DocxBlockType;
+            currentDepth = headingLevel - 1;
+            x = currentDepth;
+            while (
+              headingStack.length > 0 &&
+              headingStack[headingStack.length - 1].level >= headingLevel
+            ) {
+              headingStack.pop();
+            }
+            headingStack.push({ level: headingLevel, text });
+          } else {
+            blockType = node.type === "paragraph" ? "paragraph" : "other";
+            x = currentDepth;
+          }
           break;
         }
       }
@@ -320,6 +391,57 @@ export class DOCXSpatialParser extends S2Chunker {
     }
 
     return lines.join("\n");
+  }
+
+  // -------------------------------------------------------------------------
+  // Private: Heading-style map extraction (Google Docs / Libre compat)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Extract a map of `styleId → headingLevel` from `word/styles.xml` inside
+   * the DOCX ZIP. This handles editors like Google Docs and LibreOffice that
+   * assign numeric IDs (e.g. "749") instead of semantic IDs (e.g. "Heading1").
+   *
+   * Uses `fflate.unzipSync` (sync) to avoid the async worker issue on Bun.
+   * If the styles.xml cannot be read, returns an empty map (graceful fallback).
+   */
+  private static _extractHeadingStyleMap(buffer: Buffer): Map<string, number> {
+    const map = new Map<string, number>();
+    try {
+      const u8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const files = unzipSync(u8);
+
+      // Find styles.xml (may be word/styles.xml or word/styles1.xml)
+      const stylesKey = Object.keys(files).find(k => /^word\/styles\d*\.xml$/i.test(k));
+      if (!stylesKey) return map;
+
+      const stylesXml = Buffer.from(files[stylesKey]).toString("utf8");
+
+      // Match <w:style w:type="paragraph" w:styleId="NNN"> ... <w:name w:val="heading N"/> ...
+      // Uses a simple regex approach — XML is well-formed OOXML so this is reliable.
+      const styleRegex = /<w:style\s[^>]*w:styleId="([^"]+)"[^>]*>[\s\S]*?<\/w:style>/g;
+      let match: RegExpExecArray | null;
+      while ((match = styleRegex.exec(stylesXml)) !== null) {
+        const block = match[0];
+        const styleId = match[1];
+
+        // Check if this style has a heading name
+        const nameMatch = block.match(/<w:name\s+w:val="[Hh]eading\s+(\d+)"/i);
+        if (nameMatch) {
+          const level = parseInt(nameMatch[1], 10);
+          if (level >= 1 && level <= 9) {
+            // Only add if the styleId doesn't already start with "Heading"
+            // (officeparser handles those natively)
+            if (!styleId.startsWith("Heading")) {
+              map.set(styleId, level);
+            }
+          }
+        }
+      }
+    } catch {
+      // Graceful fallback — heading detection reverts to officeparser's native logic
+    }
+    return map;
   }
 
   // -------------------------------------------------------------------------

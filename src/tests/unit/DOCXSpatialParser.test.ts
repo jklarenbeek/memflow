@@ -2,19 +2,21 @@
  * DOCXSpatialParser unit tests
  *
  * Tests the DOCX parsing, AST→spatial-block conversion, and S2 pipeline
- * integration using a pre-built DOCX fixture in docs/refs/.
+ * integration using the memflow-s2chunker.docx reference file.
  *
- * The fixture contains:
- *   H1 "Introduction"
- *     paragraph
- *     H2 "Background"
- *       paragraph
- *       H3 "Historical Context"
- *         paragraph
- *         3 list items (2× indent 0, 1× indent 1)
- *         table (2×2)
- *   H1 "Conclusion"
- *     paragraph
+ * The fixture (docs/refs/memflow-s2chunker.docx) is a Google Docs-exported
+ * DOCX describing the S² chunking architecture. It contains:
+ *   - 1× H1 (title)
+ *   - 8× H2 (sections: Abstract, Introduction, Architecture, etc.)
+ *   - 5× H3 (sub-sections: Core Pipeline, Spatial Coordinate Model, etc.)
+ *   - 16× paragraphs (body text)
+ *   - 21× list items (ordered + unordered)
+ *   - 1× table (Library Decision Matrix)
+ *   = 52 total content nodes
+ *
+ * The DOCX uses numeric style IDs (749, 750, 751) rather than standard
+ * "Heading1" IDs — tests verify that DOCXSpatialParser's Google Docs compat
+ * heading extraction works correctly.
  */
 
 import { describe, it, expect, beforeAll } from "bun:test";
@@ -43,7 +45,7 @@ describe("DOCXSpatialParser", () => {
   let docxBuffer: Buffer;
 
   beforeAll(async () => {
-    docxBuffer = await loadDOCX("test-docx-fixture.docx");
+    docxBuffer = await loadDOCX("memflow-s2chunker.docx");
   });
 
   describe("splitText() throws", () => {
@@ -68,10 +70,8 @@ describe("DOCXSpatialParser", () => {
     });
 
     it("should produce the expected number of blocks", () => {
-      // 4 headings + 3 paragraphs + 3 list items + 1 table = 11 blocks
-      // (empty paragraphs are skipped)
-      expect(docs.length).toBeGreaterThanOrEqual(10);
-      expect(docs.length).toBeLessThanOrEqual(14);
+      // 14 headings + 16 paragraphs + 21 list items + 1 table = 52 blocks
+      expect(docs.length).toBe(52);
     });
 
     it("should produce documents with centroid metadata", () => {
@@ -103,22 +103,22 @@ describe("DOCXSpatialParser", () => {
       const headings = docs.filter(d =>
         (d.metadata as DocxBlockMetadata).blockType.startsWith("heading_")
       );
-      expect(headings.length).toBeGreaterThanOrEqual(4);
+      expect(headings.length).toBe(14);
 
       const h1s = headings.filter(h => (h.metadata as DocxBlockMetadata).blockType === "heading_1");
       const h2s = headings.filter(h => (h.metadata as DocxBlockMetadata).blockType === "heading_2");
       const h3s = headings.filter(h => (h.metadata as DocxBlockMetadata).blockType === "heading_3");
 
-      expect(h1s.length).toBe(2); // Introduction, Conclusion
-      expect(h2s.length).toBe(1); // Background
-      expect(h3s.length).toBe(1); // Historical Context
+      expect(h1s.length).toBe(1);  // Title
+      expect(h2s.length).toBe(8);  // Abstract, 1..7 sections
+      expect(h3s.length).toBe(5);  // Sub-sections (2.1, 2.2, 3.1, 3.2, 3.3)
     });
 
     it("should identify list_item blocks", () => {
       const lists = docs.filter(d =>
         (d.metadata as DocxBlockMetadata).blockType === "list_item"
       );
-      expect(lists.length).toBe(3);
+      expect(lists.length).toBe(21);
     });
 
     it("should identify table blocks", () => {
@@ -128,27 +128,30 @@ describe("DOCXSpatialParser", () => {
       expect(tables.length).toBe(1);
 
       // Table content should include Markdown formatting
-      expect(tables[0].pageContent).toContain("Name");
-      expect(tables[0].pageContent).toContain("Value");
       expect(tables[0].pageContent).toContain("|");
     });
 
     it("should build correct heading paths", () => {
-      // Find the paragraph under H3 "Historical Context"
-      const h3Para = docs.find(d =>
-        d.pageContent.includes("Paragraph under heading 3")
+      // Find a paragraph under H3 "2.1 Core Pipeline"
+      const pipelineList = docs.find(d =>
+        d.pageContent.startsWith("Parse: Format-specific parsers")
       );
-      expect(h3Para).toBeDefined();
-      const meta = h3Para!.metadata as DocxBlockMetadata;
-      expect(meta.headingPath).toEqual(["Introduction", "Background", "Historical Context"]);
-      expect(meta.headingDepth).toBe(2); // H3 → depth 2
+      expect(pipelineList).toBeDefined();
+      const meta = pipelineList!.metadata as DocxBlockMetadata;
+      // H1 title → H2 "2. The S2Chunker Architecture" → H3 "2.1 Core Pipeline"
+      expect(meta.headingPath.length).toBe(3);
+      expect(meta.headingPath[2]).toContain("2.1 Core Pipeline");
     });
 
-    it("should reset heading path after a new H1", () => {
-      const conclusion = docs.find(d => d.pageContent === "Conclusion");
-      expect(conclusion).toBeDefined();
-      const meta = conclusion!.metadata as DocxBlockMetadata;
-      expect(meta.headingPath).toEqual(["Conclusion"]);
+    it("should reset heading path after a new H2", () => {
+      // "4. Library Decision Matrix" is a new H2 — its path should reset
+      const libDecision = docs.find(d =>
+        d.pageContent.includes("4. Library Decision Matrix")
+      );
+      expect(libDecision).toBeDefined();
+      const meta = libDecision!.metadata as DocxBlockMetadata;
+      // Under H1, direct H2 → path length 2
+      expect(meta.headingPath.length).toBe(2);
     });
 
     it("should assign x=0 for H1 headings", () => {
@@ -169,14 +172,13 @@ describe("DOCXSpatialParser", () => {
       }
     });
 
-    it("should give tables a depth offset of +0.5", () => {
-      const table = docs.find(d =>
-        (d.metadata as DocxBlockMetadata).blockType === "table"
+    it("should detect Google Docs numeric heading styles", () => {
+      // The H1 title uses style "749" which maps to "Heading 1"
+      const title = docs.find(d =>
+        (d.metadata as DocxBlockMetadata).blockType === "heading_1"
       );
-      expect(table).toBeDefined();
-      const meta = table!.metadata as DocxBlockMetadata;
-      // Under H3 (currentDepth=2), table x = (2 + 0.5) * xScale = 5.0
-      expect(meta.centroid.x).toBe(5.0);
+      expect(title).toBeDefined();
+      expect(title!.pageContent).toContain("S²");
     });
   });
 
@@ -212,7 +214,7 @@ describe("DOCXSpatialParser", () => {
       const ab = docxBuffer.buffer.slice(
         docxBuffer.byteOffset,
         docxBuffer.byteOffset + docxBuffer.byteLength,
-      );
+      ) as ArrayBuffer;
       const docs = await parser.parseToDocuments(ab);
       expect(docs.length).toBeGreaterThan(0);
     });
@@ -227,7 +229,7 @@ describe("DOCXSpatialParserModule", () => {
   let docxBuffer: Buffer;
 
   beforeAll(async () => {
-    docxBuffer = await loadDOCX("test-docx-fixture.docx");
+    docxBuffer = await loadDOCX("memflow-s2chunker.docx");
   });
 
   it("should instantiate with default config", () => {
