@@ -88,6 +88,26 @@ export const gmplPatternDurationHistogram = new Histogram({
   registers: [register],
 });
 
+export const gmplErrorsCounter = new Counter({
+  name: "gmpl_errors_total",
+  help: "Total GMPL-specific errors by error code",
+  labelNames: ["error_code", "pattern_id"],
+  registers: [register],
+});
+
+/**
+ * Record a GMPL error for Prometheus tracking.
+ *
+ * Call from catch blocks that handle GmplError subclasses:
+ *
+ *   catch (err) {
+ *     if (err instanceof GmplError) recordGmplError(err.code, patternId);
+ *   }
+ */
+export function recordGmplError(errorCode: string, patternId = "unknown"): void {
+  gmplErrorsCounter.inc({ error_code: errorCode, pattern_id: patternId });
+}
+
 // ---------------------------------------------------------------------------
 // Wiring helpers
 // ---------------------------------------------------------------------------
