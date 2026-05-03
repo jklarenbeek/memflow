@@ -61,6 +61,35 @@
   - Integrated as the meta-learning / workflow evolution engine
   - 📄 [`docs/refs/AutoResearchClaw.pdf`](refs/AutoResearchClaw.pdf)
 
+## Self-Evolution Layer (May 2026)
+
+- **MASFactory: A Graph-centric Framework for Orchestrating LLM-Based Multi-Agent Systems with Vibe Graphing** (arXiv:2603.06007v1, Zhou et al., Mar 2026)
+  - Intent-to-workflow compilation via "Vibe Graphing"; pluggable `ContextBlock` protocol
+  - Adapted as `IntentCompilerModule` (Phase 4)
+  - 📄 [`docs/refs/2603.06007v1.pdf`](refs/2603.06007v1.pdf)
+
+- **Trace2Skill: Distill Trajectory-Local Lessons into Transferable Agent Skills** (arXiv:2603.25158v4, Chen et al., Mar 2026)
+  - Offline parallel trace analysis → hierarchical skill consolidation into declarative prompt packs
+  - Adopted as `Trace2SkillModule`, `TraceClusterModule`, `SkillMergeModule`, `SkillInjectorModule` (Phase 2)
+  - 📄 [`docs/refs/2603.25158v4.pdf`](refs/2603.25158v4.pdf)
+
+- **Milkyway: The World Leaks the Future: Harness Evolution for Future Prediction Agents** (arXiv:2604.15719v2, Xu et al., Apr 2026)
+  - Persistent prediction harness with internal feedback (temporal contrasts) + retrospective validation
+  - Adopted as `HarnessEvolverModule` (Phase 3)
+  - 📄 [`docs/refs/2604.15719v2.pdf`](refs/2604.15719v2.pdf)
+
+- **Characterizing Model-Native Skills (AutoSkill)** (arXiv:2604.17614v1, Wang et al., Apr 2026)
+  - Activation-space PCA for skill characterization; adapted to embedding-space PCA for API-only constraint
+  - Adapted as `SkillBasisExtractorModule`, `SkillGapAnalyzerModule` (Phase 4, optional)
+  - 📄 [`docs/refs/2604.17614v1.pdf`](refs/2604.17614v1.pdf)
+
+- **Contextual Agentic Memory is a Memo, Not True Memory** (arXiv:2604.27707v1, Li et al., Apr 2026)
+  - Theoretical argument: retrieval-based memory hits a generalization ceiling; weight-based consolidation is the missing neocortical path
+  - Justification for `SLMDatasetExporterModule` (Phase 1)
+  - 📄 [`docs/refs/2604.27707v1.pdf`](refs/2604.27707v1.pdf)
+
+> See the [`docs/PROPOSAL.md`](PROPOSAL.md) suite (PROPOSAL.md through PROPOSAL_04.md) for the full phased implementation plan.
+
 ## OMNI-SIMPLEMEM (Bonus)
 - **OMNI-SIMPLEMEM: Autoresearch-Guided Discovery of Life-long Multimodal Agent Memory** (arXiv:2604.01007v2, Liu et al., Apr 2026)
   - 411% / 214% F1 gains via autonomous experiment loop — directly inspires our learning layer
