@@ -27,6 +27,11 @@ const ConfigSchema = z.object({
   /** Also write skills as TOML files for hot-reload */
   persistToToml: z.boolean().default(false),
   tomlOutputDir: z.string().default("src/prompts/skills"),
+  /** Create a vector index on :Skill(embedding) for production-scale similarity search.
+   *  Defaults to true; silently degrades if Memgraph version doesn't support vector indexes. */
+  enableVectorIndex: z.boolean().default(true),
+  /** Embedding dimension for the vector index */
+  embeddingDimension: z.number().default(768),
 });
 
 type Config = z.infer<typeof ConfigSchema>;
@@ -65,7 +70,21 @@ export class SkillMergeModule implements BaseModule<Config> {
     try {
       await ctx.memgraph.query(`CREATE INDEX ON :Skill(id)`);
     } catch {
-      ctx.logger.debug("SkillMerge: Index creation skipped (may already exist)");
+      ctx.logger.debug("SkillMerge: :Skill(id) index creation skipped (may already exist)");
+    }
+
+    // §3.3: Configurable vector index for production-scale similarity search
+    if (this.config.enableVectorIndex) {
+      try {
+        await ctx.memgraph.ensureVectorIndex(
+          "Skill", "embedding", this.config.embeddingDimension, "skill_emb_idx",
+        );
+        ctx.logger.info("SkillMerge: Vector index ensured on :Skill(embedding)");
+      } catch {
+        ctx.logger.debug(
+          "SkillMerge: Vector index creation skipped (Memgraph version may not support vector indexes)",
+        );
+      }
     }
   }
 

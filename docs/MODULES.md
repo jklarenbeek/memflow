@@ -140,7 +140,7 @@ The Self-Evolution Layer adds 9 modules for autonomous skill distillation, datas
 | **TraceCluster** | Clusters experience library entries via k-means on embeddings | [evolution.md](modules/evolution.md) |
 | **SkillMerge** | LLM-powered merging of trace clusters into declarative skill artifacts | [evolution.md](modules/evolution.md) |
 | **SkillInjector** | Retrieves relevant skills from Memgraph by vector similarity and injects into context | [evolution.md](modules/evolution.md) |
-| **Trace2Skill** | Orchestrates the full TraceCluster → SkillMerge pipeline | [evolution.md](modules/evolution.md) |
+| **Trace2Skill** | Orchestrates the full TraceCluster → SkillMerge pipeline via `ctx.runSubWorkflow()` | [evolution.md](modules/evolution.md) |
 | **HarnessEvolver** | Maintains versioned prediction harnesses with retrospective validation (Milkyway) | [evolution.md](modules/evolution.md) |
 | **IntentCompiler** | Compiles natural language intents into executable workflow JSON | [evolution.md](modules/evolution.md) |
 | **SkillBasisExtractor** | PCA-based embedding space decomposition for skill characterization | [evolution.md](modules/evolution.md) |

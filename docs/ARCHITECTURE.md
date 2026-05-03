@@ -137,6 +137,7 @@ DI container holding all shared runtime resources:
 - **Winston logger** — structured JSON logging
 - **Trace accumulator** — per-stage timing and I/O summaries
 - **Sub-workflow depth tracker** — prevents infinite recursion (default max 5)
+- **`runSubWorkflow(config, input, overrides?)`** — first-class API for executing child workflows within the parent context. Manages depth tracking, engine lifecycle, and config overrides automatically. Used by `Trace2SkillModule` and available to any module that needs composite orchestration.
 
 ### MemgraphClient (`providers/MemgraphClient.ts`)
 Singleton Cypher query client with parameterised-only bindings:
@@ -289,7 +290,7 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 - **:Decision** — GMPL resolved decisions with outcome data
 - **:Reflection** — GMPL LLM-generated reflections on resolved outcomes
 - **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords), `BELONGS_TO` (child→parent chunks), `CITES` (answer→citation), `IMPROVED_BY` (decision→reflection), `REFERENCES` (decision→entity)
-- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`; scalar on `PendingDecision.id`, `Decision.pendingId`, `Reflection.decisionId`
+- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`, `Skill.embedding` (configurable via `enableVectorIndex`); scalar on `Skill.id`, `PredictionHarness.id`, `PredictionHarness.topicId`, `PendingDecision.id`, `Decision.pendingId`, `Reflection.decisionId`
 
 ## HTTP API (Hono)
 
@@ -302,7 +303,7 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 | `/workflow/run/stream` | POST | Execute workflow with SSE streaming |
 | `/mcp` | POST | MCP server (7 tools: write, recall, search, manage, entity_get, gmpl_run_pattern, gmpl_resolve_outcome) |
 | `/acp` | POST/GET | ACP server (request/response + SSE) |
-| `/api/v1/*` | CRUD | REST API for memories, entities, search, recall, graph stats |
+| `/api/v1/*` | CRUD | REST API for memories, entities, search, recall, graph stats, evolution endpoints (skills, harness, workflows, datasets) |
 | `/prompts/validate` | GET | Validate TOML prompt references |
 | `/prompts/reload` | POST | Invalidate TOML prompt cache |
 
@@ -345,6 +346,7 @@ All module error boundaries use structured logging instead of bare `catch {}` bl
 - API keys via env only
 - Memgraph auth + network isolation recommended in prod
 - CORS middleware on HTTP server
+- **Pluggable auth middleware**: All REST API routes pass through a configurable `authMiddleware` hook in `api.ts`. Default is no-op (all requests allowed). Swap to JWT, API key, or RBAC by replacing the middleware function — no endpoint changes needed.
 - **Bun-first runtime**: Bun is the primary and recommended runtime. Server auto-detects Bun vs Node.js via `globalThis.Bun`. Bun uses native `Bun.serve()`, Node.js falls back to `@hono/node-server` (listed in `optionalDependencies`) with raw `node:http` as a last resort.
 - **Environment**: Bun auto-loads `.env` files — no `dotenv` dependency needed. No `ts-node` required — Bun runs `.ts` natively.
 - **Docker**: Multi-stage build with `oven/bun:1` builder and `memgraph/memgraph-mage` runtime. Bun runs TypeScript directly — no `tsc` build step in the container.
@@ -580,21 +582,21 @@ src/
     service/                   ingest.json, recall.json, search.json (REST API backing workflows)
   domains/
     trading/                   adapter.ts, schemas.ts, roles.ts, index.ts (reference DomainAdapter)
-  prompts/                     TOML prompt templates (see Prompt System section)
+  prompts/                     TOML prompt templates (71 files — see Prompt System section)
     gmpl/                      debate/, analysis/, clarification/, outcome/, peer-review/, red-team/, delphi-panel/ (GMPL prompts)
     trading/                   fundamentals.toml, technical.toml, sentiment.toml, debate.toml, research.toml
-    dataset/                   synthesis.toml
-    trace2skill/               analyst.toml, merger.toml, injection.toml
+    dataset/                   synthesis.toml (§future — LLM quality-enhancement pass for SLM training data)
+    trace2skill/               analyst.toml (§future — per-cluster analysis), merger.toml, injection.toml
     harness/                   internal_feedback.toml, retrospective_check.toml, harness_init.toml
-    intent-compiler/           role_assigner.toml, topology_designer.toml, semantic_completer.toml
+    intent-compiler/           role_assigner.toml (§future — stage 1), topology_designer.toml, semantic_completer.toml (§future — stage 3)
   providers/                   LLMProvider.ts, EmbeddingProvider.ts, MemgraphClient.ts
-  server/                      Hono HTTP server, metrics.ts, mcp.ts, acp.ts, api.ts
+  server/                      Hono HTTP server, metrics.ts, mcp.ts, acp.ts, api.ts (with pluggable auth middleware)
   utils/                       promptLoader.ts, similarity.ts, tokens.ts, clustering.ts, datasetFormatters.ts
   tests/
     unit/                      47 unit test files (19 GMPL pattern/adapter/error, 12 evolution, 16 core/memory/retrieval/chunking)
     unit/evolution/             12 files (SLMDatasetExporter, DatasetFormatters, TraceCluster, SkillMerge, SkillInjector, Trace2Skill, Clustering, HarnessEvolver, IntentCompiler, SkillBasisExtractor, SkillGapAnalyzer, workflow validation)
     unit/gmpl/                 19 files (DebateModule, PeerReview, RedTeam, Delphi, Clarifier, Dispatcher, OutcomeMemory, PatternComposer, PatternRegistry, RoleRegistry, DomainRegistry, Errors, Events, TradingAdapter, TradingRoles, LiveProviders, ConsensusJudge, emitPatternEvent, WorkflowContextEmitter)
-    integration/               12 integration test files (5 mock + 7 real-services)
+    integration/               14 integration test files (6 mock E2E + 8 real-services)
     helpers/                   Shared mock factory (mocks.ts)
 ```
 
@@ -604,7 +606,7 @@ The Self-Evolution Layer introduces the following graph labels and relationships
 
 | Label | Properties | Index | Description |
 |---|---|---|---|
-| `:Skill` | `id`, `name`, `description`, `applicableWhen`, `doPatterns`, `dontPatterns`, `embedding`, `version`, `createdAt` | `:Skill(id)` | Distilled skill artifact from Trace2Skill pipeline |
+| `:Skill` | `id`, `name`, `description`, `applicableWhen`, `doPatterns`, `dontPatterns`, `embedding`, `version`, `createdAt` | `:Skill(id)`, vector on `embedding` (configurable) | Distilled skill artifact from Trace2Skill pipeline |
 | `:PredictionHarness` | `id`, `topicId`, `content`, `version`, `retrospectiveValidated`, `createdAt` | `:PredictionHarness(id)`, `:PredictionHarness(topicId)` | Versioned prediction harness (Milkyway) |
 
 | Relationship | From → To | Description |

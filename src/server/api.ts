@@ -6,14 +6,41 @@
  */
 
 import { Hono } from "hono";
+import type { Context, Next } from "hono";
+import { z } from "zod";
 import type { GlobalConfig } from "../core/types.js";
 import { runServiceWorkflow, withMemgraph } from "../mcp/tools/_helpers.js";
 import ingestWorkflow from "../workflows/service/ingest.json" with { type: "json" };
 import recallWorkflow from "../workflows/service/recall.json" with { type: "json" };
 import searchWorkflow from "../workflows/service/search.json" with { type: "json" };
 
+// ---------------------------------------------------------------------------
+// Auth middleware hook — pluggable authentication/authorization
+//
+// Replace this no-op with JWT validation, API key checking, RBAC, etc.
+// when project-wide auth is implemented. All endpoints below are protected
+// by this middleware, so changes here apply globally.
+//
+// Example (API key):
+//   const authMiddleware = async (c: Context, next: Next) => {
+//     const apiKey = c.req.header("X-API-Key");
+//     if (!apiKey || apiKey !== process.env.MEMFLOW_API_KEY) {
+//       return c.json({ error: "Unauthorized" }, 401);
+//     }
+//     await next();
+//   };
+// ---------------------------------------------------------------------------
+
+const authMiddleware = async (_c: Context, next: Next) => {
+  // No-op: all requests are allowed. Replace with real auth when ready.
+  await next();
+};
+
 export function createAPIRouter(globalConfig: GlobalConfig): Hono {
   const app = new Hono();
+
+  // Apply auth middleware to all routes
+  app.use("*", authMiddleware);
 
   // -----------------------------------------------------------------------
   // Memories
@@ -326,25 +353,43 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
   });
 
   // -----------------------------------------------------------------------
-  // Dataset Export (§7.1 — hardened)
+  // Dataset Export (§7.1 — hardened with Zod + concurrency gate)
   // -----------------------------------------------------------------------
 
-  app.post("/datasets/export", async (c) => {
-    try {
-      const body = await c.req.json<{
-        format?: string;
-        domain?: string;
-        maxSamples?: number;
-        minConfidence?: number;
-        deduplicationThreshold?: number;
-        requireRetrospectiveValidation?: boolean;
-      }>().catch(() => ({}));
+  const ExportRequestSchema = z.object({
+    format: z.enum(["sft", "dpo", "both"]).default("both"),
+    domain: z.string().optional(),
+    maxSamples: z.number().min(1).max(100000).default(10000),
+    minConfidence: z.number().min(0).max(1).default(0.6),
+    deduplicationThreshold: z.number().min(0).max(1).default(0.92),
+    requireRetrospectiveValidation: z.boolean().default(true),
+  });
 
-      // §7.1: Basic validation
-      const format = body.format ?? "both";
-      if (!["sft", "dpo", "both"].includes(format)) {
-        return c.json({ success: false, error: "Invalid format: must be 'sft', 'dpo', or 'both'" }, 400);
+  let datasetExportInProgress = false;
+
+  app.post("/datasets/export", async (c) => {
+    // Concurrency gate: only one export at a time to prevent event-loop starvation
+    if (datasetExportInProgress) {
+      return c.json(
+        { success: false, error: "An export is already in progress. Please wait and retry." },
+        429,
+      );
+    }
+
+    try {
+      const rawBody = await c.req.json().catch(() => ({}));
+
+      // Zod validation
+      const parseResult = ExportRequestSchema.safeParse(rawBody);
+      if (!parseResult.success) {
+        return c.json(
+          { success: false, error: `Validation failed: ${parseResult.error.issues.map(i => i.message).join(", ")}` },
+          400,
+        );
       }
+      const body = parseResult.data;
+
+      datasetExportInProgress = true;
 
       const exportWorkflow = {
         name: "slm-dataset-export",
@@ -354,14 +399,14 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
           id: "export",
           module: "SLMDatasetExporter",
           config: {
-            format,
+            format: body.format,
             domainFilter: body.domain,
-            maxSamples: body.maxSamples ?? 10000,
+            maxSamples: body.maxSamples,
             trigger: { type: "on_demand" },
             quality: {
-              minConfidence: body.minConfidence ?? 0.6,
-              deduplicationThreshold: body.deduplicationThreshold ?? 0.92,
-              requireRetrospectiveValidation: body.requireRetrospectiveValidation ?? true,
+              minConfidence: body.minConfidence,
+              deduplicationThreshold: body.deduplicationThreshold,
+              requireRetrospectiveValidation: body.requireRetrospectiveValidation,
             },
           },
           next: null,
@@ -382,6 +427,8 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
       });
     } catch (err) {
       return c.json({ success: false, error: (err as Error).message }, 500);
+    } finally {
+      datasetExportInProgress = false;
     }
   });
 

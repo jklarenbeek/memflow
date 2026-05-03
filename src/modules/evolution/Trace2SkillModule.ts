@@ -1,8 +1,14 @@
 /**
  * Trace2SkillModule — composite wrapper for trace-to-skill distillation
  *
- * Orchestrates the full Trace2Skill pipeline: cluster → analyze → merge.
- * Delegates to the `trace2skill-pipeline.json` sub-workflow.
+ * Orchestrates the full Trace2Skill pipeline: cluster → merge.
+ * Delegates to the `trace2skill-pipeline.json` sub-workflow via
+ * ctx.runSubWorkflow(), ensuring:
+ *  - Full tracing via ctx.addTrace()
+ *  - Event emission through WorkflowEventEmitter
+ *  - Prometheus metrics collection
+ *  - Module instance caching via ModuleRegistry
+ *  - Recursion depth guard
  *
  * Reads:  experienceLibrary (or queries from Memgraph)
  * Writes: distilledSkills
@@ -11,6 +17,9 @@
 import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -33,7 +42,7 @@ type Config = z.infer<typeof ConfigSchema>;
 
 export class Trace2SkillModule implements BaseModule<Config> {
   readonly name = "Trace2Skill";
-  readonly version = "0.1.0";
+  readonly version = "0.3.0";
   private config: Config;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -44,53 +53,60 @@ export class Trace2SkillModule implements BaseModule<Config> {
     const ctx = context as WorkflowContext;
     const config = input.config;
 
-    // Import and run the sub-workflow inline
-    // This composite module orchestrates: TraceCluster → SkillMerge
-    const { TraceClusterModule } = await import("./TraceClusterModule.js");
-    const { SkillMergeModule } = await import("./SkillMergeModule.js");
+    // Load the trace2skill-pipeline.json sub-workflow definition
+    const workflowConfig = this.loadPipelineWorkflow();
 
-    // Stage 1: Cluster
-    const clusterModule = new TraceClusterModule({
-      k: config.k,
-      clusteringBackend: config.clusteringBackend,
-    });
-    const clusterResult = await clusterModule.process(
-      { data: input.data, config: clusterModule.getConfigSchema().parse({
+    // Build per-stage config overrides from Trace2Skill's merged config
+    const stageOverrides: Record<string, Record<string, unknown>> = {
+      cluster: {
         k: config.k,
         clusteringBackend: config.clusteringBackend,
-      }) },
-      context,
-    );
-
-    // Stage 2: Merge
-    const mergeModule = new SkillMergeModule({
-      maxSkillsPerCluster: config.maxSkillsPerCluster,
-      persistToGraph: config.persistToGraph,
-    });
-    const mergeResult = await mergeModule.process(
-      {
-        data: { ...input.data, ...clusterResult.data },
-        config: mergeModule.getConfigSchema().parse({
-          maxSkillsPerCluster: config.maxSkillsPerCluster,
-          persistToGraph: config.persistToGraph,
-        }),
       },
-      context,
+      merge: {
+        maxSkillsPerCluster: config.maxSkillsPerCluster,
+        persistToGraph: config.persistToGraph,
+      },
+    };
+
+    // Execute as a proper sub-workflow via ctx.runSubWorkflow(),
+    // sharing the parent WorkflowContext (LLM, Memgraph, Logger, tracing)
+    const childState = await ctx.runSubWorkflow(
+      workflowConfig,
+      input.data,
+      stageOverrides,
     );
 
-    const skillCount = (mergeResult.metrics?.skillCount as number) ?? 0;
-    ctx.logger.info(`Trace2Skill: Complete — ${skillCount} skills distilled`);
+    const skillCount = (childState.data.metrics as Record<string, unknown>)?.skillCount ?? 0;
+    ctx.logger.info(`Trace2Skill: Complete — ${skillCount} skills distilled via sub-workflow`);
 
     return {
       data: {
-        traceClusters: clusterResult.data.traceClusters,
-        distilledSkills: mergeResult.data.distilledSkills,
+        traceClusters: childState.data.traceClusters,
+        distilledSkills: childState.data.distilledSkills,
       },
       metrics: {
-        ...clusterResult.metrics,
-        ...mergeResult.metrics,
+        ...(childState.data.metrics as Record<string, unknown> ?? {}),
+        subWorkflow: "trace2skill-pipeline",
+        childStages: workflowConfig.stages.length,
       },
     };
+  }
+
+  // -----------------------------------------------------------------------
+  // Pipeline loading
+  // -----------------------------------------------------------------------
+
+  private loadPipelineWorkflow() {
+    const thisFile =
+      typeof __filename !== "undefined"
+        ? __filename
+        : fileURLToPath(import.meta.url);
+    const projectRoot = path.resolve(path.dirname(thisFile), "..", "..", "..");
+    const pipelinePath = path.join(
+      projectRoot, "src", "workflows", "sub", "trace2skill-pipeline.json",
+    );
+    const raw = fs.readFileSync(pipelinePath, "utf-8");
+    return JSON.parse(raw);
   }
 
   getConfigSchema() {

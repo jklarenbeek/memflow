@@ -22,7 +22,7 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { Embeddings } from "@langchain/core/embeddings";
 import { v4 as uuidv4 } from "uuid";
 
-import type { GlobalConfig } from "./types.js";
+import type { GlobalConfig, WorkflowConfig, WorkflowState, WorkflowData } from "./types.js";
 import { MemgraphClient, type Logger } from "../providers/MemgraphClient.js";
 import { createLLM } from "../providers/LLMProvider.js";
 import { createEmbeddings } from "../providers/EmbeddingProvider.js";
@@ -213,6 +213,61 @@ export class WorkflowContext {
       inputSummary: summarize(input),
       outputSummary: summarize(output),
     });
+  }
+
+  // -----------------------------------------------------------------------
+  // Sub-workflow execution
+  // -----------------------------------------------------------------------
+
+  /**
+   * Execute a child workflow within this context.
+   *
+   * Shares all parent resources (LLM, Memgraph, Logger, tracing, events)
+   * with the child engine. Manages recursion depth automatically.
+   *
+   * @param workflowConfig  The child workflow definition (inline or loaded from JSON)
+   * @param inputData       Initial data to seed the child workflow
+   * @param stageOverrides  Optional per-stage config overrides (keyed by stage ID)
+   * @param maxDepth        Maximum recursion depth (default 5)
+   * @returns               The completed child WorkflowState
+   *
+   * @example
+   *   const childState = await ctx.runSubWorkflow(
+   *     traceToSkillPipeline,
+   *     { experienceLibrary },
+   *     { cluster: { k: 10 }, merge: { persistToGraph: true } },
+   *   );
+   */
+  async runSubWorkflow(
+    workflowConfig: WorkflowConfig,
+    inputData: Partial<WorkflowData> = {},
+    stageOverrides?: Record<string, Record<string, unknown>>,
+    maxDepth = 5,
+  ): Promise<WorkflowState> {
+    if (this.depth >= maxDepth) {
+      throw new Error(
+        `Sub-workflow recursion depth exceeded (max ${maxDepth}). ` +
+          `Check for circular workflow references.`,
+      );
+    }
+
+    // Lazy import to avoid circular dependency:
+    // WorkflowContext ←→ WorkflowEngine both reference each other.
+    const { WorkflowEngine } = await import("./WorkflowEngine.js");
+
+    this.depth++;
+    try {
+      const childEngine = new WorkflowEngine(workflowConfig);
+
+      if (stageOverrides) {
+        childEngine.setStageConfigOverrides(stageOverrides);
+      }
+
+      await childEngine.initializeWithContext(this);
+      return await childEngine.run(inputData);
+    } finally {
+      this.depth--;
+    }
   }
 
   // -----------------------------------------------------------------------

@@ -108,7 +108,9 @@ LLM-powered module that merges trace clusters into declarative skill artifacts a
 ```typescript
 {
   maxSkillsPerCluster: number,   // Default: 3
-  persistToGraph: boolean        // Default: true
+  persistToGraph: boolean,       // Default: true
+  enableVectorIndex: boolean,    // Default: true — creates vector index on :Skill(embedding)
+  embeddingDimension: number     // Default: 768 — dimension for the vector index
 }
 ```
 
@@ -154,14 +156,15 @@ Retrieves relevant skills from Memgraph using vector similarity and injects them
 
 ### Trace2Skill (Orchestrator)
 
-Orchestrates the full TraceCluster → SkillMerge pipeline as a single workflow stage.
+Orchestrates the full TraceCluster → SkillMerge pipeline as a single workflow stage. Uses `ctx.runSubWorkflow()` for first-class sub-workflow execution with shared context.
 
-**Source**: `src/modules/evolution/Trace2SkillModule.ts`
+**Source**: `src/modules/evolution/Trace2SkillModule.ts` (v0.3.0)
 
 | Aspect | Details |
 |---|---|
 | **Reads** | `experienceLibrary` |
 | **Writes** | `traceClusters`, `distilledSkills` |
+| **Pattern** | Delegates to `trace2skill-pipeline.json` via `ctx.runSubWorkflow()` — shares parent context (LLM, Memgraph, tracing, events), manages recursion depth automatically |
 
 **Sub-Workflow**: `src/workflows/sub/trace2skill-pipeline.json`
 

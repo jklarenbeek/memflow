@@ -207,15 +207,20 @@ const KNOWN_PROMPT_REFS: string[] = [
   "graph/entity_extraction",
   "graph/entity_profiling",
   "graph/deduplication",
-  // Evolution: Trace2Skill (§6 audit: removed dataset/synthesis, trace2skill/analyst — unused)
+  // Evolution: Dataset Export
+  "dataset/synthesis",           // §future — LLM quality-enhancement pass for raw training samples (Memo §3)
+  // Evolution: Trace2Skill pipeline (3-stage: cluster → analyze → merge)
+  "trace2skill/analyst",         // §future — per-cluster pattern analysis, produces analyst reports for SkillMerge (Trace2Skill §2.2)
   "trace2skill/merger",
   "trace2skill/injection",
   // Evolution: Harness Evolver
   "harness/internal_feedback",
   "harness/retrospective_check",
   "harness/harness_init",
-  // Evolution: Intent Compiler (§6 audit: removed role_assigner, semantic_completer — unused)
+  // Evolution: Intent Compiler (3-stage: assign → design → complete)
+  "intent-compiler/role_assigner",       // §future — stage 1: agent/role assignment from RoleRegistry (MASFactory §3)
   "intent-compiler/topology_designer",
+  "intent-compiler/semantic_completer",  // §future — stage 3: config completion, inputMap/outputMap wiring (MASFactory §3)
 ];
 
 export interface PromptValidationResult {

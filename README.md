@@ -238,7 +238,7 @@ Optional: `bun test src/tests/integration/real-services/` runs against live Memg
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 459 tests across 59 files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 12 integration test files (5 mock + 7 real-services), and workflow JSON structural validation.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 484 tests across 61 files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 14 integration test files (6 mock E2E + 8 real-services), and workflow JSON structural validation.
 
 ### Real-Services Integration Suite (requires Memgraph + Ollama)
 
@@ -260,7 +260,7 @@ A 7-layer integration test suite validates the full stack against live Memgraph 
 bun test src/tests/integration/real-services/ --timeout 120000
 ```
 
-**CPU vs GPU execution:** On CPU, `qwen3.5:4b` takes 30–60s per LLM call. Tests marked `test.todo` (19 total) invoke LLM-dependent modules and JSON pipeline definitions. These can be run individually with `--timeout 600000` on GPU hardware (e.g., `bun test src/tests/integration/real-services/ --timeout 600000` runs all 479 tests including LLM workflows).
+**CPU vs GPU execution:** On CPU, `qwen3.5:4b` takes 30–60s per LLM call. Tests marked `test.todo` (18 total) invoke LLM-dependent modules and JSON pipeline definitions. These can be run individually with `--timeout 600000` on GPU hardware (e.g., `bun test src/tests/integration/real-services/ --timeout 600000` runs all 484 tests including LLM workflows).
 
 **Test isolation:** All tests use `__test__`-prefixed node IDs and `cleanupTestData()` in `afterEach` — no test data leaks between runs.
 
