@@ -1,14 +1,131 @@
+# MemFlow CI — Multi-job Workflow
+#
+# Jobs:
+#   1. validate     — Typecheck + unit tests (fast, no services)
+#   2. integration  — Real-service tests with Memgraph + external LLM API
+#
+# The integration job uses Memgraph as a service container and connects to
+# an external LLM API (OpenRouter/Moonshot/OpenAI) via repository secrets.
+# No local Ollama is needed — inference is handled by the remote API.
+#
+# Required repository secrets:
+#   - OPENROUTER_API_KEY  (or OPENAI_API_KEY)
+#   - EMBEDDING_API_KEY   (optional — falls back to OPENROUTER_API_KEY)
+#
+# Optional variables (can override via repository variables):
+#   - CI_LLM_PROVIDER       (default: openrouter)
+#   - CI_LLM_MODEL          (default: deepseek/deepseek-chat-v3-0324)
+#   - CI_EMBEDDING_PROVIDER  (default: openrouter)
+#   - CI_EMBEDDING_MODEL     (default: openai/text-embedding-3-small)
+
 name: CI
+
 on: [push, pull_request]
+
 jobs:
+  # =========================================================================
+  # Job 1: Validate — fast feedback (no external services)
+  # =========================================================================
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - run: bun test
-      - run: docker build -t memflow-ci -f docker/Dockerfile .
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit tests
+        run: bun test
+
+      - name: Docker build smoke test
+        run: docker build -t memflow-ci -f docker/Dockerfile .
+
+  # =========================================================================
+  # Job 2: Integration — Memgraph + external LLM API
+  #
+  # Runs the full real-service test suite with:
+  #   - Memgraph MAGE as a service container (Bolt on :7687)
+  #   - External LLM/embedding API (OpenRouter, Moonshot, or OpenAI)
+  #
+  # Tests gated by EVOLUTION_REAL_TESTS=1 and service availability.
+  # =========================================================================
+  integration:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      memgraph:
+        image: memgraph/memgraph-mage:latest
+        ports:
+          - 7687:7687
+          - 7444:7444
+        options: >-
+          --health-cmd "echo > /dev/tcp/localhost/7687"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 15s
+
+    env:
+      # Memgraph connection
+      MEMGRAPH_URI: bolt://localhost:7687
+      MEMGRAPH_USER: memgraph
+      MEMGRAPH_PASSWORD: memgraph
+
+      # LLM provider (override via repository variables)
+      LLM_PROVIDER: ${{ vars.CI_LLM_PROVIDER || 'openrouter' }}
+      LLM_MODEL: ${{ vars.CI_LLM_MODEL || 'deepseek/deepseek-chat-v3-0324' }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      # Embedding provider (override via repository variables)
+      EMBEDDING_PROVIDER: ${{ vars.CI_EMBEDDING_PROVIDER || 'openrouter' }}
+      EMBEDDING_MODEL: ${{ vars.CI_EMBEDDING_MODEL || 'openai/text-embedding-3-small' }}
+
+      # Test gate flags
+      EVOLUTION_REAL_TESTS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Wait for Memgraph
+        run: |
+          echo "Waiting for Memgraph to accept connections..."
+          for i in $(seq 1 30); do
+            if echo > /dev/tcp/localhost/7687 2>/dev/null; then
+              echo "Memgraph is ready!"
+              break
+            fi
+            echo "Attempt $i/30 — waiting 2s..."
+            sleep 2
+          done
+
+      - name: Verify API key
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::warning::OPENROUTER_API_KEY secret is not set — LLM-dependent tests will fail"
+          else
+            echo "API key is configured (${#OPENROUTER_API_KEY} chars)"
+          fi
+
+      - name: Run integration tests
+        run: bun test src/tests/integration/real-services/
+        timeout-minutes: 30
+
+      - name: Run evolution E2E tests
+        run: bun test src/tests/integration/evolution-e2e.test.ts
+        timeout-minutes: 10
