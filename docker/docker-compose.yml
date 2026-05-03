@@ -1,6 +1,7 @@
 # docker-compose.yml — MemFlow + Ollama (GPU-profile aware)
 #
 # Combines a GPU profile (Ollama) with a mode profile (deploy).
+# Optional observability stack (Prometheus + Grafana) via the "observe" profile.
 #
 # ---------------------------------------------------------------------------
 # Deploy mode — full build (MemFlow + bundled Memgraph + Ollama)
@@ -20,6 +21,15 @@
 #     bun run dev   # connects to localhost:7687 (Memgraph) + localhost:11434 (Ollama)
 #
 # ---------------------------------------------------------------------------
+# Observability — Prometheus + Grafana (add --profile observe to any command)
+# ---------------------------------------------------------------------------
+#   docker compose --profile cpu --profile observe up
+#   docker compose --profile deploy --profile cpu --profile observe up
+#
+#   - Prometheus: http://localhost:9090
+#   - Grafana:    http://localhost:3001 (login: admin / admin)
+#
+# ---------------------------------------------------------------------------
 # First start pulls models automatically.
 # Override models via .env or shell environment:
 #
@@ -36,6 +46,8 @@
 volumes:
   ollama_storage:
   memgraph_storage:
+  prometheus_data:
+  grafana_data:
 
 networks:
   memflow-net:
@@ -236,3 +248,50 @@ services:
     depends_on:
       ollama-cpu:
         condition: service_healthy
+
+  # =========================================================================
+  # Observability — Prometheus + Grafana (observe profile)
+  #
+  # Scrapes the MemFlow /metrics endpoint at http://host.docker.internal:3000/metrics
+  # (assumes MemFlow is running locally on port 3000).
+  #
+  #   - Prometheus: http://localhost:9090
+  #   - Grafana:    http://localhost:3001 (login: admin / admin)
+  # =========================================================================
+  prometheus:
+    profiles: [ "observe" ]
+    image: prom/prometheus:latest
+    container_name: memflow-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    networks:
+      - memflow-net
+    restart: unless-stopped
+
+  grafana:
+    profiles: [ "observe" ]
+    image: grafana/grafana:latest
+    container_name: memflow-grafana
+    volumes:
+      - ./grafana/dashboard.json:/var/lib/grafana/dashboards/memflow.json:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    networks:
+      - memflow-net
+    restart: unless-stopped
+    depends_on:
+      - prometheus

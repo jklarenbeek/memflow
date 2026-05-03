@@ -160,10 +160,14 @@ Exposed metrics: `stage_duration_seconds` (histogram), `stage_errors_total` (cou
 
 ## Observability Stack
 
-A pre-configured Prometheus + Grafana stack is provided:
+A pre-configured Prometheus + Grafana stack is included in `docker-compose.yml` under the `observe` profile:
 
 ```bash
-docker compose -f docker/docker-compose.observability.yml up -d
+# Add --profile observe to any existing command
+docker compose -f docker/docker-compose.yml --profile cpu --profile observe up -d
+
+# Or with deploy mode
+docker compose -f docker/docker-compose.yml --profile deploy --profile cpu --profile observe up -d
 ```
 
 - **Prometheus**: http://localhost:9090 — scrapes `/metrics` every 5s
