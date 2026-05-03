@@ -325,5 +325,54 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
     }
   });
 
+  // -----------------------------------------------------------------------
+  // Dataset Export
+  // -----------------------------------------------------------------------
+
+  app.post("/datasets/export", async (c) => {
+    try {
+      const body = await c.req.json<{
+        format?: string;
+        domain?: string;
+        maxSamples?: number;
+        minConfidence?: number;
+        deduplicationThreshold?: number;
+        requireRetrospectiveValidation?: boolean;
+      }>().catch(() => ({}));
+
+      const exportWorkflow = {
+        name: "slm-dataset-export",
+        version: "1.0",
+        entry: "export",
+        stages: [{
+          id: "export",
+          module: "SLMDatasetExporter",
+          config: {
+            format: body.format ?? "both",
+            domainFilter: body.domain,
+            maxSamples: body.maxSamples ?? 10000,
+            trigger: { type: "on_demand" },
+            quality: {
+              minConfidence: body.minConfidence ?? 0.6,
+              deduplicationThreshold: body.deduplicationThreshold ?? 0.92,
+              requireRetrospectiveValidation: body.requireRetrospectiveValidation ?? true,
+            },
+          },
+          next: null,
+        }],
+      };
+
+      const data = await runServiceWorkflow(exportWorkflow, { query: "export" }, globalConfig);
+
+      return c.json({
+        success: true,
+        path: data.datasetExportPath,
+        manifest: data.datasetManifest,
+      });
+    } catch (err) {
+      return c.json({ success: false, error: (err as Error).message }, 500);
+    }
+  });
+
   return app;
 }

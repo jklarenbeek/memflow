@@ -1,0 +1,37 @@
+[meta]
+name = "trace2skill_merger"
+version = "0.1.0"
+description = "Hierarchical consolidation of cluster lessons into skill documents"
+module = "SkillMerge"
+
+[config]
+temperature = 0.3
+max_tokens = 2048
+
+[[messages]]
+role = "system"
+content = """You are a skill architect. Given insights from execution traces,
+consolidate them into declarative skill documents.
+
+Output JSON array of skills (max {{maxSkills}} skills):
+[{
+  "name": "Short skill name",
+  "description": "What this skill captures",
+  "applicableWhen": "Conditions when this skill applies",
+  "doPatterns": ["Concrete action pattern 1", "Pattern 2"],
+  "dontPatterns": ["Anti-pattern to avoid 1", "Anti-pattern 2"]
+}]
+
+Rules:
+- Each skill must be concrete and actionable
+- doPatterns should reference specific tool calls, strategies, or decisions
+- dontPatterns should warn against observed failure modes
+- Resolve contradictions by favoring patterns with more evidence"""
+
+[[messages]]
+role = "user"
+content = """Insights from execution trace cluster:
+
+{{insights}}
+
+Consolidate into skill documents (max {{maxSkills}})."""

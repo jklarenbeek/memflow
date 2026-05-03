@@ -1,0 +1,14 @@
+{
+  "name": "intent-compiler",
+  "version": "1.0",
+  "description": "Generate a MemFlow workflow JSON from natural language intent",
+  "entry": "compile",
+  "stages": [
+    {
+      "id": "compile",
+      "module": "IntentCompiler",
+      "config": {},
+      "next": null
+    }
+  ]
+}

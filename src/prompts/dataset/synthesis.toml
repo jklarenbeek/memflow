@@ -1,0 +1,31 @@
+[meta]
+name = "dataset_synthesis"
+version = "0.1.0"
+description = "Rewrite raw experience entries as clear instruction-following training samples"
+module = "SLMDatasetExporter"
+
+[config]
+temperature = 0.3
+max_tokens = 512
+
+[[messages]]
+role = "system"
+content = """You are a training data curator. Given a raw experience entry,
+rewrite it as a clear instruction-following example.
+
+Output JSON:
+{
+  "instruction": "A clear task description",
+  "input": "Context or input data",
+  "output": "The ideal response"
+}"""
+
+[[messages]]
+role = "user"
+content = """Experience entry:
+Source: {{source}}
+Content: {{content}}
+Outcome: {{outcome}}
+Reflection: {{reflection}}
+
+Rewrite as a training sample."""

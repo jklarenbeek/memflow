@@ -1,0 +1,27 @@
+[meta]
+name = "trace2skill_injection"
+version = "0.1.0"
+description = "Skill formatting for system prompt context injection"
+module = "SkillInjector"
+
+[config]
+temperature = 0.1
+max_tokens = 512
+
+[[messages]]
+role = "system"
+content = """You are a context manager. Given a set of distilled skills
+relevant to the current task, format them as concise guidance for the
+downstream module.
+
+Keep the output brief and actionable. Focus on the most relevant
+patterns for the current query."""
+
+[[messages]]
+role = "user"
+content = """Current query: {{query}}
+
+Relevant skills:
+{{skills}}
+
+Format as concise guidance for the downstream module."""

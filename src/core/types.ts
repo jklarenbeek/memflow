@@ -208,6 +208,40 @@ export interface WorkflowData {
   // GMPL: Delphi Panel state
   delphiPanelState?: unknown;
 
+  // Evolution Layer — Phase 1: SLM Dataset Export
+  datasetExportPath?: string;
+  datasetManifest?: {
+    exportedAt: string;
+    sftCount: number;
+    dpoCount: number;
+    sources: Record<string, number>;
+  };
+
+  // Evolution Layer — Phase 2: Trace2Skill + SkillInjector
+  traceClusters?: Array<{ centroid: number[]; members: ExperienceEntry[] }>;
+  distilledSkills?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    applicableWhen: string;
+    doPatterns: string[];
+    dontPatterns: string[];
+    sourceTraceCount: number;
+    version: number;
+    createdAt: string;
+  }>;
+  injectedSkills?: string[];
+  skillContext?: string;
+
+  // Evolution Layer — Phase 3: Harness Evolver
+  predictionHarness?: { id: string; content: string; version: number; topicId: string; retrospectiveValidated?: boolean } | "__request__";
+  internalFeedback?: string;
+
+  // Evolution Layer — Phase 4: Intent Compiler + Skill Analytics
+  compiledWorkflow?: WorkflowConfig;
+  skillBasis?: Array<{ axisId: number; variance: number; topSamples: string[]; label: string }>;
+  skillGaps?: Array<{ axisId: number; label: string; coverage: number; recommendation: string }>;
+
   // Escape hatch for custom data
   [key: string]: unknown;
 }

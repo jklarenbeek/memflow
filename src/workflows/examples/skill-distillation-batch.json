@@ -1,0 +1,32 @@
+{
+  "name": "skill-distillation-batch",
+  "version": "1.0",
+  "description": "Batch skill distillation: trace clustering → skill extraction → basis analysis → gap detection → SLM export",
+  "entry": "distill",
+  "stages": [
+    {
+      "id": "distill",
+      "module": "Trace2Skill",
+      "config": { "k": 8, "maxSkillsPerCluster": 3 },
+      "next": "basis"
+    },
+    {
+      "id": "basis",
+      "module": "SkillBasisExtractor",
+      "config": { "numComponents": 10 },
+      "next": "gaps"
+    },
+    {
+      "id": "gaps",
+      "module": "SkillGapAnalyzer",
+      "config": { "coverageThreshold": 0.3 },
+      "next": "export"
+    },
+    {
+      "id": "export",
+      "module": "SLMDatasetExporter",
+      "config": { "format": "sft" },
+      "next": null
+    }
+  ]
+}

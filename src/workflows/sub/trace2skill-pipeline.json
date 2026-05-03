@@ -1,0 +1,20 @@
+{
+  "name": "trace2skill-pipeline",
+  "version": "1.0",
+  "description": "Trace-to-skill distillation: cluster → analyze → merge → persist",
+  "entry": "cluster",
+  "stages": [
+    {
+      "id": "cluster",
+      "module": "TraceCluster",
+      "config": {},
+      "next": "merge"
+    },
+    {
+      "id": "merge",
+      "module": "SkillMerge",
+      "config": {},
+      "next": null
+    }
+  ]
+}

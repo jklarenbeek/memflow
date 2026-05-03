@@ -1,0 +1,39 @@
+{
+  "name": "self-improving-research",
+  "version": "1.0",
+  "description": "End-to-end self-improving research pipeline: intent compilation → retrieval → harness evolution → skill distillation → SLM export",
+  "entry": "compile",
+  "stages": [
+    {
+      "id": "compile",
+      "module": "IntentCompiler",
+      "config": {},
+      "next": "retrieve"
+    },
+    {
+      "id": "retrieve",
+      "module": "SubWorkflow",
+      "config": {},
+      "workflowRef": "src/workflows/sub/hybrid-retrieval.json",
+      "next": "evolve-harness"
+    },
+    {
+      "id": "evolve-harness",
+      "module": "HarnessEvolver",
+      "config": {},
+      "next": "distill-skills"
+    },
+    {
+      "id": "distill-skills",
+      "module": "Trace2Skill",
+      "config": { "k": 5 },
+      "next": "export-dataset"
+    },
+    {
+      "id": "export-dataset",
+      "module": "SLMDatasetExporter",
+      "config": { "format": "both" },
+      "next": null
+    }
+  ]
+}

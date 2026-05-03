@@ -1,0 +1,17 @@
+{
+  "name": "trading-harness-evolution",
+  "version": "1.0",
+  "description": "Trading domain: evolve prediction harnesses through iterative observation and retrospective validation",
+  "entry": "evolve",
+  "stages": [
+    {
+      "id": "evolve",
+      "module": "HarnessEvolver",
+      "config": {
+        "maxVersions": 10,
+        "requireRetrospective": true
+      },
+      "next": null
+    }
+  ]
+}

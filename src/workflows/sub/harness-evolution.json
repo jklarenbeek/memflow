@@ -1,0 +1,14 @@
+{
+  "name": "harness-evolution",
+  "version": "1.0",
+  "description": "Evolve prediction harnesses via internal feedback and retrospective validation",
+  "entry": "evolve",
+  "stages": [
+    {
+      "id": "evolve",
+      "module": "HarnessEvolver",
+      "config": {},
+      "next": null
+    }
+  ]
+}

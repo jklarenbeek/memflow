@@ -175,14 +175,26 @@ docker compose -f docker/docker-compose.yml --profile deploy --profile cpu --pro
 
 ## Docker
 
-The Dockerfile uses a **multi-stage build** with `oven/bun:1` for fast dependency installation:
+The Dockerfile uses a **multi-stage build**: `oven/bun:1` for dependency installation, `memgraph/memgraph-mage` for the runtime layer. Bun runs `.ts` directly — no `tsc` build step is needed in the container.
+
+All services are managed through **profiles** in a single `docker/docker-compose.yml`:
 
 ```bash
-# Build and run (includes Memgraph + Bun runtime)
-docker compose -f docker/docker-compose.yml up -d
+# ---------------------------------------------------------------------------
+# Dev mode — infrastructure only (Memgraph + Ollama), run Bun locally
+# ---------------------------------------------------------------------------
+docker compose -f docker/docker-compose.yml --profile cpu up -d
+bun run dev   # connects to localhost:7687 (Memgraph) + localhost:11434 (Ollama)
+
+# ---------------------------------------------------------------------------
+# Deploy mode — full containerised stack (MemFlow + Memgraph + Ollama)
+# ---------------------------------------------------------------------------
+docker compose -f docker/docker-compose.yml --profile deploy --profile cpu up -d
+
+# GPU variants: replace --profile cpu with --profile amd-rocm or --profile amd-vulkan
 ```
 
-Bun runs `.ts` directly — no `tsc` build step is needed in the container.
+> **Note:** Running without any `--profile` flag only starts Memgraph (the sole profile-less service). You must specify at least one GPU/CPU profile to start Ollama.
 
 ## Configuration
 

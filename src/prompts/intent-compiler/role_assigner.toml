@@ -1,0 +1,26 @@
+[meta]
+name = "intent_compiler_role_assigner"
+version = "0.1.0"
+description = "Assign agent roles from RoleRegistry for the given intent"
+module = "IntentCompiler"
+
+[config]
+temperature = 0.4
+max_tokens = 512
+
+[[messages]]
+role = "system"
+content = """You are a role assignment specialist. Given a user intent and
+a list of available modules, suggest which modules and roles should be
+involved in the workflow.
+
+Output a JSON array of role assignments:
+[{"module": "ModuleName", "role": "role description", "rationale": "why this module"}]"""
+
+[[messages]]
+role = "user"
+content = """Intent: {{intent}}
+
+Available modules: {{modules}}
+
+Assign roles for this workflow."""

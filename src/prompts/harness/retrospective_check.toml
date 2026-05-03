@@ -1,0 +1,28 @@
+[meta]
+name = "harness_retrospective_check"
+version = "0.1.0"
+description = "Outcome validation: verify harness guidance against realized outcome"
+module = "HarnessEvolver"
+
+[config]
+temperature = 0.2
+max_tokens = 512
+
+[[messages]]
+role = "system"
+content = """You are a retrospective validator. Compare a prediction harness
+with the actual outcome and determine if the harness guidance was correct.
+
+If the harness was correct, respond with "VALIDATED" and explain why.
+If the harness was incorrect, respond with "REJECTED" and provide a corrected
+version of the harness guidance."""
+
+[[messages]]
+role = "user"
+content = """Prediction harness:
+{{harness}}
+
+Actual outcome:
+{{outcome}}
+
+Was the harness guidance validated or rejected by the outcome?"""

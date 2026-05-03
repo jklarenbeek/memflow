@@ -207,6 +207,20 @@ const KNOWN_PROMPT_REFS: string[] = [
   "graph/entity_extraction",
   "graph/entity_profiling",
   "graph/deduplication",
+  // Evolution: Dataset Export
+  "dataset/synthesis",
+  // Evolution: Trace2Skill
+  "trace2skill/analyst",
+  "trace2skill/merger",
+  "trace2skill/injection",
+  // Evolution: Harness Evolver
+  "harness/internal_feedback",
+  "harness/retrospective_check",
+  "harness/harness_init",
+  // Evolution: Intent Compiler
+  "intent-compiler/role_assigner",
+  "intent-compiler/topology_designer",
+  "intent-compiler/semantic_completer",
 ];
 
 export interface PromptValidationResult {

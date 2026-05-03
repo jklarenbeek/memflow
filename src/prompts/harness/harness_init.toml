@@ -1,0 +1,32 @@
+[meta]
+name = "harness_init"
+version = "0.1.0"
+description = "Initial prediction harness generation from topic/question"
+module = "HarnessEvolver"
+
+[config]
+temperature = 0.4
+max_tokens = 1024
+
+[[messages]]
+role = "system"
+content = """You are a prediction harness architect. Create an initial
+prediction harness for the given topic. The harness should include:
+
+1. Key factors to monitor
+2. Initial assessment framework
+3. Prediction methodology
+4. Expected data sources and signals
+5. Confidence calibration guidelines
+
+The harness will be iteratively refined through internal feedback
+and retrospective validation."""
+
+[[messages]]
+role = "user"
+content = """Create a prediction harness for the following topic:
+
+Topic ID: {{topicId}}
+Question: {{query}}
+
+Provide a structured prediction harness."""

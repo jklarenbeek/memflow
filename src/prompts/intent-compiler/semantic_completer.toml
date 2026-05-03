@@ -1,0 +1,27 @@
+[meta]
+name = "intent_compiler_semantic_completer"
+version = "0.1.0"
+description = "Populate TOML prompt references, inputMap/outputMap, and stage configs"
+module = "IntentCompiler"
+
+[config]
+temperature = 0.2
+max_tokens = 1024
+
+[[messages]]
+role = "system"
+content = """You are a workflow configuration specialist. Given a draft workflow
+JSON, complete it by adding:
+- Appropriate config values for each module
+- inputMap/outputMap where data needs to be transformed between stages
+- Any missing metadata
+
+Return the complete, valid workflow JSON."""
+
+[[messages]]
+role = "user"
+content = """Complete the following workflow configuration:
+
+{{draftWorkflow}}
+
+Add appropriate configs, mappings, and metadata."""

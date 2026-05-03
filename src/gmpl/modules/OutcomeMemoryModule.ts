@@ -212,6 +212,23 @@ export class OutcomeMemoryModule implements BaseModule<Config> {
       );
 
       ctx.logger.info(`OutcomeMemory: Resolved ${pendingId} → ${result.outcome}`);
+
+      // Phase 3 integration: Link to PredictionHarness if one guided this decision
+      try {
+        const pendingResult = await ctx.memgraph.query<{ harnessId: string }>(
+          `MATCH (p:PendingDecision {id: $pendingId})
+           OPTIONAL MATCH (p)-[:GUIDED_BY]->(h:PredictionHarness)
+           RETURN h.id AS harnessId`,
+          { pendingId },
+        );
+        const harnessId = pendingResult[0]?.harnessId;
+        if (harnessId) {
+          ctx.logger.debug(`OutcomeMemory: Decision guided by harness ${harnessId}`);
+        }
+      } catch {
+        // Non-critical: harness linkage is optional
+      }
+
       return reflection;
     } catch (err) {
       ctx.logger.warn(`OutcomeMemory: Resolution failed: ${(err as Error).message}`);

@@ -1,0 +1,17 @@
+{
+  "name": "slm-dataset-export",
+  "version": "1.0",
+  "description": "Export validated experience data as SLM training datasets",
+  "entry": "export",
+  "stages": [
+    {
+      "id": "export",
+      "module": "SLMDatasetExporter",
+      "config": {
+        "format": "both",
+        "trigger": { "type": "on_demand" }
+      },
+      "next": null
+    }
+  ]
+}

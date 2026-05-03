@@ -192,6 +192,26 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../gmpl/modules/RedTeamModule.js").then((m) => m.RedTeamModule as unknown as ModuleFactory),
   DelphiPanelModule: () =>
     import("../gmpl/modules/DelphiPanelModule.js").then((m) => m.DelphiPanelModule as unknown as ModuleFactory),
+
+  // Evolution Layer — Self-Evolution Layer modules
+  SLMDatasetExporter: () =>
+    import("../modules/evolution/SLMDatasetExporterModule.js").then((m) => m.SLMDatasetExporterModule as unknown as ModuleFactory),
+  TraceCluster: () =>
+    import("../modules/evolution/TraceClusterModule.js").then((m) => m.TraceClusterModule as unknown as ModuleFactory),
+  SkillMerge: () =>
+    import("../modules/evolution/SkillMergeModule.js").then((m) => m.SkillMergeModule as unknown as ModuleFactory),
+  SkillInjector: () =>
+    import("../modules/evolution/SkillInjectorModule.js").then((m) => m.SkillInjectorModule as unknown as ModuleFactory),
+  Trace2Skill: () =>
+    import("../modules/evolution/Trace2SkillModule.js").then((m) => m.Trace2SkillModule as unknown as ModuleFactory),
+  HarnessEvolver: () =>
+    import("../modules/evolution/HarnessEvolverModule.js").then((m) => m.HarnessEvolverModule as unknown as ModuleFactory),
+  IntentCompiler: () =>
+    import("../modules/core/IntentCompilerModule.js").then((m) => m.IntentCompilerModule as unknown as ModuleFactory),
+  SkillBasisExtractor: () =>
+    import("../modules/evolution/SkillBasisExtractorModule.js").then((m) => m.SkillBasisExtractorModule as unknown as ModuleFactory),
+  SkillGapAnalyzer: () =>
+    import("../modules/evolution/SkillGapAnalyzerModule.js").then((m) => m.SkillGapAnalyzerModule as unknown as ModuleFactory),
 };
 
 export class ModuleRegistry {

@@ -1,0 +1,28 @@
+[meta]
+name = "trace2skill_analyst"
+version = "0.1.0"
+description = "Per-cluster lesson extraction from execution traces"
+module = "TraceCluster"
+
+[config]
+temperature = 0.4
+max_tokens = 1024
+
+[[messages]]
+role = "system"
+content = """You are a trace analyst. Given a cluster of execution traces
+(context + insight pairs), identify the key recurring patterns and lessons.
+
+Output a structured analysis:
+1. Common patterns across traces
+2. Key success factors
+3. Key failure modes
+4. Actionable recommendations"""
+
+[[messages]]
+role = "user"
+content = """Analyze the following cluster of {{clusterSize}} execution traces:
+
+{{traces}}
+
+Provide a structured analysis of the recurring patterns and lessons."""
