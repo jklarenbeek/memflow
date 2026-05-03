@@ -145,6 +145,7 @@ export class PeerReviewModule implements BaseModule<Config> {
         finalAnswer: state.draft,
       },
       metrics: {
+        _patternId: "peer_review",
         reviewCycles: state.currentCycle,
         accepted: state.accepted,
         totalFeedback: state.cycles.reduce((s, c) => s + c.feedback.length, 0),

@@ -151,7 +151,7 @@ describe("POST /mcp", () => {
     expect(body.result.serverInfo.name).toBe("memflow-mcp");
   });
 
-  test("tools/list returns all 5 memflow tools", async () => {
+  test("tools/list returns all 7 memflow tools", async () => {
     const app = new Hono();
     mountMCPRoutes(app, {});
 
@@ -163,13 +163,15 @@ describe("POST /mcp", () => {
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
-    expect(body.result.tools).toBeArrayOfSize(5);
+    expect(body.result.tools).toBeArrayOfSize(7);
     const names = body.result.tools.map((t: any) => t.name);
     expect(names).toContain("memflow_write");
     expect(names).toContain("memflow_recall");
     expect(names).toContain("memflow_search");
     expect(names).toContain("memflow_manage");
     expect(names).toContain("memflow_entity_get");
+    expect(names).toContain("gmpl_run_pattern");
+    expect(names).toContain("gmpl_resolve_outcome");
   });
 
   test("batch request returns array of responses", async () => {

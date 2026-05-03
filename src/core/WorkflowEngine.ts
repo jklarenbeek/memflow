@@ -34,6 +34,8 @@ import {
   WorkflowDAGError,
   WorkflowStageError,
 } from "./errors.js";
+import { GmplError } from "../gmpl/errors.js";
+import { recordGmplError } from "../server/metrics.js";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 
@@ -553,6 +555,11 @@ export class WorkflowEngine {
           timestamp: new Date().toISOString(),
         });
 
+        // G1: Track GMPL-specific errors in Prometheus
+        if (lastError instanceof GmplError) {
+          recordGmplError(lastError.code, (stage.config as Record<string, unknown>)?._patternId as string ?? "unknown");
+        }
+
         if (attempt < maxAttempts) {
           const delay = Math.min(baseDelay * 2 ** (attempt - 1), 30_000);
           this.context!.logger.warn(
@@ -768,6 +775,11 @@ export class WorkflowEngine {
           attempt,
           timestamp: new Date().toISOString(),
         });
+
+        // G1: Track GMPL-specific errors in Prometheus
+        if (lastError instanceof GmplError) {
+          recordGmplError(lastError.code, (stage.config as Record<string, unknown>)?._patternId as string ?? "unknown");
+        }
 
         const willRetry = attempt < maxAttempts;
 

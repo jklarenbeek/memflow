@@ -230,6 +230,11 @@ export const tradingAdapter: DomainAdapter = {
 
   seedKnowledge,
   customMetrics: { sharpeRatio: "gauge", maxDrawdown: "gauge" },
+
+  // Optional: authority safelist for DualSourceFusionModule
+  // When present, URLs matching these patterns receive elevated trust scoring.
+  // When absent, authority scoring is skipped entirely.
+  authoritySafelist: [".gov", ".edu", ".reuters.", ".nih.", ".who."],
 };
 ```
 
@@ -271,7 +276,78 @@ const workflow = generateWorkflow({
 
 ---
 
-## 9. Run the Example
+## 9. Evidence Retrieval Integration
+
+GMPL modules can augment their LLM prompts with evidence from the knowledge graph and/or vector store using the `retrieveEvidence()` utility (`src/gmpl/retrieveEvidence.ts`).
+
+The `DebateModule` integrates this automatically when `evidenceRetrieval` is set to `graph`, `vector`, or `hybrid`:
+
+```typescript
+// Pattern composition with evidence retrieval
+const workflow = generateWorkflow({
+  name: "evidence_backed_debate",
+  stages: [
+    { id: "debate", pattern: "structured_debate", config: {
+      roles: [
+        { id: "bull", persona: "Bullish Researcher" },
+        { id: "bear", persona: "Bearish Researcher" },
+      ],
+      evidenceRetrieval: "hybrid",  // graph + vector
+      maxRounds: 3,
+    }},
+  ],
+});
+```
+
+The utility supports four modes:
+
+| Mode | Behavior |
+|---|---|
+| `none` | No-op — no evidence retrieval (default) |
+| `graph` | Entity/relationship traversal via Cypher queries |
+| `vector` | Cosine similarity search on Chunk embeddings |
+| `hybrid` | Both graph and vector, merged and deduplicated |
+
+Retrieved evidence is formatted as a text block and injected into the LLM prompt. Evidence items are also merged into the position's evidence array for traceability.
+
+---
+
+## 10. MCP Tools for External Integration
+
+Two MCP tools provide external access to GMPL patterns:
+
+| Tool | Description |
+|---|---|
+| `gmpl_run_pattern` | Execute any registered GMPL pattern on-demand |
+| `gmpl_resolve_outcome` | Resolve a pending decision with real-world outcome data |
+
+External agents (Claude Desktop, Cursor, etc.) can invoke patterns directly:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "gmpl_run_pattern",
+    "arguments": {
+      "patternId": "structured_debate",
+      "query": "Should we invest in renewable energy?",
+      "config": {
+        "maxRounds": 2,
+        "roles": [
+          { "id": "bull", "persona": "Optimistic energy analyst" },
+          { "id": "bear", "persona": "Skeptical energy analyst" }
+        ]
+      }
+    }
+  }
+}
+```
+
+---
+
+## 11. Run the Example
 
 ```bash
 # Run tests
@@ -288,12 +364,20 @@ bun run typecheck
 
 ```
 src/
+├── gmpl/
+│   ├── retrieveEvidence.ts  # Reusable evidence retrieval utility (graph/vector/hybrid)
+│   └── ...                  # PatternRegistry, RoleRegistry, DomainRegistry, etc.
 ├── domains/
 │   └── trading/
-│       ├── adapter.ts       # DomainAdapter implementation
+│       ├── adapter.ts       # DomainAdapter implementation (incl. authoritySafelist)
 │       ├── schemas.ts       # Zod entity schemas
 │       ├── roles.ts         # Extended roles via RoleRegistry.extend()
 │       └── index.ts         # Barrel export
+├── mcp/
+│   └── tools/
+│       ├── runPattern.ts    # gmpl_run_pattern MCP tool
+│       ├── resolveOutcome.ts # gmpl_resolve_outcome MCP tool
+│       └── ...              # write, recall, search, manage, entityGet
 ├── prompts/
 │   └── trading/
 │       ├── fundamentals.toml
@@ -301,10 +385,17 @@ src/
 │       ├── sentiment.toml
 │       ├── debate.toml
 │       └── research.toml
+├── workflows/
+│   └── examples/
+│       ├── trading-analysis.json        # GMPL reference: 4-stage trading pipeline
+│       ├── healthcare-assistant.json    # GMPL reference: 5-stage clinical assistant
+│       └── autonomous-research.json     # GMPL reference: 4-stage research pipeline
 └── tests/
     └── unit/gmpl/
         ├── TradingAdapter.test.ts
         └── TradingRoles.test.ts
+    └── integration/
+        └── composed-workflow-e2e.test.ts  # 13 E2E composition tests
 ```
 
 ---
@@ -313,5 +404,7 @@ src/
 
 - **TradingAgents paper**: `docs/refs/2412.20138v7.pdf` (Xiao et al., arXiv:2412.20138v7)
 - **GMPL Architecture**: `docs/ARCHITECTURE.md` §8 (GMPL Layer)
-- **GMPL Module Reference**: `docs/MODULES.md` §3 (GMPL Modules)
+- **GMPL Module Reference**: `docs/modules/gmpl.md` (full module specs + MCP tools + evidence retrieval)
 - **API Reference**: `src/gmpl/types.ts` (canonical type definitions)
+- **Evidence Retrieval**: `src/gmpl/retrieveEvidence.ts` (utility source)
+- **MCP Tools**: `src/mcp/tools/runPattern.ts`, `src/mcp/tools/resolveOutcome.ts`

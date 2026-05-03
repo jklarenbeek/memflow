@@ -53,7 +53,7 @@ export class MultiTurnClarifierModule implements BaseModule<Config> {
       state.refinedQuery = query;
       return {
         data: { clarificationState: state, query },
-        metrics: { clarified: false, skippedComplexityGate: true },
+        metrics: { _patternId: "clarification_pipeline", clarified: false, skippedComplexityGate: true },
       };
     }
 
@@ -81,7 +81,7 @@ export class MultiTurnClarifierModule implements BaseModule<Config> {
             query: resolution.refinedQuery,
             expandedQueries: resolution.subQueries,
           },
-          metrics: { clarified: true, turns: state.currentTurn },
+          metrics: { _patternId: "clarification_pipeline", clarified: true, turns: state.currentTurn },
         };
       }
     }
@@ -93,7 +93,7 @@ export class MultiTurnClarifierModule implements BaseModule<Config> {
       ctx.logger.info("MultiTurnClarifier: Max turns reached, using original query");
       return {
         data: { clarificationState: state, query },
-        metrics: { clarified: false, maxTurnsReached: true },
+        metrics: { _patternId: "clarification_pipeline", clarified: false, maxTurnsReached: true },
       };
     }
 
@@ -119,7 +119,7 @@ export class MultiTurnClarifierModule implements BaseModule<Config> {
         clarificationState: state,
         clarifications: questions,
       },
-      metrics: { clarified: false, pendingClarification: true, turn: state.currentTurn },
+      metrics: { _patternId: "clarification_pipeline", clarified: false, pendingClarification: true, turn: state.currentTurn },
     };
   }
 

@@ -139,6 +139,7 @@ export class RedTeamModule implements BaseModule<Config> {
     return {
       data: { redTeamState: state, finalAnswer: state.resilienceReport?.verdict },
       metrics: {
+        _patternId: "red_team",
         redTeamRounds: state.currentRound,
         totalAttacks: state.attacks.length,
         totalDefenses: state.defenses.length,

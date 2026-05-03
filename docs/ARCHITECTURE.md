@@ -190,7 +190,7 @@ Meta-module that wraps any sub-workflow in an iterative diagnosis → mutation �
 - **CitationInjector**: Persists `:Citation` nodes with `:CITES` edges for traceable source attribution. Uses `batchQuery()` UNWIND for N+1→2 round-trip reduction.
 - **TopicSegmenter**: Hybrid B1∩B2 boundary detection with configurable similarity function (`cosine`, `euclidean`, `dotProduct`). Derives `topicLabel` for each segment.
 - **GraphSearch**: Entity-centric graph traversal. Community-aware mode: when `communityScope: true` and `searchScope` is high-level, queries `:Community` summaries for theme-based retrieval.
-- **DualSourceFusion**: Dual-source context fusion (CLocal + CWeb) with source authority scoring, temporal freshness weighting, and budget-gated segment ranking.
+- **DualSourceFusion**: Dual-source context fusion (CLocal + CWeb) with adapter-driven authority safelists (no hardcoded domains), temporal freshness weighting, and budget-gated segment ranking. When no `authoritySafelist` is configured (via module config or `DomainAdapter`), authority scoring is skipped entirely.
 
 ### Standalone Modules
 
@@ -214,14 +214,30 @@ The `wireEngineMetrics()` function subscribes to a `WorkflowEventEmitter` and re
 | `active_workflows` | Gauge | — |
 | `gmpl_pattern_rounds_total` | Counter | `pattern_id`, `event_name` |
 | `gmpl_pattern_duration_seconds` | Histogram | `pattern_id` |
+| `gmpl_errors_total` | Counter | `error_code`, `pattern_id` |
+| `gmpl_clarification_turns_total` | Counter | `pattern_id` |
+| `gmpl_consensus_quality_score` | Gauge | `pattern_id` |
+| `gmpl_pending_resolution_latency` | Histogram | `pattern_id` |
 
 The metrics subsystem includes a TTL sweep that clears stale workflow tracking entries older than 1 hour, preventing memory accumulation from abnormally terminated workflows.
 
 Metrics are served at `GET /metrics` in Prometheus exposition format. Collection is enabled by default and can be disabled via `enableMetrics: false` in `GlobalConfig`.
 
-### Grafana Dashboard
+A pre-provisioned Grafana dashboard (`docker/grafana/dashboard.json`) provides 12 panels:
 
-A pre-provisioned Grafana dashboard (`docker/grafana/dashboard.json`) provides 5 panels: Stage Latency (p99), Stage Error Rate (5m), Workflow Throughput (5m), Active Workflows, and Workflow Duration (p99).
+| Panel | Type | Source Metric |
+|---|---|---|
+| Stage Latency (p99) | Heatmap | `stage_duration_seconds` |
+| Stage Error Rate (5m) | Timeseries | `stage_errors_total` |
+| Workflow Throughput (5m) | Timeseries | `workflow_runs_total` |
+| Active Workflows | Gauge | `active_workflows` |
+| Workflow Duration (p99) | Timeseries | `workflow_duration_seconds` |
+| GMPL Pattern Duration (p99) | Timeseries | `gmpl_pattern_duration_seconds` |
+| GMPL Pattern Rounds | Bar chart | `gmpl_pattern_rounds_total` |
+| GMPL Error Rate by Code | Bar gauge | `gmpl_errors_total` |
+| Pattern Usage Distribution | Pie chart (donut) | `gmpl_pattern_rounds_total` |
+| Clarification Turns/min | Timeseries | `gmpl_clarification_turns_total` |
+| Pending Resolution Latency (p50/p99) | Timeseries | `gmpl_pending_resolution_latency` |
 
 ### SSE Streaming
 
@@ -271,7 +287,7 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 | `/metrics` | GET | Prometheus metrics endpoint |
 | `/workflow/run` | POST | Execute workflow from JSON config + input with aggregated telemetry |
 | `/workflow/run/stream` | POST | Execute workflow with SSE streaming |
-| `/mcp` | POST | MCP server (5 tools: write, recall, search, manage, entity_get) |
+| `/mcp` | POST | MCP server (7 tools: write, recall, search, manage, entity_get, gmpl_run_pattern, gmpl_resolve_outcome) |
 | `/acp` | POST/GET | ACP server (request/response + SSE) |
 | `/api/v1/*` | CRUD | REST API for memories, entities, search, recall, graph stats |
 | `/prompts/validate` | GET | Validate TOML prompt references |
@@ -367,7 +383,7 @@ Programmatic API for composing multi-pattern workflows. `generateWorkflow()` acc
 
 | Module | Pattern | Description |
 |---|---|---|
-| `DebateModule` | Structured Debate | Multi-round opposing-view debate with evidence, history injection, and 3 termination strategies (max rounds, consensus threshold, judge decision) |
+| `DebateModule` | Structured Debate | Multi-round opposing-view debate with evidence retrieval (graph/vector/hybrid), history injection, and 3 termination strategies (max rounds, consensus threshold, judge decision) |
 | `ConsensusJudge` | Structured Debate | Atomic debate judge that evaluates convergence and produces a ConsensusReport |
 | `MultiTurnClarifier` | Clarification Pipeline | User-facing clarification with stateful conversation history and complexity gate |
 | `ParallelDispatcher` | Parallel Analysis | Dispatches to N analyst agents in parallel with timeout and configurable merge strategies |
@@ -421,6 +437,7 @@ Reference implementation of the `DomainAdapter` contract in `src/domains/trading
 | **Extended roles** | `trading_fundamentals_analyst`, `trading_technical_analyst`, `trading_sentiment_analyst`, `trading_risk_assessor` (via `RoleRegistry.extend()` from core analyst roles) |
 | **Seed knowledge** | 11 S&P 500 sectors + 4 major indices |
 | **Prompt packs** | 5 TOML files with multi-shot examples and chain-of-thought |
+| **Authority safelist** | `.gov`, `.edu`, `.reuters.`, `.nih.`, `.who.` (consumed by `DualSourceFusionModule` via adapter) |
 
 ## Workflow Versioning
 
@@ -467,6 +484,11 @@ Three top-level example workflows in `src/workflows/examples/`:
 - `quick-qa.json` — Minimal 4-stage QA: translate → embed → retrieve → fuse
 - `multi-agent-research.json` — Advanced: parallel retrieval branches → HERA with learning + RoPE + topology mutation
 
+Three GMPL reference composition workflows demonstrating multi-pattern pipelines:
+- `trading-analysis.json` — TradingAgents-inspired: parallel analyst dispatch → bull/bear debate → risk debate → outcome logging
+- `healthcare-assistant.json` — Clinical assistant: multi-turn clarification → retrieval → DualSourceFusion (with medical authority safelist) → peer review → generation
+- `autonomous-research.json` — Research pipeline: parallel analysis → Delphi expert consensus → red team validation → outcome memory
+
 ## File Structure
 
 ```
@@ -486,6 +508,8 @@ src/
     RoleRegistry.ts            — Agent role library (11 core + 4 trading roles) with extension support
     DomainRegistry.ts          — Domain adapter plugin registry
     PatternComposer.ts         — Programmatic multi-pattern workflow generation API
+    emitPatternEvent.ts        — Type-safe pattern event emission utility (19 event types)
+    retrieveEvidence.ts        — Reusable evidence retrieval utility (graph/vector/hybrid modes)
     index.ts                   — Public API barrel export
     modules/
       DebateModule.ts          — Structured multi-round debate (Pattern A)
@@ -520,10 +544,11 @@ src/
                                CitationInjectorModule, WebSearchAgentModule
     query/                     QueryTranslatorModule
     providers/                 EmbedderModule, LLMProviderModule
-  mcp/                         MCP server implementation (5 tools)
+  mcp/                         MCP server implementation (7 tools: write, recall, search, manage, entity_get, gmpl_run_pattern, gmpl_resolve_outcome)
   acp/                         ACP server implementation
   workflows/
-    examples/                  rag-memory-pipeline.json, quick-qa.json, multi-agent-research.json
+    examples/                  rag-memory-pipeline.json, quick-qa.json, multi-agent-research.json,
+                               trading-analysis.json, healthcare-assistant.json, autonomous-research.json
     sub/                       simplemem-pipeline.json, simplemem-retrieval.json,
                                lightmem-pipeline.json, structmem-pipeline.json,
                                hera-orchestration.json, hybrid-retrieval.json, graph-indexing.json,
@@ -541,8 +566,8 @@ src/
   server/                      Hono HTTP server, metrics.ts, mcp.ts, acp.ts, api.ts
   utils/                       promptLoader.ts, similarity.ts, tokens.ts
   tests/
-    unit/                      29 unit test files (including 15 GMPL pattern, adapter, and error tests)
-    integration/               4 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e)
+    unit/                      33 unit test files (including 19 GMPL pattern, adapter, and error tests)
+    integration/               5 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e, composed-workflow-e2e)
     helpers/                   Shared mock factory (mocks.ts)
 ```
 

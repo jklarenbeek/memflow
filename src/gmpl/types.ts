@@ -125,6 +125,15 @@ export interface DomainAdapter {
 
   // Observability
   customMetrics?: Record<string, string>;
+
+  /**
+   * Authority safelist — URL patterns that receive an authority boost
+   * during dual-source fusion. When set, only URLs matching these patterns
+   * will receive elevated trust scoring.
+   *
+   * Examples: [".gov", ".edu", ".reuters.", ".nih.", ".who."]
+   */
+  authoritySafelist?: string[];
 }
 
 // ---------------------------------------------------------------------------

@@ -108,7 +108,7 @@ curl -N -X POST http://localhost:3000/workflow/run/stream \
 
 ### MCP (Model Context Protocol)
 
-Five tools exposed at `POST /mcp` for LLM agent integration:
+Seven tools exposed at `POST /mcp` for LLM agent integration:
 
 | Tool | Description |
 |---|---|
@@ -117,6 +117,8 @@ Five tools exposed at `POST /mcp` for LLM agent integration:
 | `memflow_search` | Raw hybrid search (vector + graph + keyword) |
 | `memflow_manage` | CRUD operations on existing memories |
 | `memflow_entity_get` | Knowledge graph entity lookup |
+| `gmpl_run_pattern` | Execute a GMPL pattern (debate, analysis, peer review, etc.) on-demand |
+| `gmpl_resolve_outcome` | Resolve a pending decision with real-world outcome data |
 
 ### ACP (Agent Client Protocol)
 
@@ -154,7 +156,7 @@ curl -X POST http://localhost:3000/prompts/reload
 curl http://localhost:3000/metrics
 ```
 
-Exposed metrics: `stage_duration_seconds` (histogram), `stage_errors_total` (counter), `workflow_runs_total` (counter), `workflow_duration_seconds` (histogram), `active_workflows` (gauge), `gmpl_pattern_rounds_total` (counter), `gmpl_pattern_duration_seconds` (histogram). Metrics collection is enabled by default and can be disabled via `enableMetrics: false` in `GlobalConfig`.
+Exposed metrics: `stage_duration_seconds` (histogram), `stage_errors_total` (counter), `workflow_runs_total` (counter), `workflow_duration_seconds` (histogram), `active_workflows` (gauge), `gmpl_pattern_rounds_total` (counter), `gmpl_pattern_duration_seconds` (histogram), `gmpl_errors_total` (counter), `gmpl_clarification_turns_total` (counter), `gmpl_consensus_quality_score` (gauge), `gmpl_pending_resolution_latency` (histogram). Metrics collection is enabled by default and can be disabled via `enableMetrics: false` in `GlobalConfig`.
 
 ## Observability Stack
 
@@ -165,7 +167,7 @@ docker compose -f docker/docker-compose.observability.yml up -d
 ```
 
 - **Prometheus**: http://localhost:9090 — scrapes `/metrics` every 5s
-- **Grafana**: http://localhost:3001 (login: `admin` / `admin`) — pre-provisioned dashboard with 5 panels: Stage Latency (p99), Stage Error Rate, Workflow Throughput, Active Workflows, and Workflow Duration (p99)
+- **Grafana**: http://localhost:3001 (login: `admin` / `admin`) — pre-provisioned dashboard with 12 panels: Stage Latency (p99), Stage Error Rate, Workflow Throughput, Active Workflows, Workflow Duration (p99), GMPL Pattern Duration (p99), GMPL Pattern Rounds, GMPL Error Rate by Code, Pattern Usage Distribution, Clarification Turns/min, and Pending Resolution Latency (p50/p99)
 
 ## Docker
 
@@ -208,7 +210,7 @@ GitHub Actions CI runs on every push and pull request:
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The test suite covers 211 tests across 33 files: 29 unit test files (15 GMPL pattern, adapter, and error tests), 4 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e), and workflow JSON validation.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The test suite covers 257 tests across 38 files: 33 unit test files (19 GMPL pattern, adapter, and error tests), 5 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e, composed-workflow-e2e), and workflow JSON validation.
 
 ## License
 

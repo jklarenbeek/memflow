@@ -49,6 +49,8 @@ const ConfigSchema = z.object({
   mutationTriggerCount: z.number().default(3),
   /** GMPL pattern selection mode: fixed (default) or hera_adaptive (opt-in) */
   patternSelection: z.enum(["fixed", "hera_adaptive"]).default("fixed"),
+  /** Constrain adaptive pattern selection to these pattern IDs (empty = all) */
+  patternPool: z.array(z.string()).default([]),
   rolePrompts: z
     .record(z.string())
     .default({
@@ -249,6 +251,7 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
       topology_mutate: {
         mutationTriggerCount: this.config.mutationTriggerCount,
         enabled: this.config.enableTopologyMutation,
+        availablePatterns: this.config.patternPool,
       },
     };
   }
@@ -272,7 +275,12 @@ export class HERAOrchestratorModule implements BaseModule<HERAConfig> {
 
     try {
       const llm = ctx.getLLM();
-      const availablePatterns = PatternRegistry.getInstance().getAll();
+      const allPatterns = PatternRegistry.getInstance().getAll();
+
+      // G7: Filter by patternPool if configured
+      const availablePatterns = this.config.patternPool.length > 0
+        ? allPatterns.filter((p) => this.config.patternPool.includes(p.id))
+        : allPatterns;
 
       if (availablePatterns.length === 0) return undefined;
 

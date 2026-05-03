@@ -30,7 +30,7 @@ export class ConsensusJudgeModule implements BaseModule<Config> {
     const debateState = input.data.debateState as DebateState | undefined;
 
     if (!debateState || debateState.positions.length === 0) {
-      return { data: {}, metrics: { judged: false } };
+      return { data: {}, metrics: { _patternId: "structured_debate", judged: false } };
     }
 
     const report = await this.evaluate(ctx, debateState);
@@ -38,7 +38,7 @@ export class ConsensusJudgeModule implements BaseModule<Config> {
 
     return {
       data: { consensusReport: report },
-      metrics: { judged: true, convergenceScore: report.convergenceScore, action: report.action },
+      metrics: { _patternId: "structured_debate", judged: true, convergenceScore: report.convergenceScore, action: report.action },
     };
   }
 

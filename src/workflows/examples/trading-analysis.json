@@ -1,0 +1,85 @@
+{
+  "_comment": "Reference composition workflow: Multi-analyst trading analysis pipeline",
+  "_description": "Dispatches to 4 analyst agents in parallel (fundamental, technical, sentiment, news), then runs 2 structured debates (bull vs bear, risk committee), and produces a final trading decision.",
+  "_patterns": ["parallel_analysis", "structured_debate"],
+  "_domain": "trading",
+
+  "name": "trading-analysis-pipeline",
+  "version": "0.5.1",
+  "description": "Full TradingAgents-inspired analysis pipeline: parallel analyst dispatch → bull/bear debate → risk debate → final decision",
+  "entry": "analyst_dispatch",
+
+  "stages": [
+    {
+      "id": "analyst_dispatch",
+      "module": "ParallelDispatcher",
+      "config": {
+        "_patternId": "parallel_analysis",
+        "analysts": [
+          { "id": "fundamental", "role": "domain_analyst", "promptPack": "trading/fundamentals" },
+          { "id": "technical", "role": "domain_analyst", "promptPack": "trading/technical" },
+          { "id": "sentiment", "role": "domain_analyst", "promptPack": "trading/sentiment" },
+          { "id": "news", "role": "domain_analyst", "promptPack": "trading/research" }
+        ],
+        "mergeStrategy": "ranked_synthesis",
+        "timeout": "45s"
+      },
+      "next": "bull_bear_debate"
+    },
+    {
+      "id": "bull_bear_debate",
+      "module": "DebateModule",
+      "config": {
+        "_patternId": "structured_debate",
+        "roles": [
+          { "id": "bull_researcher", "persona": "Bullish market researcher — find growth catalysts, upside potential, and positive momentum signals", "promptPack": "trading/debate" },
+          { "id": "bear_researcher", "persona": "Bearish market researcher — identify risks, overvaluation, and negative indicators", "promptPack": "trading/debate" }
+        ],
+        "maxRounds": 3,
+        "termination": {
+          "type": "consensus_threshold",
+          "consensusThreshold": 0.75
+        },
+        "evidenceRetrieval": "hybrid",
+        "historyInjection": true
+      },
+      "dependsOn": ["analyst_dispatch"],
+      "next": "risk_debate"
+    },
+    {
+      "id": "risk_debate",
+      "module": "DebateModule",
+      "config": {
+        "_patternId": "structured_debate",
+        "roles": [
+          { "id": "risk_aggressive", "persona": "Aggressive risk manager — higher risk tolerance, seeks alpha", "promptPack": "trading/debate" },
+          { "id": "risk_conservative", "persona": "Conservative risk manager — capital preservation, downside protection", "promptPack": "trading/debate" },
+          { "id": "risk_neutral", "persona": "Neutral risk assessor — balanced risk/reward analysis", "promptPack": "trading/debate" }
+        ],
+        "maxRounds": 2,
+        "termination": { "type": "judge_decision", "judgeRole": "risk_neutral" },
+        "evidenceRetrieval": "graph",
+        "historyInjection": true
+      },
+      "dependsOn": ["bull_bear_debate"],
+      "next": "outcome_log"
+    },
+    {
+      "id": "outcome_log",
+      "module": "OutcomeMemory",
+      "config": {
+        "_patternId": "outcome_memory",
+        "twoPhaseEnabled": true,
+        "pendingTTL": "30d"
+      },
+      "dependsOn": ["risk_debate"],
+      "next": null
+    }
+  ],
+
+  "globalConfig": {
+    "maxConcurrency": 4,
+    "tokenBudget": 50000,
+    "tenantId": "trading"
+  }
+}

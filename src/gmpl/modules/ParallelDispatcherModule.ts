@@ -78,7 +78,7 @@ export class ParallelDispatcherModule implements BaseModule<Config> {
     if (reports.length === 0) {
       return {
         data: { analystReports: [], mergedAnalysis: null },
-        metrics: { dispatched: mergedConfig.analysts.length, received: 0 },
+        metrics: { _patternId: "parallel_analysis", dispatched: mergedConfig.analysts.length, received: 0 },
       };
     }
 
@@ -101,6 +101,7 @@ export class ParallelDispatcherModule implements BaseModule<Config> {
         finalAnswer: merged.synthesis,
       },
       metrics: {
+        _patternId: "parallel_analysis",
         dispatched: mergedConfig.analysts.length,
         received: reports.length,
         averageConfidence: merged.averageConfidence,

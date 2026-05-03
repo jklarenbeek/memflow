@@ -10,6 +10,8 @@ import { handleRecall } from "../mcp/tools/recall.js";
 import { handleSearch } from "../mcp/tools/search.js";
 import { handleManage } from "../mcp/tools/manage.js";
 import { handleEntityGet } from "../mcp/tools/entityGet.js";
+import { handleRunPattern } from "../mcp/tools/runPattern.js";
+import { handleResolveOutcome } from "../mcp/tools/resolveOutcome.js";
 
 export function mountMCPRoutes(app: Hono, globalConfig: GlobalConfig): void {
   const mcpServer = new MCPServer(globalConfig);
@@ -97,6 +99,62 @@ export function mountMCPRoutes(app: Hono, globalConfig: GlobalConfig): void {
       },
     },
     handleEntityGet,
+  );
+
+  // GMPL pattern tools
+
+  mcpServer.registerTool(
+    {
+      name: "gmpl_run_pattern",
+      description: "Execute a GMPL pattern (structured debate, parallel analysis, peer review, etc.) against a query. Returns the pattern's final answer and full state.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          patternId: {
+            type: "string",
+            description: "Pattern ID from PatternRegistry (e.g. 'structured_debate', 'parallel_analysis', 'peer_review', 'red_team', 'delphi_panel', 'clarification_pipeline')",
+          },
+          query: { type: "string", description: "The query or topic for the pattern" },
+          config: {
+            type: "object",
+            description: "Optional pattern-specific config overrides (roles, rounds, etc.)",
+          },
+          tenantId: { type: "string", description: "Optional tenant ID for domain isolation" },
+        },
+        required: ["patternId", "query"],
+      },
+    },
+    (args: Record<string, unknown>) => handleRunPattern(args, globalConfig),
+  );
+
+  mcpServer.registerTool(
+    {
+      name: "gmpl_resolve_outcome",
+      description: "Resolve a pending decision with a real-world outcome. Closes the feedback loop for GMPL pattern decisions, generating reflections and confidence adjustments.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pendingId: { type: "string", description: "ID of the pending decision to resolve" },
+          outcome: {
+            type: "string",
+            enum: ["success", "failure", "partial"],
+            description: "Outcome classification",
+          },
+          summary: { type: "string", description: "Human-readable outcome summary" },
+          metrics: {
+            type: "object",
+            description: "Optional domain-specific metrics (e.g. { actualReturn: 0.05 })",
+          },
+          tenantId: { type: "string", description: "Optional tenant ID for domain adapter lookup" },
+          evaluatorContext: {
+            type: "object",
+            description: "Optional context passed to the domain adapter's outcomeEvaluator",
+          },
+        },
+        required: ["pendingId", "outcome", "summary"],
+      },
+    },
+    (args: Record<string, unknown>) => handleResolveOutcome(args, globalConfig),
   );
 
   app.post("/mcp", async (c) => {

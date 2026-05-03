@@ -201,6 +201,7 @@ export class DelphiPanelModule implements BaseModule<Config> {
     return {
       data: { delphiPanelState: state, finalAnswer },
       metrics: {
+        _patternId: "delphi_panel",
         delphiRounds: state.currentRound,
         panelSize: panelists.length,
         converged: state.converged,

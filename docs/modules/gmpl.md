@@ -58,8 +58,9 @@ All registries and the PatternComposer throw these typed errors instead of gener
 
 Multi-round structured debate between opposing-view role agents. Each round:
 1. All role agents generate positions (stance, evidence, confidence, rebuttal)
-2. History from previous rounds is injected for context continuity
-3. Termination is checked against the configured strategy
+2. When `evidenceRetrieval` is not `none`, the `retrieveEvidence()` utility queries the KG/vector store and injects retrieved evidence into the position prompt
+3. History from previous rounds is injected for context continuity
+4. Termination is checked against the configured strategy
 
 **Config**:
 - `roles` — Array of `{id, persona, promptPack}` (minimum 2)
@@ -68,6 +69,8 @@ Multi-round structured debate between opposing-view role agents. Each round:
 - `termination.consensusThreshold` — 0–1 (for consensus_threshold mode)
 - `evidenceRetrieval` — `hybrid` | `vector` | `graph` | `none` (default: `none`)
 - `historyInjection` — boolean (default: `true`)
+
+When evidence retrieval is enabled, retrieved evidence items are merged with LLM-cited evidence for full traceability. On fallback (LLM failure), the position still includes any retrieved evidence.
 
 **Termination Strategies**:
 - `max_rounds` — Stop after N rounds, then synthesize
@@ -365,3 +368,71 @@ All GMPL inter-module data is defined as Zod schemas in `gmpl/types.ts`:
 | `ReflectionSchema` | OutcomeMemory | decisionId, content, lessons, confidenceAdjustment |
 | `PatternCompositionSchema` | PatternComposer | name, domain, orchestration, stages[], memory |
 | `PatternStageSchema` | PatternComposer | id, pattern, module, config |
+
+---
+
+## Evidence Retrieval Utility
+
+The `retrieveEvidence()` utility (`gmpl/retrieveEvidence.ts`) provides a unified interface for fetching evidence from the knowledge graph and/or vector store. It is the canonical way for GMPL modules to augment their prompts with evidence.
+
+**Retrieval Modes**:
+
+| Mode | Behavior |
+|---|---|
+| `none` | No-op — returns empty evidence (default) |
+| `graph` | Entity/relationship traversal via Cypher queries with configurable hop depth |
+| `vector` | Cosine similarity search on Chunk embeddings (with text-match fallback) |
+| `hybrid` | Both graph and vector, merged and deduplicated |
+
+**Key Features**:
+- Query term extraction with stop-word filtering
+- Content-based deduplication
+- Score-based ranking and configurable max items
+- Formatted text block output for prompt injection
+- Graceful degradation (returns empty evidence on retrieval failure)
+
+**Currently integrated into**: `DebateModule` (via `config.evidenceRetrieval`). Can be consumed by any module with access to `WorkflowContext`.
+
+---
+
+## MCP Tools
+
+Two MCP tools expose GMPL patterns to external agents:
+
+### `gmpl_run_pattern`
+
+Executes a GMPL pattern from `PatternRegistry` against a query. Validates input against the pattern's `inputContract` and config against `configSchema`. Uses `generateWorkflow()` to compose and `WorkflowEngine` to execute.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `patternId` | string | ✅ | Pattern ID (e.g., `structured_debate`, `parallel_analysis`) |
+| `query` | string | ✅ | Topic/query for the pattern |
+| `config` | object | | Pattern-specific config overrides |
+| `tenantId` | string | | Tenant ID for domain isolation |
+
+### `gmpl_resolve_outcome`
+
+Resolves a pending decision with a real-world outcome. Optionally uses the domain adapter's `outcomeEvaluator` for richer outcome classification.
+
+| Argument | Type | Required | Description |
+|---|---|---|---|
+| `pendingId` | string | ✅ | ID of the pending decision |
+| `outcome` | string | ✅ | `success`, `failure`, or `partial` |
+| `summary` | string | ✅ | Human-readable outcome summary |
+| `metrics` | object | | Domain-specific metrics |
+| `tenantId` | string | | Tenant ID for domain adapter lookup |
+| `evaluatorContext` | object | | Context passed to domain adapter's evaluator |
+
+---
+
+## Reference Composition Workflows
+
+Three reference composition workflows in `src/workflows/examples/` demonstrate multi-pattern pipelines:
+
+| Workflow | Patterns | Stages | Domain |
+|---|---|---|---|
+| `trading-analysis.json` | `parallel_analysis`, `structured_debate` ×2, `outcome_memory` | 4 | Trading |
+| `healthcare-assistant.json` | `clarification_pipeline`, `DualSourceFusion`, `peer_review` | 5 | Healthcare |
+| `autonomous-research.json` | `parallel_analysis`, `delphi_panel`, `red_team`, `outcome_memory` | 4 | Research |
+
+These workflows are validated by the `composed-workflow-e2e.test.ts` integration test suite (13 tests covering structure, wiring, and stage uniqueness).

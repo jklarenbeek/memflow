@@ -2,12 +2,15 @@
  * DualSourceFusionModule — fuse local KB context with web context
  *
  * Domain-agnostic dual-source reconciliation with:
- *  - Source priority: official > academic > general web
+ *  - Adapter-driven authority safelists (no hardcoded domains)
  *  - Temporal freshness scoring
  *  - Conflict resolution between CLocal and CWeb
  *
- * Reflecting its domain-agnostic nature — usable in
- * any domain, not just healthcare or finance.
+ * Authority scoring is entirely config/adapter-driven:
+ *  - If `authoritySafelist` is provided via config or domain adapter,
+ *    URLs matching any pattern receive the `authorityBoost` multiplier.
+ *  - If no safelist is present, authority scoring is skipped entirely
+ *    and all web sources score equally (1.0).
  *
  * Reads:  retrievalResult, webContext, webSources
  * Writes: fusedContext (string), sources (string[])
@@ -16,6 +19,7 @@
 import { z } from "zod";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
+import { DomainRegistry } from "../../gmpl/DomainRegistry.js";
 
 const ConfigSchema = z.object({
   /** Weight for local context (0–1). Web weight = 1 − localWeight */
@@ -26,6 +30,14 @@ const ConfigSchema = z.object({
   stalenessPenalty: z.number().default(0.05),
   /** Max characters in fused context */
   maxContextChars: z.number().default(6000),
+  /**
+   * Authority safelist — URL patterns that receive the authority boost.
+   * When empty and no domain adapter provides one, authority scoring is
+   * skipped entirely (all web sources score 1.0).
+   *
+   * Examples: [".gov", ".edu", ".reuters.", ".nih."]
+   */
+  authoritySafelist: z.array(z.string()).default([]),
 });
 
 type ReconcilerConfig = z.infer<typeof ConfigSchema>;
@@ -40,7 +52,7 @@ interface SourceSegment {
 
 export class DualSourceFusionModule implements BaseModule<ReconcilerConfig> {
   readonly name = "DualSourceFusion";
-  readonly version = "0.5.1";
+  readonly version = "0.6.0";
   private config: ReconcilerConfig;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -58,6 +70,9 @@ export class DualSourceFusionModule implements BaseModule<ReconcilerConfig> {
       webChars: webContext.length,
       webSourceCount: webSources.length,
     });
+
+    // Resolve authority safelist: config → domain adapter → empty (no scoring)
+    const safelist = this.resolveAuthoritySafelist(ctx);
 
     const segments: SourceSegment[] = [];
 
@@ -83,7 +98,7 @@ export class DualSourceFusionModule implements BaseModule<ReconcilerConfig> {
           text: chunk,
           source: url,
           sourceType: "web",
-          authorityScore: this.scoreAuthority(url),
+          authorityScore: this.scoreAuthority(url, safelist),
           freshnessScore: 1.0, // Tavily results are current
         });
       }
@@ -135,6 +150,7 @@ export class DualSourceFusionModule implements BaseModule<ReconcilerConfig> {
       segments: scored.length,
       fusedChars: fusedContext.length,
       sources: sources.length,
+      safelistActive: safelist.length > 0,
     });
 
     return {
@@ -143,6 +159,7 @@ export class DualSourceFusionModule implements BaseModule<ReconcilerConfig> {
         fusedSegments: scored.length,
         localSegments: segments.filter((s) => s.sourceType === "local").length,
         webSegments: segments.filter((s) => s.sourceType === "web").length,
+        safelistEntries: safelist.length,
       },
     };
   }
@@ -156,16 +173,58 @@ export class DualSourceFusionModule implements BaseModule<ReconcilerConfig> {
     return graphContext;
   }
 
-  private scoreAuthority(url: string): number {
+  /**
+   * Resolve the effective authority safelist.
+   *
+   * Priority:
+   *   1. Module config `authoritySafelist` (explicit override)
+   *   2. Domain adapter `authoritySafelist` (via DomainRegistry)
+   *   3. Empty array → no authority scoring applied
+   */
+  private resolveAuthoritySafelist(ctx: WorkflowContext): string[] {
+    // 1. Explicit config takes precedence
+    if (this.config.authoritySafelist.length > 0) {
+      return this.config.authoritySafelist;
+    }
+
+    // 2. Try domain adapter
+    try {
+      const tenantId = ctx.globalConfig.tenantId;
+      if (tenantId) {
+        const registry = DomainRegistry.getInstance();
+        const adapter = registry.get(tenantId);
+        if (adapter?.authoritySafelist && adapter.authoritySafelist.length > 0) {
+          return adapter.authoritySafelist;
+        }
+      }
+    } catch {
+      // DomainRegistry may not be initialized — fall through
+    }
+
+    // 3. No safelist → no authority scoring
+    return [];
+  }
+
+  /**
+   * Score authority of a URL based on the resolved safelist.
+   *
+   * - If safelist is empty → returns 1.0 (all sources equal)
+   * - If URL matches any safelist pattern → returns authorityBoost
+   * - Otherwise → returns 1.0 (neutral score)
+   */
+  private scoreAuthority(url: string, safelist: string[]): number {
+    // No safelist → skip authority scoring entirely
+    if (safelist.length === 0) return 1.0;
+
     const lower = url.toLowerCase();
-    // Official / government / academic boost
-    if (/\.(gov|edu|ac\.\w{2})\//.test(lower)) return this.config.authorityBoost;
-    // Major encyclopedia / reference
-    if (/\.(wikipedia|britannica|nih|who|un|worldbank)\./.test(lower)) return this.config.authorityBoost * 0.95;
-    // News outlets — moderate
-    if (/\.(reuters|apnews|bbc|npr|cnn|nytimes)\./.test(lower)) return 1.0;
-    // Default
-    return 0.85;
+    for (const pattern of safelist) {
+      if (lower.includes(pattern.toLowerCase())) {
+        return this.config.authorityBoost;
+      }
+    }
+
+    // URL doesn't match any safelist entry → neutral
+    return 1.0;
   }
 
   getConfigSchema() {

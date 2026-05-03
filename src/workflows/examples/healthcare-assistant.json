@@ -1,0 +1,79 @@
+{
+  "_comment": "Reference composition workflow: Healthcare clinical assistant",
+  "_description": "Multi-turn clarification to disambiguate clinical queries, then dual-source fusion (local medical KB + web), with peer review for response quality assurance.",
+  "_patterns": ["clarification_pipeline", "peer_review"],
+  "_domain": "healthcare",
+
+  "name": "healthcare-clinical-assistant",
+  "version": "0.5.1",
+  "description": "Clinical query pipeline: multi-turn clarification → dual-source fusion → peer review → evidence-backed response",
+  "entry": "clarify_intent",
+
+  "stages": [
+    {
+      "id": "clarify_intent",
+      "module": "MultiTurnClarifier",
+      "config": {
+        "_patternId": "clarification_pipeline",
+        "maxTurns": 3,
+        "complexityGate": true,
+        "intentSchema": "clinical_query"
+      },
+      "next": "retrieve_evidence"
+    },
+    {
+      "id": "retrieve_evidence",
+      "module": "HybridRetriever",
+      "config": {
+        "topK": 10,
+        "graphMaxHops": 2,
+        "minSimilarity": 0.65
+      },
+      "dependsOn": ["clarify_intent"],
+      "next": "fuse_sources"
+    },
+    {
+      "id": "fuse_sources",
+      "module": "DualSourceFusion",
+      "config": {
+        "localWeight": 0.7,
+        "authorityBoost": 1.5,
+        "maxContextChars": 8000,
+        "authoritySafelist": [".nih.", ".who.", ".gov", ".edu", ".pubmed.", ".cochrane.", ".uptodate."]
+      },
+      "dependsOn": ["retrieve_evidence"],
+      "next": "peer_review"
+    },
+    {
+      "id": "peer_review",
+      "module": "PeerReviewModule",
+      "config": {
+        "_patternId": "peer_review",
+        "reviewers": [
+          { "id": "clinical_reviewer", "persona": "Board-certified clinician — verify clinical accuracy and safety" },
+          { "id": "evidence_reviewer", "persona": "Evidence-based medicine specialist — verify citations and evidence quality" }
+        ],
+        "maxCycles": 2,
+        "acceptanceThreshold": 0.8
+      },
+      "dependsOn": ["fuse_sources"],
+      "next": "generate_response"
+    },
+    {
+      "id": "generate_response",
+      "module": "AnswerGenerator",
+      "config": {
+        "citationRequired": true,
+        "hallucinationCheck": true
+      },
+      "dependsOn": ["peer_review"],
+      "next": null
+    }
+  ],
+
+  "globalConfig": {
+    "maxConcurrency": 2,
+    "tokenBudget": 30000,
+    "tenantId": "healthcare"
+  }
+}

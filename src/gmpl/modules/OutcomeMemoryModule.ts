@@ -76,7 +76,7 @@ export class OutcomeMemoryModule implements BaseModule<Config> {
 
       return {
         data: { pendingDecision: pendingData },
-        metrics: { mode: "log_pending", pendingId: pendingData.id },
+        metrics: { _patternId: "outcome_memory", mode: "log_pending", pendingId: pendingData.id },
       };
     }
 
@@ -92,7 +92,7 @@ export class OutcomeMemoryModule implements BaseModule<Config> {
 
       return {
         data: { outcomeResolution: { pendingId: outcomeData.pendingId, reflection } },
-        metrics: { mode: "resolve", pendingId: outcomeData.pendingId },
+        metrics: { _patternId: "outcome_memory", mode: "resolve", pendingId: outcomeData.pendingId },
       };
     }
 
@@ -107,11 +107,11 @@ export class OutcomeMemoryModule implements BaseModule<Config> {
 
       return {
         data: { outcomeContext: augmentedContext },
-        metrics: { mode: "inject", contextLength: augmentedContext.length },
+        metrics: { _patternId: "outcome_memory", mode: "inject", contextLength: augmentedContext.length },
       };
     }
 
-    return { data: {}, metrics: { mode: "noop" } };
+    return { data: {}, metrics: { _patternId: "outcome_memory", mode: "noop" } };
   }
 
   // -----------------------------------------------------------------------

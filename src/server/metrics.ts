@@ -108,6 +108,30 @@ export function recordGmplError(errorCode: string, patternId = "unknown"): void 
   gmplErrorsCounter.inc({ error_code: errorCode, pattern_id: patternId });
 }
 
+// G2 — Additional pattern-level observability metrics
+
+export const gmplClarificationTurnsCounter = new Counter({
+  name: "gmpl_clarification_turns_total",
+  help: "Total clarification turns across GMPL patterns",
+  labelNames: ["pattern_id"],
+  registers: [register],
+});
+
+export const gmplConsensusQualityGauge = new Gauge({
+  name: "gmpl_consensus_quality_score",
+  help: "Latest consensus quality/convergence score by pattern",
+  labelNames: ["pattern_id"],
+  registers: [register],
+});
+
+export const gmplPendingResolutionHistogram = new Histogram({
+  name: "gmpl_pending_resolution_latency",
+  help: "Latency between pending decision creation and resolution (seconds)",
+  labelNames: ["pattern_id"],
+  buckets: [60, 300, 900, 3600, 86400, 604800, 2592000],
+  registers: [register],
+});
+
 // ---------------------------------------------------------------------------
 // Wiring helpers
 // ---------------------------------------------------------------------------
@@ -159,6 +183,12 @@ export function wireEngineMetrics(engine: WorkflowEngine): void {
       { module: event.module, stage_id: event.stageId },
       seconds,
     );
+
+    // G1: When this stage is a GMPL module, also observe pattern-level duration
+    const patternId = event.metrics?._patternId as string | undefined;
+    if (patternId) {
+      gmplPatternDurationHistogram.observe({ pattern_id: patternId }, seconds);
+    }
   });
 
   ee.on("stage:error", (event: StreamEventStageError) => {
@@ -190,12 +220,40 @@ export function wireEngineMetrics(engine: WorkflowEngine): void {
     workflowRunsCounter.inc({ workflow_name: info?.name ?? event.workflowId, status: "error" });
   });
 
-  // GMPL pattern events
+  // GMPL pattern events — discriminated by eventName
   ee.on("pattern:event", (event: StreamEventPatternEvent) => {
+    // Always track round-level counters
     gmplPatternRoundsCounter.inc({
       pattern_id: event.patternId,
       event_name: event.eventName,
     });
+
+    // G2: Supplemental observability by event type
+    switch (event.eventName) {
+      case "clarification:question":
+        gmplClarificationTurnsCounter.inc({ pattern_id: event.patternId });
+        break;
+
+      case "debate:position":
+      case "delphi:converged": {
+        const score = event.payload.convergenceScore as number | undefined;
+        if (score !== undefined) {
+          gmplConsensusQualityGauge.set({ pattern_id: event.patternId }, score);
+        }
+        break;
+      }
+
+      case "memory:resolved": {
+        const latencySeconds = event.payload.resolutionLatencySeconds as number | undefined;
+        if (latencySeconds !== undefined) {
+          gmplPendingResolutionHistogram.observe(
+            { pattern_id: event.patternId },
+            latencySeconds,
+          );
+        }
+        break;
+      }
+    }
   });
 }
 

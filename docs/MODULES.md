@@ -124,13 +124,16 @@ These modules operate independently outside of the sub-workflow pipelines:
 
 ## Example Workflows
 
-Three top-level example workflows demonstrate how the sub-workflow system composes pipelines:
+Six top-level example workflows demonstrate how the sub-workflow system composes pipelines:
 
 | Workflow | Stages | Use Case |
 |---|---|---|
 | `rag-memory-pipeline.json` | translate → parse → chunk → embed → graph → SimpleMem → LightMem → StructMem → retrieve → fuse | Full 10-stage RAG pipeline |
 | `quick-qa.json` | translate → embed → retrieve → fuse | Minimal 4-stage QA |
 | `multi-agent-research.json` | parallel retrieval → HERA with learning + RoPE + topology mutation | Autonomous multi-agent research |
+| `trading-analysis.json` | parallel analyst dispatch → bull/bear debate → risk debate → outcome logging | TradingAgents-inspired multi-pattern pipeline |
+| `healthcare-assistant.json` | multi-turn clarification → retrieval → DualSourceFusion → peer review → generation | Clinical assistant with medical authority safelist |
+| `autonomous-research.json` | parallel analysis → Delphi expert consensus → red team validation → outcome memory | 4-pattern autonomous research pipeline |
 
 ## Trading Domain Adapter
 

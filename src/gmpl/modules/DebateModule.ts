@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { BaseModule, ModuleInput, ModuleOutput } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { emitPatternEvent } from "../emitPatternEvent.js";
+import { retrieveEvidence, type EvidenceRetrievalMode } from "../retrieveEvidence.js";
 import {
   DebatePositionSchema,
   DebateStateSchema,
@@ -156,6 +157,7 @@ export class DebateModule implements BaseModule<DebateConfig> {
         finalAnswer: state.consensusReport?.verdict,
       },
       metrics: {
+        _patternId: "structured_debate",
         debateRounds: state.currentRound,
         totalPositions: state.positions.length,
         convergenceScore: state.consensusReport?.convergenceScore ?? 0,
@@ -177,6 +179,25 @@ export class DebateModule implements BaseModule<DebateConfig> {
     config: DebateConfig,
   ): Promise<DebatePosition> {
     const llm = ctx.getLLM();
+
+    // G3: Retrieve evidence when configured
+    let evidenceContext = "";
+    let retrievedSources: string[] = [];
+    if (config.evidenceRetrieval !== "none") {
+      const evidence = await retrieveEvidence(ctx, {
+        mode: config.evidenceRetrieval as EvidenceRetrievalMode,
+        query,
+        maxItems: 6,
+        domainId: (config as Record<string, unknown>).domainId as string | undefined,
+      });
+      if (evidence.items.length > 0) {
+        evidenceContext = `\n${evidence.formatted}\n`;
+        retrievedSources = evidence.items.map((item) => item.content.substring(0, 200));
+        ctx.logger.debug(
+          `DebateModule: Retrieved ${evidence.items.length} evidence items (mode=${config.evidenceRetrieval})`,
+        );
+      }
+    }
 
     // Build history context for this role
     const historyContext = config.historyInjection
@@ -201,6 +222,7 @@ export class DebateModule implements BaseModule<DebateConfig> {
         content:
           `Topic: ${query}\n` +
           `Round: ${round}\n` +
+          (evidenceContext ? `\nRetrieved evidence:\n${evidenceContext}\n` : "") +
           (opposingPositions ? `\nOpposing positions from previous round:\n${opposingPositions}\n` : "") +
           (historyContext ? `\nDebate history:\n${historyContext}\n` : "") +
           `\nProvide your position for this round.`,
@@ -212,10 +234,14 @@ export class DebateModule implements BaseModule<DebateConfig> {
       const text = typeof resp.content === "string" ? resp.content : "";
       const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}") as Record<string, unknown>;
 
+      // Merge LLM-cited evidence with retrieval-sourced evidence
+      const llmEvidence = (parsed.evidence as string[]) ?? [];
+      const mergedEvidence = [...new Set([...llmEvidence, ...retrievedSources])];
+
       return DebatePositionSchema.parse({
         roleId: role.id,
         stance: (parsed.stance as string) ?? "No position stated",
-        evidence: (parsed.evidence as string[]) ?? [],
+        evidence: mergedEvidence,
         confidence: (parsed.confidence as number) ?? 0.5,
         rebuttal: parsed.rebuttal as string | undefined,
         round,
@@ -225,7 +251,7 @@ export class DebateModule implements BaseModule<DebateConfig> {
       return {
         roleId: role.id,
         stance: "Unable to generate position",
-        evidence: [],
+        evidence: retrievedSources, // Still include retrieved evidence on fallback
         confidence: 0.3,
         round,
       };

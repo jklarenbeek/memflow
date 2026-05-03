@@ -1,0 +1,100 @@
+{
+  "_comment": "Reference composition workflow: Autonomous research pipeline",
+  "_description": "Multi-analyst parallel research → Delphi panel for expert consensus → Red team adversarial validation → final synthesis with outcome memory.",
+  "_patterns": ["parallel_analysis", "delphi_panel", "red_team"],
+  "_domain": "research",
+
+  "name": "autonomous-research-pipeline",
+  "version": "0.5.1",
+  "description": "Research pipeline: parallel analyst dispatch → Delphi expert consensus → adversarial red team validation → outcome-aware synthesis",
+  "entry": "research_dispatch",
+
+  "stages": [
+    {
+      "id": "research_dispatch",
+      "module": "ParallelDispatcher",
+      "config": {
+        "_patternId": "parallel_analysis",
+        "analysts": [
+          { "id": "literature_analyst", "role": "domain_analyst" },
+          { "id": "methodology_analyst", "role": "domain_analyst" },
+          { "id": "data_analyst", "role": "domain_analyst" },
+          { "id": "comparative_analyst", "role": "domain_analyst" }
+        ],
+        "mergeStrategy": "ranked_synthesis",
+        "timeout": "60s"
+      },
+      "next": "expert_consensus"
+    },
+    {
+      "id": "expert_consensus",
+      "module": "DelphiPanelModule",
+      "config": {
+        "_patternId": "delphi_panel",
+        "panelSize": 5,
+        "maxRounds": 3,
+        "anonymize": true,
+        "convergenceMetric": "std_dev",
+        "convergenceThreshold": 0.15,
+        "panelists": [
+          { "id": "domain_expert_1", "persona": "Senior researcher with 20+ years domain expertise" },
+          { "id": "domain_expert_2", "persona": "Quantitative methods specialist" },
+          { "id": "domain_expert_3", "persona": "Cross-disciplinary synthesizer" },
+          { "id": "domain_expert_4", "persona": "Recent literature expert — aware of latest publications" },
+          { "id": "domain_expert_5", "persona": "Industry practitioner — real-world applicability focus" }
+        ]
+      },
+      "dependsOn": ["research_dispatch"],
+      "next": "adversarial_validation"
+    },
+    {
+      "id": "adversarial_validation",
+      "module": "RedTeamModule",
+      "config": {
+        "_patternId": "red_team",
+        "attackStrategies": [
+          "methodology_critique",
+          "selection_bias_check",
+          "reproducibility_challenge",
+          "alternative_explanation"
+        ],
+        "redTeam": [
+          { "id": "methodology_critic", "persona": "Skeptical methodologist — challenges research design, statistical validity, and sample selection" },
+          { "id": "contrarian_scholar", "persona": "Contrarian researcher — proposes alternative explanations and identifies confirmation bias" }
+        ],
+        "blueTeam": [
+          { "id": "primary_defender", "persona": "Lead author — defends methodology and findings with evidence" },
+          { "id": "statistical_defender", "persona": "Biostatistician — defends quantitative methods and significance" }
+        ],
+        "maxRounds": 2,
+        "resilienceThreshold": 0.65
+      },
+      "dependsOn": ["expert_consensus"],
+      "next": "outcome_log"
+    },
+    {
+      "id": "outcome_log",
+      "module": "OutcomeMemory",
+      "config": {
+        "_patternId": "outcome_memory",
+        "twoPhaseEnabled": true,
+        "pendingTTL": "90d",
+        "crossDomainLessons": true
+      },
+      "dependsOn": ["adversarial_validation"],
+      "next": null
+    }
+  ],
+
+  "globalConfig": {
+    "maxConcurrency": 4,
+    "tokenBudget": 80000
+  },
+
+  "meta": {
+    "learning": true,
+    "maxIterations": 1,
+    "autoResearch": true,
+    "metrics": ["convergenceScore", "resilienceScore", "analystConfidence"]
+  }
+}
