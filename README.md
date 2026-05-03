@@ -2,7 +2,7 @@
 
 **Self-Improving RAG & Lifelong Memory Workflow Engine**
 
-MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It registers **69 modules** — 42 atomic pipeline modules, 7 composite wrappers, 8 GMPL pattern modules, and 12 standalone/infrastructure modules — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience. The engine exposes MCP, ACP, and REST interfaces for integration with LLM-powered tools and agents.
+MemFlow synthesizes 10+ cutting-edge research papers (2024–2026) into a composable, JSON-driven workflow engine with built-in learning loops and sub-workflow nesting. It registers **70 modules** — 42 atomic pipeline modules, 7 composite wrappers, 8 GMPL pattern modules, and 13 standalone/infrastructure modules — backed by a Memgraph-persistent state store for crash recovery and long-running job resilience. The engine exposes MCP, ACP, and REST interfaces for integration with LLM-powered tools and agents.
 
 The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with 6 composable workflow patterns (Structured Debate, Clarification Pipeline, Parallel Analysis, Peer Review, Red Team, Delphi Expert Panel) that can be orchestrated, composed via the `PatternComposer` API, and specialized per domain. A reference **Trading Domain Adapter** (based on TradingAgents, arXiv:2412.20138v7) demonstrates the full plugin contract with 4 data providers, 7 entity schemas, an outcome evaluator, Sharpe/drawdown/win-rate metrics, and 5 domain-specific prompt packs.
 
@@ -48,7 +48,7 @@ MemFlow's core innovation is **composable sub-workflows**: complex capabilities 
 ```
 WorkflowEngine ← JSON config
   ├── WorkflowContext (DI: MemgraphClient, StateStore, LLM, Embeddings, Logger)
-  ├── ModuleRegistry (69 modules: lazy-loaded, instance-cached)
+  ├── ModuleRegistry (70 modules: lazy-loaded, instance-cached)
   ├── StateStore (Memgraph-backed, crash-recoverable, in-memory LRU cache)
   ├── WorkflowEventEmitter (typed event system for streaming + metrics)
   ├── Config Validation (Zod schemas validated at initialize(), not mid-pipeline)
@@ -63,12 +63,12 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Module Inventory
 
-MemFlow registers **69 modules** across 11 categories:
+MemFlow registers **70 modules** across 11 categories:
 
 | Category | Count | Key Modules |
 |---|---|---|
 | Core | 2 | `SubWorkflow`, `AutonomousLoop` |
-| Chunking | 3 | `S2Chunker`, `MarkdownSpatialParser`, `ParentChildChunker` |
+| Chunking | 4 | `S2Chunker`, `MarkdownSpatialParser`, `PDFSpatialParser`, `ParentChildChunker` |
 | Memory | 19 | SimpleMem (6 atomic), LightMem (7 atomic incl. `AttentionScore`), StructMem (3 atomic), + 3 composite wrappers |
 | Retrieval | 9 | `IntentClassifier`, `VectorSearch`, `GraphSearch`, `KeywordSearch`, `ResultRanker`, `SymbolicSearch`, `SetUnionMerger`, `DualLevelRouter` + wrapper |
 | Agents | 8 | `PlanGenerator`, `TrajectoryExecutor`, `RewardComputer`, `ExperienceReflector`, `RoPEEvolver`, `TopologyMutator`, `FinalSynthesizer` + wrapper |
@@ -201,16 +201,44 @@ GitHub Actions CI runs on every push and pull request:
 
 1. `bun install --frozen-lockfile`
 2. `bun run typecheck` (TypeScript compilation check)
-3. `bun test` (full test suite)
+3. `bun test` (default test suite — mocks only, no external services)
 4. `docker build` (container image validation)
+
+Optional: `bun test src/tests/integration/real-services/` runs against live Memgraph + Ollama when services are available (e.g., GPU runners).
 
 ## Testing
 
+### Default Suite (fast, no external services)
 ```bash
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The test suite covers 257 tests across 38 files: 33 unit test files (19 GMPL pattern, adapter, and error tests), 5 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e, composed-workflow-e2e), and workflow JSON validation.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 277+ tests across 39 files: 34 unit test files (19 GMPL pattern, adapter, and error tests; 20 PDFSpatialParser tests against reference PDFs), 5 integration test files (full-pipeline, streaming-e2e, sub-workflow-e2e, outcome-memory-e2e, composed-workflow-e2e), and workflow JSON validation.
+
+### Real-Services Integration Suite (requires Memgraph + Ollama)
+
+A 7-layer integration test suite validates the full stack against live Memgraph MAGE and Ollama services:
+
+| Layer | File | Focus | Tests |
+|---|---|---|---|
+| 1 | `infra-health.test.ts` | Memgraph bolt, MAGE procedures, Ollama reachability, LLM/embedding smoke | 9 pass |
+| 2 | `memgraph-schema.test.ts` | 17 node labels, 8 edge types, vector/scalar indexes, batch UNWIND | 32 pass |
+| 3 | `providers-real.test.ts` | `MemgraphClient`, `LLMProvider`, `EmbeddingProvider`, `WorkflowContext` | 10 pass |
+| 4 | `modules-real.test.ts` | Atomic modules: ChunkIngestor, VectorSearch, GraphSearch, dedup, ranking, etc. | 9 pass, 5 todo |
+| 5 | `pipelines-real.test.ts` | Custom ingest→search→rank, parallel branches, SubWorkflow nesting | 3 pass, 5 todo |
+| 6 | `e2e-api-real.test.ts` | `/health`, `/modules`, `/metrics`, MCP init/tools-list | 5 pass, 6 todo |
+| 7 | `stability-real.test.ts` | MERGE idempotency, concurrent writes, 200-chunk batch, reconnection | 4 pass, 3 todo |
+
+**Run the real-services suite:**
+```bash
+# Requires Memgraph MAGE on bolt://localhost:7687 and Ollama on http://localhost:11434
+bun test src/tests/integration/real-services/ --timeout 120000
+```
+
+**CPU vs GPU execution:** On CPU, `qwen3.5:4b` takes 30–60s per LLM call. Tests marked `test.todo` (19 total) invoke LLM-dependent modules and JSON pipeline definitions. These can be run individually with `--timeout 600000` on GPU hardware (e.g., `bun test src/tests/integration/real-services/ --timeout 600000` runs all 91 tests including LLM workflows).
+
+**Test isolation:** All tests use `__test__`-prefixed node IDs and `cleanupTestData()` in `afterEach` — no test data leaks between runs.
+
 
 ## License
 

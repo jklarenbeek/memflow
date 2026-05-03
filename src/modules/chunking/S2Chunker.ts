@@ -10,7 +10,7 @@
  *
  * The §6.5 spec's `LangChainChunkerAdapter` pattern becomes unnecessary:
  * S2Chunker itself IS a `TextSplitter`, so it can be passed anywhere one is
- * expected — including `aether.registerChunker(new LangChainChunkerAdapter(s2))`.
+ * expected.
  *
  * Improvements over the original implementation:
  *  1. Extends real `TextSplitter` from `@langchain/textsplitters` — satisfies

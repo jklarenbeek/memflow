@@ -32,6 +32,8 @@ const BUILTIN_MODULES: Record<string, () => Promise<ModuleFactory>> = {
     import("../modules/chunking/MarkdownSpatialParserModule.js").then((m) => m.MarkdownSpatialParserModule as unknown as ModuleFactory),
   ParentChildChunker: () =>
     import("../modules/chunking/ParentChildChunkerModule.js").then((m) => m.ParentChildChunkerModule as unknown as ModuleFactory),
+  PDFSpatialParser: () =>
+    import("../modules/chunking/PDFSpatialParserModule.js").then((m) => m.PDFSpatialParserModule as unknown as ModuleFactory),
 
   // Memory — monolithic (backward compat)
   SimpleMem: () =>

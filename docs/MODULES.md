@@ -1,6 +1,6 @@
 # MemFlow Module System (v0.5.1)
 
-> How the WorkflowEngine, ModuleRegistry, GMPL, and Sub-Workflow system combine 69 modules into composable research-aligned pipelines.
+> How the WorkflowEngine, ModuleRegistry, GMPL, and Sub-Workflow system combine 70 modules into composable research-aligned pipelines.
 
 ---
 
@@ -40,7 +40,7 @@ Key capabilities:
 
 ## ModuleRegistry
 
-The `ModuleRegistry` is a singleton factory that manages all 69 registered modules:
+The `ModuleRegistry` is a singleton factory that manages all 70 registered modules:
 
 - **Lazy loading**: Modules are loaded via dynamic `import()` on first use — no upfront loading penalty
 - **Instance caching**: Instances are keyed by `moduleName::stageId` to ensure stateful modules maintain their state across stages
@@ -89,6 +89,7 @@ Detailed per-module documentation (input/output fingerprints, config schemas, pa
 
 | Pipeline | Doc | Atomic Modules | Wrapper |
 |---|---|---|---|
+| **Chunking** | [chunking.md](modules/chunking.md) | S2Chunker, MarkdownSpatialParser, PDFSpatialParser, ParentChildChunker | — |
 | **SimpleMem** | [simplemem.md](modules/simplemem.md) | SlidingWindow, DensityGate, FactExtractor, SemanticSynthesis, StructuredIndex, IntentAwarePlanner | `SimpleMem` |
 | **LightMem** | [lightmem.md](modules/lightmem.md) | PreCompression, SensoryBuffer, NoveltyGate, TopicSegmenter, AttentionScore, STMBuffer, SleepConsolidation | `LightMem` |
 | **StructMem** | [structmem.md](modules/structmem.md) | DualPerspective, CrossEventConsolidation, GraphPersist | `StructMem` |
@@ -103,15 +104,16 @@ Detailed per-module documentation (input/output fingerprints, config schemas, pa
 
 These modules operate independently outside of the sub-workflow pipelines:
 
-| Module | Description |
-|---|---|
-| **S2Chunker** | Spectral clustering chunking on spatial+semantic affinity (extends LangChain `TextSplitter`) |
-| **MarkdownSpatialParser** | Converts Markdown into spatial elements with layout-aware position metadata |
-| **ParentChildChunker** | Two-tier chunking with `:BELONGS_TO` graph edges for parent-child retrieval |
-| **QueryTranslator** | Five strategies: HyDE, Multi-Query, Step-Back, Query Rewriting, Intent Clarification |
-| **AutonomousLoop** | Iterative diagnosis → mutation → re-execution loop (OMNI-SIMPLEMEM §3) |
-| **Embedder** | LangChain embedding provider (Ollama / OpenAI / OpenRouter) |
-| **LLMProvider** | LangChain chat model provider (Ollama / OpenAI / OpenRouter) |
+| Module | Description | Deep Dive |
+|---|---|---|
+| **S2Chunker** | Spectral clustering chunking on spatial+semantic affinity (extends LangChain `TextSplitter`) | [chunking.md](modules/chunking.md) |
+| **MarkdownSpatialParser** | Converts Markdown into spatial elements with layout-aware position metadata | [chunking.md](modules/chunking.md) |
+| **PDFSpatialParser** | Extracts text + bounding boxes from PDFs via `unpdf`, produces layout-aware Documents for S2 clustering | [chunking.md](modules/chunking.md) |
+| **ParentChildChunker** | Two-tier chunking with `:BELONGS_TO` graph edges for parent-child retrieval | [chunking.md](modules/chunking.md) |
+| **QueryTranslator** | Five strategies: HyDE, Multi-Query, Step-Back, Query Rewriting, Intent Clarification | — |
+| **AutonomousLoop** | Iterative diagnosis → mutation → re-execution loop (OMNI-SIMPLEMEM §3) | — |
+| **Embedder** | LangChain embedding provider (Ollama / OpenAI / OpenRouter) | — |
+| **LLMProvider** | LangChain chat model provider (Ollama / OpenAI / OpenRouter) | — |
 
 ## Advanced Modules
 
