@@ -1,6 +1,6 @@
 # docker-compose.yml — MemFlow + Ollama (GPU-profile aware)
 #
-# Combines a GPU profile (Ollama) with a mode profile (dev or deploy).
+# Combines a GPU profile (Ollama) with a mode profile (deploy).
 #
 # ---------------------------------------------------------------------------
 # Deploy mode — full build (MemFlow + bundled Memgraph + Ollama)
@@ -12,19 +12,23 @@
 # ---------------------------------------------------------------------------
 # Dev mode — infrastructure only (Memgraph MAGE + Ollama, run Bun locally)
 # ---------------------------------------------------------------------------
-#   docker compose --profile dev --profile amd-rocm up
-#   docker compose --profile dev --profile amd-vulkan up
-#   docker compose --profile dev --profile cpu up
+#   docker compose --profile cpu up
+#   docker compose --profile amd-rocm up
+#   docker compose --profile amd-vulkan up
 #
 #   Then locally:
 #     bun run dev   # connects to localhost:7687 (Memgraph) + localhost:11434 (Ollama)
 #
 # ---------------------------------------------------------------------------
-# First start pulls models automatically:
-#   - nomic-embed-text:latest  (embeddings, ~274 MB)
-#   - qwen3.5:4b               (LLM, ~2.7 GB)
+# First start pulls models automatically.
+# Override models via .env or shell environment:
 #
-# To swap the LLM, edit the pull commands in x-init-ollama-common below.
+#   LLM_MODEL=qwen3.5:9b   docker compose --profile cpu up
+#   EMBEDDING_MODEL=mxbai-embed-large docker compose --profile cpu up
+#
+# Defaults (from .env or inline):
+#   - EMBEDDING_MODEL  → nomic-embed-text  (embeddings, ~274 MB)
+#   - LLM_MODEL        → qwen3.5:4b        (LLM, ~2.7 GB)
 
 # ---------------------------------------------------------------------------
 # Volumes & Networks
@@ -69,15 +73,19 @@ x-init-ollama-common: &init-ollama-common
     - ollama_storage:/root/.ollama
   environment:
     - OLLAMA_HOST=ollama:11434
+    - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+    - LLM_MODEL=${LLM_MODEL:-qwen3.5:4b}
+    - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-ollama}
+    - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
   entrypoint: /bin/sh
   command:
     - "-c"
     - |
       sleep 5
-      echo "[init] Pulling embedding model..."
-      ollama pull nomic-embed-text:latest
-      echo "[init] Pulling LLM..."
-      ollama pull qwen3.5:4b
+      echo "[init] Pulling embedding model: ${EMBEDDING_MODEL:-nomic-embed-text}..."
+      ollama pull ${EMBEDDING_MODEL:-nomic-embed-text}
+      echo "[init] Pulling LLM: ${LLM_MODEL:-qwen3.5:4b}..."
+      ollama pull ${LLM_MODEL:-qwen3.5:4b}
       echo "[init] Models ready."
 
 # ---------------------------------------------------------------------------
@@ -86,13 +94,13 @@ x-init-ollama-common: &init-ollama-common
 services:
 
   # =========================================================================
-  # Memgraph MAGE — dev mode only (standalone, for local Bun development)
+  # Memgraph MAGE — always started (infrastructure)
   #
   # Exposes Bolt on :7687 and Memgraph Lab websocket on :7444.
   # Your local `bun run dev` connects via MEMGRAPH_URI=bolt://localhost:7687.
+  # In deploy mode the memflow container also connects to this service.
   # =========================================================================
   memgraph-mage:
-    profiles: [ "dev" ]
     image: memgraph/memgraph-mage:latest
     container_name: memflow-memgraph
     ports:
@@ -115,9 +123,11 @@ services:
       start_period: 15s
 
   # =========================================================================
-  # MemFlow — deploy mode only (Dockerfile bundles Memgraph internally)
+  # MemFlow — deploy mode only (Dockerfile bundles app code)
   #
   # NOT started in dev mode — you run `bun run dev` on the host instead.
+  #
+  # All environment variables support .env override via ${VAR:-default}.
   # =========================================================================
   memflow:
     profiles: [ "deploy" ]
@@ -125,19 +135,22 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
-      - "3000:3000" # MemFlow HTTP API
-      - "7687:7687" # Memgraph Bolt (bundled inside container)
+      - "${PORT:-3000}:${PORT:-3000}"
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - LLM_PROVIDER=ollama
-      - LLM_MODEL=qwen3.5:9b
-      - EMBEDDING_PROVIDER=ollama
-      - EMBEDDING_MODEL=nomic-embed-text
-      - MEMGRAPH_URI=bolt://localhost:7687
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_MODEL=${LLM_MODEL:-qwen3.5:4b}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-ollama}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - MEMGRAPH_URI=${MEMGRAPH_URI:-bolt://memgraph-mage:7687}
+      - MEMGRAPH_USER=${MEMGRAPH_USER:-memgraph}
+      - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD:-memgraph}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - PORT=3000
-    volumes:
-      - memgraph_storage:/var/lib/memgraph
+      - PORT=${PORT:-3000}
+    depends_on:
+      memgraph-mage:
+        condition: service_healthy
     networks:
       - memflow-net
     restart: unless-stopped
