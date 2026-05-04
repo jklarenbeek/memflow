@@ -172,7 +172,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Stability & Stress (real services)",
   // LLM-heavy stability tests — todo on CPU
   // -------------------------------------------------------------------------
 
-  test.todo("5 concurrent LLM workflows all succeed (slow on CPU — 15–25 min)");
-  test.todo("full RAG round-trip: ingest → index → retrieve → generate × 3 (slow on CPU — 15–20 min)");
-  test.todo("PatternComposer generates a valid workflow and it executes (slow on CPU — 5–10 min)");
+  test.todo("5 concurrent LLM workflows all succeed (slow on CPU — 15–25 min)", () => {});
+  test.todo("full RAG round-trip: ingest → index → retrieve → generate × 3 (slow on CPU — 15–20 min)", () => {});
+  test.todo("PatternComposer generates a valid workflow and it executes (slow on CPU — 5–10 min)", () => {});
 });

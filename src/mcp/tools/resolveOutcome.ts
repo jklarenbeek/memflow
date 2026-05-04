@@ -151,7 +151,7 @@ async function withMemgraphContext(
             result: outcomeResult,
           },
         },
-        config: {},
+        config: {} as any,
       },
       minimalContext,
     );

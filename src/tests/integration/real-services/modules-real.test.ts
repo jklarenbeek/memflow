@@ -67,7 +67,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
       const embeddings = await ctx.getEmbeddings().embedDocuments(chunks.map((c) => c.pageContent));
 
       const output = await mod.process(
-        { data: { chunks, embeddings }, config: {} },
+        { data: { chunks, embeddings }, config: {} as any },
         ctx,
       );
 
@@ -88,12 +88,12 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
       const chunks = testChunks();
       const embeddings = await ctx.getEmbeddings().embedDocuments(chunks.map((c) => c.pageContent));
       const ingestor = new ChunkIngestorModule({ vectorDim: 768 });
-      await ingestor.process({ data: { chunks, embeddings }, config: {} }, ctx);
+      await ingestor.process({ data: { chunks, embeddings }, config: {} as any }, ctx);
 
       // Now search
       const mod = new VectorSearchModule({ topK: 3, minScore: 0.3, weight: 1.0 });
       const output = await mod.process(
-        { data: { query: "MemFlow engine" }, config: {} },
+        { data: { query: "MemFlow engine" }, config: {} as any },
         ctx,
       );
 
@@ -118,7 +118,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
 
       const mod = new GraphSearchModule({ topK: 5, weight: 1.0, maxHops: 2 });
       const output = await mod.process(
-        { data: { query: "MemFlow graph search" }, config: {} },
+        { data: { query: "MemFlow graph search" }, config: {} as any },
         ctx,
       );
 
@@ -130,7 +130,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
   );
 
   // EntityExtractor skipped on CPU — too slow for individual test (2–5 min per chunk)
-  test.todo("EntityExtractorModule extracts entities from text (slow on CPU — validated in Layer 5)");
+  test.todo("EntityExtractorModule extracts entities from text (slow on CPU — validated in Layer 5)", () => {});
 
   test(
     "EntityDeduplicatorModule merges duplicate entities",
@@ -153,7 +153,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
               { name: "Apple", type: "Company", description: "Makes Macs" },
             ],
           },
-          config: {},
+          config: {} as any,
         },
         ctx,
       );
@@ -166,7 +166,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
   );
 
   // EntityProfiler skipped on CPU — LLM-heavy
-  test.todo("EntityProfilerModule enriches existing entities (slow on CPU — validated in Layer 5)");
+  test.todo("EntityProfilerModule enriches existing entities (slow on CPU — validated in Layer 5)", () => {});
 
   test(
     "CommunityDetectorModule handles entity graph (graceful degradation if syntax unsupported)",
@@ -195,7 +195,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
       );
 
       const mod = new CommunityDetectorModule({ algorithm: "louvain", generateSummaries: false });
-      const output = await mod.process({ data: {}, config: {} }, ctx);
+      const output = await mod.process({ data: {}, config: {} as any }, ctx);
 
       // NOTE: Memgraph MAGE community_detection.get() may fail with a syntax error
       // when using WHERE after YIELD in CALL. The module gracefully returns detected=false.
@@ -225,7 +225,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
 
       const mod = new KeywordSearchModule({ topK: 5, weight: 1.0, searchMode: "text_search" });
       const output = await mod.process(
-        { data: { query: "MemFlow engine" }, config: {} },
+        { data: { query: "MemFlow engine" }, config: {} as any },
         ctx,
       );
 
@@ -248,7 +248,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
       ];
 
       const output = await mod.process(
-        { data: { query: "test", candidates }, config: {} },
+        { data: { query: "test", candidates }, config: {} as any },
         ctx,
       );
 
@@ -266,10 +266,10 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
   // -------------------------------------------------------------------------
 
   // AnswerGenerator skipped — single LLM generation call exceeds 2 min on CPU with qwen3.5:4b
-  test.todo("AnswerGeneratorModule produces an answer string (slow on CPU — validated in Layer 5)");
+  test.todo("AnswerGeneratorModule produces an answer string (slow on CPU — validated in Layer 5)", () => {});
 
   // HallucinationValidator skipped — second LLM call adds too much time on CPU
-  test.todo("HallucinationValidatorModule returns validation metrics (slow on CPU — validated in Layer 5)");
+  test.todo("HallucinationValidatorModule returns validation metrics (slow on CPU — validated in Layer 5)", () => {});
 
   test(
     "CitationInjectorModule persists :Citation nodes",
@@ -281,7 +281,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
             finalAnswer: "MemFlow is great.",
             sources: ["https://memflow.dev", "internal-knowledge"],
           },
-          config: {},
+          config: {} as any,
         },
         ctx,
       );
@@ -302,7 +302,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
   // -------------------------------------------------------------------------
 
   // QueryTranslator skipped — LLM prompt can be slow on CPU
-  test.todo("QueryTranslatorModule produces expanded queries (slow on CPU — validated in Layer 5)");
+  test.todo("QueryTranslatorModule produces expanded queries (slow on CPU — validated in Layer 5)", () => {});
 
   test(
     "S2ChunkerModule splits documents into chunks",
@@ -315,7 +315,7 @@ describe.skipIf(!servicesHealthy.memgraph)("Atomic Modules (real services)", () 
       const output = await mod.process(
         {
           data: { documents: [{ pageContent: longText, metadata: {} }] },
-          config: {},
+          config: {} as any,
         },
         ctx,
       );

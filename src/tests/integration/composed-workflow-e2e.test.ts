@@ -191,7 +191,7 @@ describe("PatternComposer: multi-pattern composition", () => {
 
 describe("Reference composition workflows", () => {
   test("trading-analysis.json is structurally valid", () => {
-    const wf = loadReferenceWorkflow("trading-analysis.json") as WorkflowConfig;
+    const wf = loadReferenceWorkflow("trading-analysis.json") as unknown as WorkflowConfig;
     expect(wf.name).toBe("trading-analysis-pipeline");
     expect(wf.entry).toBe("analyst_dispatch");
     expect(wf.stages.length).toBeGreaterThanOrEqual(3);
@@ -211,7 +211,7 @@ describe("Reference composition workflows", () => {
   });
 
   test("healthcare-assistant.json is structurally valid", () => {
-    const wf = loadReferenceWorkflow("healthcare-assistant.json") as WorkflowConfig;
+    const wf = loadReferenceWorkflow("healthcare-assistant.json") as unknown as WorkflowConfig;
     expect(wf.name).toBe("healthcare-clinical-assistant");
     expect(wf.entry).toBe("clarify_intent");
     expect(wf.stages.length).toBeGreaterThanOrEqual(4);
@@ -227,7 +227,7 @@ describe("Reference composition workflows", () => {
   });
 
   test("autonomous-research.json is structurally valid", () => {
-    const wf = loadReferenceWorkflow("autonomous-research.json") as WorkflowConfig;
+    const wf = loadReferenceWorkflow("autonomous-research.json") as unknown as WorkflowConfig;
     expect(wf.name).toBe("autonomous-research-pipeline");
     expect(wf.entry).toBe("research_dispatch");
     expect(wf.stages.length).toBeGreaterThanOrEqual(3);
@@ -246,7 +246,7 @@ describe("Reference composition workflows", () => {
     const files = ["trading-analysis.json", "healthcare-assistant.json", "autonomous-research.json"];
 
     for (const file of files) {
-      const wf = loadReferenceWorkflow(file) as WorkflowConfig;
+      const wf = loadReferenceWorkflow(file) as unknown as WorkflowConfig;
       const stageIds = new Set(wf.stages.map((s) => s.id));
 
       for (const stage of wf.stages) {

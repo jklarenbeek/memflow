@@ -486,7 +486,7 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
         k?: number;
         maxSkillsPerCluster?: number;
         persistToGraph?: boolean;
-      }>().catch(() => ({}));
+      }>().catch((): { k?: number; maxSkillsPerCluster?: number; persistToGraph?: boolean } => ({}));
 
       const distillWorkflow = {
         name: "trace2skill-distill",

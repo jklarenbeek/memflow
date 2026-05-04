@@ -252,9 +252,9 @@ describe.skipIf(!servicesHealthy.memgraph)("Pipeline Integration (real services)
   // LLM-heavy reference pipelines — todo on CPU
   // -------------------------------------------------------------------------
 
-  test.todo("simplemem-pipeline.json produces memoryUnits (slow on CPU — 10–15 min)");
-  test.todo("hybrid-retrieval.json returns ranked candidates (slow on CPU — 5–10 min)");
-  test.todo("graph-indexing.json extracts entities and detects communities (slow on CPU — 10–20 min)");
-  test.todo("priha-fusion.json generates an answer with citations (slow on CPU — 10–15 min)");
-  test.todo("lightmem-pipeline.json processes through sensory → STM → consolidation (slow on CPU — 15–20 min)");
+  test.todo("simplemem-pipeline.json produces memoryUnits (slow on CPU — 10–15 min)", () => {});
+  test.todo("hybrid-retrieval.json returns ranked candidates (slow on CPU — 5–10 min)", () => {});
+  test.todo("graph-indexing.json extracts entities and detects communities (slow on CPU — 10–20 min)", () => {});
+  test.todo("priha-fusion.json generates an answer with citations (slow on CPU — 10–15 min)", () => {});
+  test.todo("lightmem-pipeline.json processes through sensory → STM → consolidation (slow on CPU — 15–20 min)", () => {});
 });

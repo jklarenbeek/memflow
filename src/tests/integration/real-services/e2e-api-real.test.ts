@@ -94,15 +94,15 @@ describe.skipIf(!servicesHealthy.memgraph)("E2E API (real services)", () => {
   // Workflow Execution
   // -------------------------------------------------------------------------
 
-  test.todo("POST /workflow/run executes quick-qa workflow (slow on CPU — 5–10 min)");
+  test.todo("POST /workflow/run executes quick-qa workflow (slow on CPU — 5–10 min)", () => {});
 
   // -------------------------------------------------------------------------
   // REST API
   // -------------------------------------------------------------------------
 
-  test.todo("POST /api/v1/memories creates a memory (slow on CPU — 5–10 min via SimpleMem pipeline)");
-  test.todo("GET /api/v1/memories/:id retrieves memory with relations (depends on memory creation)");
-  test.todo("POST /api/v1/recall returns search + LLM answer (slow on CPU — 5–10 min)");
+  test.todo("POST /api/v1/memories creates a memory (slow on CPU — 5–10 min via SimpleMem pipeline)", () => {});
+  test.todo("GET /api/v1/memories/:id retrieves memory with relations (depends on memory creation)", () => {});
+  test.todo("POST /api/v1/recall returns search + LLM answer (slow on CPU — 5–10 min)", () => {});
 
   // -------------------------------------------------------------------------
   // MCP (fast JSON-RPC)
@@ -159,6 +159,6 @@ describe.skipIf(!servicesHealthy.memgraph)("E2E API (real services)", () => {
     { timeout: MEMGRAPH_TIMEOUT },
   );
 
-  test.todo("POST /mcp memflow_write ingests content (slow on CPU — 5–10 min via SimpleMem pipeline)");
-  test.todo("POST /mcp memflow_recall returns an answer (slow on CPU — 5–10 min)");
+  test.todo("POST /mcp memflow_write ingests content (slow on CPU — 5–10 min via SimpleMem pipeline)", () => {});
+  test.todo("POST /mcp memflow_recall returns an answer (slow on CPU — 5–10 min)", () => {});
 });
