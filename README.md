@@ -8,6 +8,8 @@ The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with 
 
 The **Self-Evolution Layer** enables autonomous skill distillation, SLM training dataset export, prediction harness versioning, and natural-language workflow compilation. Backed by Trace2Skill (arXiv:2603.25158), AutoSkill (arXiv:2604.17614), and Milkyway (arXiv:2604.15719) research.
 
+**MemFlow Desktop** (Phase 1) provides a native Tauri 2 desktop shell with an embedded Bun sidecar, streaming chat with inline DAG auditing, and a React frontend for Solution management, Conversation persistence, and Workflow Library browsing. The project is structured as a Bun workspace monorepo (`packages/desktop-app/`, `packages/shared/`).
+
 ## Prerequisites
 
 **Bun** (recommended, primary runtime):
@@ -59,6 +61,12 @@ WorkflowEngine ← JSON config
         ├── SubWorkflow stages → nested WorkflowEngine (shared context)
         ├── _stageConfigs override mechanism for per-stage config tuning
         └── MemgraphClient.batchQuery() → UNWIND-based batch operations
+
+packages/ (monorepo workspaces)
+  ├── shared/           — @memflow/shared: Zod API schemas (Solution, Conversation, Workflow)
+  └── desktop-app/      — Tauri 2 + React + Vite desktop application
+        ├── src-tauri/   — Rust: sidecar manager, Tauri plugins, IPC commands
+        └── src/         — React frontend (stores, hooks, components, CSS design system)
 ```
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
@@ -147,6 +155,17 @@ Agent-to-agent messaging via `POST /acp` (request/response) and `GET /acp` (SSE 
 | `/api/v1/skills/distill` | POST | Trigger Trace2Skill distillation pipeline |
 | `/api/v1/harness/evolve` | POST | Evolve a prediction harness for a topic |
 | `/api/v1/workflows/compile` | POST | Compile natural language → workflow JSON |
+| `/api/v1/solutions` | POST/GET | Create and list Solutions (workspaces) |
+| `/api/v1/solutions/:id` | GET/PATCH/DELETE | Get, update, or soft-delete a Solution |
+| `/api/v1/conversations` | POST/GET | Create and list Conversations per Solution |
+| `/api/v1/conversations/:id` | GET | Get conversation with full message history |
+| `/api/v1/conversations/:id/messages` | POST | Add a message to a conversation |
+| `/api/v1/conversations/:id/messages/:mid` | PATCH | Update message with audit trail |
+| `/api/v1/conversations/:id/fork` | POST | Fork a conversation from a checkpoint |
+| `/api/v1/workflows/catalog` | GET | List all available workflow JSONs |
+| `/api/v1/workflows/catalog/:name` | GET | Get a workflow JSON by name |
+| `/api/v1/migrate` | POST | Run solutionId state migration |
+| `/api/v1/migrate/status` | GET | Check migration status |
 
 ### Prompt Management
 

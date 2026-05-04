@@ -1,6 +1,8 @@
 {
   "name": "memflow",
   "version": "0.5.1",
+  "private": true,
+  "workspaces": ["packages/*"],
   "description": "MemFlow: Self-Improving RAG & Lifelong Memory Workflow Engine — S2 Chunking, LightRAG, SimpleMem, LightMem, StructMem, HERA, PriHA, and AutoResearchClaw",
   "type": "module",
   "main": "src/index.ts",
@@ -78,8 +80,9 @@
     "ml-kmeans": "^6.0.0"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.3.13",
     "@types/uuid": "^10.0.0",
+    "bun-types": "^1.3.13",
     "typescript": "^5.7.3"
   },
   "engines": {

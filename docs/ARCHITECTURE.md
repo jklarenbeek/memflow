@@ -289,8 +289,12 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 - **:PendingDecision** — GMPL two-phase outcome memory: unresolved decision proposals
 - **:Decision** — GMPL resolved decisions with outcome data
 - **:Reflection** — GMPL LLM-generated reflections on resolved outcomes
-- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords), `BELONGS_TO` (child→parent chunks), `CITES` (answer→citation), `IMPROVED_BY` (decision→reflection), `REFERENCES` (decision→entity)
-- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`, `Skill.embedding` (configurable via `enableVectorIndex`); scalar on `Skill.id`, `PredictionHarness.id`, `PredictionHarness.topicId`, `PendingDecision.id`, `Decision.pendingId`, `Reflection.decisionId`
+- **:Solution** — Desktop workspace isolation (id, name, description, domain, llmProvider, llmModel, createdAt, updatedAt, deletedAt)
+- **:Conversation** — Chat thread persistence (id, solutionId, title, workflowName, messageCount, createdAt, updatedAt, deletedAt)
+- **:Message** — Individual chat messages with audit trail (id, conversationId, role, content, stageTrace, sources, durationMs, tokenUsage, createdAt)
+- **:MigrationLog** — Migration version tracking (id, migrationId, migratedNodes, message, createdAt)
+- **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords), `BELONGS_TO` (child→parent chunks; conversation→solution), `CITES` (answer→citation), `IMPROVED_BY` (decision→reflection), `REFERENCES` (decision→entity), `IN_CONVERSATION` (message→conversation)
+- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`, `Skill.embedding` (configurable via `enableVectorIndex`); scalar on `Skill.id`, `PredictionHarness.id`, `PredictionHarness.topicId`, `PendingDecision.id`, `Decision.pendingId`, `Reflection.decisionId`, `Solution.id`, `Conversation.id`, `Message.id`
 
 ## HTTP API (Hono)
 
@@ -303,7 +307,7 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 | `/workflow/run/stream` | POST | Execute workflow with SSE streaming |
 | `/mcp` | POST | MCP server (7 tools: write, recall, search, manage, entity_get, gmpl_run_pattern, gmpl_resolve_outcome) |
 | `/acp` | POST/GET | ACP server (request/response + SSE) |
-| `/api/v1/*` | CRUD | REST API for memories, entities, search, recall, graph stats, evolution endpoints (skills, harness, workflows, datasets) |
+| `/api/v1/*` | CRUD | REST API for memories, entities, search, recall, graph stats, evolution endpoints, solutions, conversations, workflow catalog, migration |
 | `/prompts/validate` | GET | Validate TOML prompt references |
 | `/prompts/reload` | POST | Invalidate TOML prompt cache |
 
@@ -579,7 +583,7 @@ src/
     sub/patterns/              structured-debate.json, clarification-pipeline.json,
                                parallel-analysis.json, peer-review.json,
                                red-team.json, delphi-panel.json
-    service/                   ingest.json, recall.json, search.json (REST API backing workflows)
+    service/                   ingest.json, recall.json, search.json, chat.json (REST API + Desktop backing workflows)
   domains/
     trading/                   adapter.ts, schemas.ts, roles.ts, index.ts (reference DomainAdapter)
   prompts/                     TOML prompt templates (71 files — see Prompt System section)
@@ -598,7 +602,98 @@ src/
     unit/gmpl/                 19 files (DebateModule, PeerReview, RedTeam, Delphi, Clarifier, Dispatcher, OutcomeMemory, PatternComposer, PatternRegistry, RoleRegistry, DomainRegistry, Errors, Events, TradingAdapter, TradingRoles, LiveProviders, ConsensusJudge, emitPatternEvent, WorkflowContextEmitter)
     integration/               14 integration test files (6 mock E2E + 8 real-services)
     helpers/                   Shared mock factory (mocks.ts)
+  server/
+    index.ts                   — Hono HTTP server (auto-detects Bun/Node runtime)
+    api.ts                     — REST API router (with pluggable auth middleware)
+    routes/
+      solutions.ts             — Solution CRUD (POST/GET/PATCH/DELETE)
+      conversations.ts         — Conversation + Message persistence with audit trail
+      workflowCatalog.ts       — Dynamic workflow JSON enumeration
+      migration.ts             — State migration (solutionId backfill, :MigrationLog tracking)
+    metrics.ts                 — Prometheus metrics endpoint
+    mcp.ts                     — MCP server
+    acp.ts                     — ACP server
+  workflows/
+    examples/                  rag-memory-pipeline.json, quick-qa.json, multi-agent-research.json,
+                               trading-analysis.json, healthcare-assistant.json, autonomous-research.json,
+                               self-improving-research.json, skill-distillation-batch.json,
+                               trading-harness-evolution.json
+    sub/                       simplemem-pipeline.json, simplemem-retrieval.json,
+                               lightmem-pipeline.json, structmem-pipeline.json,
+                               hera-orchestration.json, hybrid-retrieval.json, graph-indexing.json,
+                               priha-fusion.json, trace2skill-pipeline.json, slm-dataset-export.json,
+                               harness-evolution.json, intent-compiler.json
+    sub/patterns/              structured-debate.json, clarification-pipeline.json,
+                               parallel-analysis.json, peer-review.json,
+                               red-team.json, delphi-panel.json
+    service/                   ingest.json, recall.json, search.json, chat.json (REST API + Desktop backing workflows)
+packages/
+  shared/
+    package.json               — @memflow/shared (Zod API contract schemas)
+    src/schemas/               — solution.ts, conversation.ts, workflow.ts
+  desktop-app/
+    package.json               — @memflow/desktop-app (Tauri + React + Vite)
+    src-tauri/
+      Cargo.toml               — Rust deps: tauri, shell, fs, dialog, notification, single-instance
+      src/lib.rs               — Tauri plugin registration and IPC handler
+      src/sidecar.rs           — Bun sidecar manager (port detection, health check, restart)
+      tauri.conf.json          — App config (window, permissions, build)
+    src/
+      App.tsx                  — Root layout (sidebar + chat + status bar)
+      App.css                  — Design system (CSS variables, dark/light theme)
+      stores/                  — Zustand: appStore.ts, chatStore.ts, sidecarStore.ts
+      hooks/                   — useSSE.ts, useWorkflowStream.ts, useMemFlowAPI.ts
+      lib/                     — api.ts (typed API client)
+      components/
+        layout/                TopBar.tsx, StatusBar.tsx
+        sidebar/               SolutionList.tsx, ConversationTree.tsx, WorkflowLibrary.tsx
+        chat/                  ChatPane.tsx, MessageBubble.tsx, MessageDAGMini.tsx
+        palette/               CommandPalette.tsx (Cmd+K)
 ```
+## Desktop Application (Phase 1)
+
+The MemFlow Desktop application provides a native Tauri 2 shell with an embedded Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process.
+
+### Sidecar Manager (`src-tauri/src/sidecar.rs`)
+
+The Rust-side sidecar manager handles:
+- **Port auto-detection**: Scans ports 3000–3099 for an available port
+- **Health checking**: Periodic `/health` endpoint polling with status tracking
+- **External server mode**: Connects to a pre-existing MemFlow server (development scenario)
+- **IPC commands**: `get_server_url`, `get_sidecar_status`, `check_health`, `set_external_server`
+
+### State Management (Zustand)
+
+| Store | Purpose | Persistence |
+|---|---|---|
+| `appStore` | Theme, current solution/conversation, server URL, sidebar state | `localStorage` |
+| `chatStore` | Messages array, streaming tokens, stage status tracking | In-memory |
+| `sidecarStore` | Server status, health checks, version, module count, restart tracking | In-memory |
+
+### React Component Tree
+
+```
+App.tsx
+├── TopBar (solution switcher, status dot, theme toggle)
+├── Sidebar
+│   ├── SolutionList (CRUD, entity/memory counts)
+│   ├── ConversationTree (conversation list per solution)
+│   └── WorkflowLibrary (catalog browser with search)
+├── ChatPane
+│   ├── MessageBubble (role indicator, inline DAG, source citations)
+│   │   └── MessageDAGMini (horizontal stage flow: pending→running→complete)
+│   └── ChatInput (Ctrl+Enter send, streaming cancel)
+├── StatusBar (Memgraph/Ollama/Tavily badges, version)
+└── CommandPalette (Cmd+K fuzzy search overlay)
+```
+
+### Streaming Architecture
+
+The `useWorkflowStream` hook implements a **persist-first** message flow:
+1. User sends message → persisted to Memgraph via `POST /api/v1/conversations/:id/messages`
+2. Placeholder assistant message created → persisted immediately
+3. SSE stream opened to `/workflow/run/stream` → tokens appended to message bubble
+4. On completion → assistant message updated with final content, stage trace, and audit trail
 
 ## Evolution Layer — Memgraph Schema
 

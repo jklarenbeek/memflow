@@ -66,6 +66,8 @@ export interface GlobalConfig {
   logLevel?: "debug" | "info" | "warn" | "error";
   enableMetrics?: boolean;
   tenantId?: string;
+  /** Desktop app: Solution ID — maps to tenantId for query scoping */
+  solutionId?: string;
 }
 
 export interface WorkflowMeta {

@@ -13,6 +13,10 @@ import { runServiceWorkflow, withMemgraph } from "../mcp/tools/_helpers.js";
 import ingestWorkflow from "../workflows/service/ingest.json" with { type: "json" };
 import recallWorkflow from "../workflows/service/recall.json" with { type: "json" };
 import searchWorkflow from "../workflows/service/search.json" with { type: "json" };
+import { createSolutionsRouter } from "./routes/solutions.js";
+import { createConversationsRouter } from "./routes/conversations.js";
+import { createWorkflowCatalogRouter } from "./routes/workflowCatalog.js";
+import { createMigrationRouter } from "./routes/migration.js";
 
 // ---------------------------------------------------------------------------
 // Auth middleware hook — pluggable authentication/authorization
@@ -585,6 +589,15 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
       return c.json({ success: false, error: (err as Error).message }, 500);
     }
   });
+
+  // -----------------------------------------------------------------------
+  // Phase 1 — Desktop App APIs
+  // -----------------------------------------------------------------------
+
+  app.route("/solutions", createSolutionsRouter(globalConfig));
+  app.route("/conversations", createConversationsRouter(globalConfig));
+  app.route("/workflows", createWorkflowCatalogRouter(globalConfig));
+  app.route("", createMigrationRouter(globalConfig));
 
   return app;
 }

@@ -1,0 +1,39 @@
+{
+  "name": "chat",
+  "version": "1.0",
+  "description": "Desktop chat workflow — auto-routes to appropriate pipeline via IntentClassifier",
+  "entry": "classify",
+  "stages": [
+    {
+      "id": "classify",
+      "module": "IntentClassifier",
+      "config": { "mode": "chat" },
+      "next": {
+        "retrieval_needed > 0.5": "retrieve",
+        "default": "generate"
+      }
+    },
+    {
+      "id": "retrieve",
+      "module": "SubWorkflow",
+      "workflowRef": "src/workflows/sub/hybrid-retrieval.json",
+      "inputMap": { "query": "query" },
+      "outputMap": { "retrievalResult": "retrievalResult", "graphContext": "graphContext" },
+      "config": {},
+      "next": "generate"
+    },
+    {
+      "id": "generate",
+      "module": "AnswerGenerator",
+      "config": {},
+      "next": null
+    }
+  ],
+  "globalConfig": {
+    "llmProvider": "ollama",
+    "llmModel": "qwen3.5:9b",
+    "embeddingProvider": "ollama",
+    "embeddingModel": "nomic-embed-text",
+    "logLevel": "info"
+  }
+}
