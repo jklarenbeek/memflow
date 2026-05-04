@@ -1,5 +1,5 @@
 node_modules/
 .env
-
+FOLLOWUP.md
 test-output/
 docs/new/
