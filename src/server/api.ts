@@ -17,6 +17,11 @@ import { createSolutionsRouter } from "./routes/solutions.js";
 import { createConversationsRouter } from "./routes/conversations.js";
 import { createWorkflowCatalogRouter } from "./routes/workflowCatalog.js";
 import { createMigrationRouter } from "./routes/migration.js";
+import { createGraphExplorerRouter } from "./routes/graphExplorer.js";
+import { createModulesRouter } from "./routes/modules.js";
+import { createExecutionsRouter } from "./routes/executions.js";
+import { createIngestionRouter } from "./routes/ingestion.js";
+import { createGmplPatternsRouter } from "./routes/gmplPatterns.js";
 
 // ---------------------------------------------------------------------------
 // Auth middleware hook — pluggable authentication/authorization
@@ -598,6 +603,16 @@ export function createAPIRouter(globalConfig: GlobalConfig): Hono {
   app.route("/conversations", createConversationsRouter(globalConfig));
   app.route("/workflows", createWorkflowCatalogRouter(globalConfig));
   app.route("", createMigrationRouter(globalConfig));
+
+  // -----------------------------------------------------------------------
+  // Phase 2 — Core Feature APIs
+  // -----------------------------------------------------------------------
+
+  app.route("/graph", createGraphExplorerRouter(globalConfig));
+  app.route("/modules", createModulesRouter(globalConfig));
+  app.route("/executions", createExecutionsRouter(globalConfig));
+  app.route("/ingest", createIngestionRouter(globalConfig));
+  app.route("/gmpl", createGmplPatternsRouter(globalConfig));
 
   return app;
 }
