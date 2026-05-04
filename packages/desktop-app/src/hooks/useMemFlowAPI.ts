@@ -1,7 +1,7 @@
 /**
  * useMemFlowAPI — React hook wrapping the MemFlow API client
  */
-import { useState, useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { api } from "../lib/api";
 import { useAppStore } from "../stores/appStore";
 import { useSidecarStore } from "../stores/sidecarStore";

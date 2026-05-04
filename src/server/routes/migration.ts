@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
 import type { GlobalConfig } from "../../core/types.js";
 import { withMemgraph } from "../../mcp/tools/_helpers.js";
+import { normalizeNode } from "./_helpers.js";
 
 const MIGRATION_V1_ID = "v1_backfill_solutionId";
 
@@ -27,7 +28,7 @@ export function createMigrationRouter(globalConfig: GlobalConfig): Hono {
           { migrationId: MIGRATION_V1_ID },
         );
         if (existing.length > 0) {
-          return { alreadyRan: true, migrationLog: existing[0].ml, migratedNodes: 0 };
+          return { alreadyRan: true, migrationLog: normalizeNode(existing[0].ml), migratedNodes: 0 };
         }
 
         // Detect orphaned nodes (no solutionId)
@@ -110,7 +111,7 @@ export function createMigrationRouter(globalConfig: GlobalConfig): Hono {
            RETURN count(n) AS total`,
         );
         return {
-          migrations: logs.map(r => r.ml),
+          migrations: logs.map(r => normalizeNode(r.ml)),
           orphanedNodes: Number(orphanCount[0]?.total ?? 0),
         };
       });

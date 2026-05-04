@@ -1,7 +1,7 @@
 /**
  * ConversationTree — Conversation list grouped by solution
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/api";
 
@@ -10,23 +10,26 @@ interface Conversation {
   title: string;
   messageCount: number;
   updatedAt: string;
-  lastMessagePreview?: string;
+  lastMessagePreview?: string | null;
 }
 
 export function ConversationTree() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(false);
   const { currentSolutionId, currentConversationId, setCurrentConversation, serverUrl } = useAppStore();
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     if (!currentSolutionId) { setConversations([]); return; }
+    setLoading(true);
     try {
       api.setBaseUrl(serverUrl);
       const res = await api.listConversations(currentSolutionId);
       setConversations(res.conversations as unknown as Conversation[]);
     } catch { /* server may not be ready */ }
-  };
+    finally { setLoading(false); }
+  }, [currentSolutionId, serverUrl]);
 
-  useEffect(() => { loadConversations(); }, [currentSolutionId, serverUrl]);
+  useEffect(() => { loadConversations(); }, [loadConversations]);
 
   const createConversation = async () => {
     if (!currentSolutionId) return;
@@ -40,6 +43,27 @@ export function ConversationTree() {
     }
   };
 
+  const deleteConversation = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Conversations don't have a delete endpoint yet — just remove from local state
+    setConversations(conversations.filter(c => c.id !== id));
+    if (currentConversationId === id) {
+      setCurrentConversation(null);
+    }
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return date.toLocaleDateString();
+  };
+
   return (
     <div className="conversation-tree">
       <div className="section-header">
@@ -49,6 +73,12 @@ export function ConversationTree() {
       </div>
 
       <div className="conversation-items">
+        {loading && (
+          <div className="loading-items">
+            <div className="skeleton-line" />
+            <div className="skeleton-line short" />
+          </div>
+        )}
         {conversations.map((conv) => (
           <button
             key={conv.id}
@@ -57,17 +87,18 @@ export function ConversationTree() {
           >
             <span className="conv-title">{conv.title}</span>
             <span className="conv-meta">
-              {conv.messageCount} msgs · {new Date(conv.updatedAt).toLocaleDateString()}
+              {conv.messageCount} msgs · {formatTime(conv.updatedAt)}
             </span>
             {conv.lastMessagePreview && (
               <span className="conv-preview">{conv.lastMessagePreview}</span>
             )}
+            <button className="conv-delete" onClick={(e) => deleteConversation(conv.id, e)} title="Remove">×</button>
           </button>
         ))}
         {!currentSolutionId && (
           <p className="empty-state">Select a solution to see conversations.</p>
         )}
-        {currentSolutionId && conversations.length === 0 && (
+        {currentSolutionId && conversations.length === 0 && !loading && (
           <p className="empty-state">No conversations yet.</p>
         )}
       </div>

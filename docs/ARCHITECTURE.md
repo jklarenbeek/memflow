@@ -610,6 +610,7 @@ src/
       conversations.ts         — Conversation + Message persistence with audit trail
       workflowCatalog.ts       — Dynamic workflow JSON enumeration
       migration.ts             — State migration (solutionId backfill, :MigrationLog tracking)
+      _helpers.ts              — Response normalization: normalizeNode(), normalizeValue(), normalizeRecord()
     metrics.ts                 — Prometheus metrics endpoint
     mcp.ts                     — MCP server
     acp.ts                     — ACP server
@@ -639,20 +640,23 @@ packages/
       src/sidecar.rs           — Bun sidecar manager (406 lines: spawn, health poll, crash restart, process cleanup)
       tauri.conf.json          — App config (window, permissions, build)
     src/
-      App.tsx                  — Root layout (sidebar + chat + status bar)
-      App.css                  — Design system (CSS variables, dark/light theme)
+      App.tsx                  — Root layout (wizard → sidebar + chat + status bar + overlays)
+      App.css                  — Design system (850+ lines: CSS variables, dark/light theme, component styles)
       stores/                  — Zustand: appStore.ts, chatStore.ts, sidecarStore.ts
       hooks/                   — useSSE.ts, useWorkflowStream.ts, useMemFlowAPI.ts
       lib/                     — api.ts (typed API client)
       components/
         layout/                TopBar.tsx, StatusBar.tsx
         sidebar/               SolutionList.tsx, ConversationTree.tsx, WorkflowLibrary.tsx
-        chat/                  ChatPane.tsx, MessageBubble.tsx, MessageDAGMini.tsx
+        chat/                  ChatPane.tsx, MessageBubble.tsx, MessageDAGMini.tsx, StageInspector.tsx
         palette/               CommandPalette.tsx (Cmd+K)
+        settings/              SettingsDialog.tsx (tabbed: Connection/Appearance/About), ConnectionStatus.tsx
+        onboarding/            ConnectionWizard.tsx (4-step first-launch flow)
+        shared/                LoadingSkeleton.tsx (shimmer: line/circle/card variants)
 ```
 ## Desktop Application
 
-The MemFlow Desktop application provides a native Tauri 2 shell with a production-grade Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process. The app compiles and launches successfully via `bun run tauri dev` (~1m42s first build, 450 crates).
+The MemFlow Desktop application provides a native Tauri 2 shell with a production-grade Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process. All API routes normalize Memgraph responses to flat JSON via `normalizeNode()` (in `src/server/routes/_helpers.ts`), eliminating raw Neo4j Node/Integer wrapper objects from frontend consumption. The app compiles and launches successfully via `bun run tauri dev` (~1m42s first build, 450 crates).
 
 ### Sidecar Manager (`src-tauri/src/sidecar.rs` — 406 lines)
 
@@ -684,18 +688,26 @@ The Rust-side sidecar manager provides full process lifecycle management:
 
 ```
 App.tsx
-├── TopBar (solution switcher, status dot, theme toggle)
+├── ConnectionWizard (first-launch: mode → URL test → solution creation → done)
+│   [shown only on first launch; hidden after onboarding completes]
+├── TopBar (logo, health dots for Memgraph/Ollama, version, settings gear, theme toggle)
 ├── Sidebar
-│   ├── SolutionList (CRUD, entity/memory counts)
-│   ├── ConversationTree (conversation list per solution)
-│   └── WorkflowLibrary (catalog browser with search)
+│   ├── SolutionList (CRUD, domain icons, entity/memory counts, loading skeleton, error banner)
+│   ├── ConversationTree (conversation list, relative timestamps, create/delete)
+│   └── WorkflowLibrary (catalog browser with category grouping and search)
 ├── ChatPane
-│   ├── MessageBubble (role indicator, inline DAG, source citations)
-│   │   └── MessageDAGMini (horizontal stage flow: pending→running→complete)
+│   ├── LoadingSkeleton (shimmer while loading conversation history)
+│   ├── MessageBubble (markdown rendering, syntax highlighting, copy, relative timestamps, token usage)
+│   │   └── MessageDAGMini (horizontal stage flow: pending→running→complete, clickable → StageInspector)
 │   └── ChatInput (Ctrl+Enter send, streaming cancel)
-├── StatusBar (Memgraph/Ollama/Tavily badges, version)
-└── CommandPalette (Cmd+K fuzzy search overlay)
+├── StatusBar (Memgraph/Ollama/Tavily health badges, version)
+├── CommandPalette (Cmd+K fuzzy search overlay)
+├── SettingsDialog (Ctrl+, — tabs: Connection, Appearance, About)
+│   └── ConnectionStatus (health dots compact or full service cards)
+└── StageInspector (slide-out drawer: stage info, config, input/output JSON, error display)
 ```
+
+**Dependencies**: `react-markdown@10.1.0`, `rehype-highlight@7.0.2`, `remark-gfm@4.0.1` for rich message rendering.
 
 ### Streaming Architecture
 

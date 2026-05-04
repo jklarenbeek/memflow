@@ -28,24 +28,10 @@ let assistantMessageId: string;
 let mgClient: MemgraphClient;
 
 /**
- * Unwrap a Neo4j/Memgraph node object to its properties.
- * If the value has a `.properties` key (i.e. it's a raw Node), return the properties.
- * Otherwise return as-is (already flattened).
+ * NOTE: The `props()` and `num()` helpers that were here have been removed.
+ * Routes now normalize all Memgraph Node/Integer objects via `normalizeNode()`
+ * in `src/server/routes/_helpers.ts`, so responses are flat JSON.
  */
-function props(node: unknown): Record<string, unknown> {
-  if (node && typeof node === "object" && "properties" in node) {
-    return (node as { properties: Record<string, unknown> }).properties;
-  }
-  return node as Record<string, unknown>;
-}
-
-/** Unwrap neo4j Integer objects ({ low, high }) to plain numbers. */
-function num(val: unknown): number {
-  if (val && typeof val === "object" && "low" in val) {
-    return (val as { low: number }).low;
-  }
-  return Number(val);
-}
 
 async function api(path: string, options?: RequestInit) {
   const url = `${API}${path}`;
@@ -127,13 +113,11 @@ describe("Solution CRUD API", () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
-    const solutions = (data.solutions as Array<unknown>).map(props);
+    const solutions = data.solutions as Array<Record<string, unknown>>;
     const found = solutions.find(s => s.id === solutionId);
     expect(found).toBeDefined();
     expect(found!.name).toBe("__desktop_test__My Research");
-    // Stats are appended by the route, so check on the raw object
-    const rawFound = (data.solutions as Array<Record<string, unknown>>).find(s => props(s).id === solutionId);
-    expect(rawFound!.stats || (rawFound as any).properties?.stats).toBeDefined();
+    expect(found!.stats).toBeDefined();
   }, MEMGRAPH_TIMEOUT);
 
   test("GET /solutions/:id — Get specific solution", async () => {
@@ -141,7 +125,7 @@ describe("Solution CRUD API", () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
-    const sol = props(data.solution);
+    const sol = data.solution as Record<string, unknown>;
     expect(sol.id).toBe(solutionId);
     expect(sol.description).toBe("Integration test solution");
   }, MEMGRAPH_TIMEOUT);
@@ -154,7 +138,7 @@ describe("Solution CRUD API", () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
-    const sol = props(data.solution);
+    const sol = data.solution as Record<string, unknown>;
     expect(sol.name).toBe("__desktop_test__Renamed Solution");
     expect(sol.domain).toBe("trading");
   }, MEMGRAPH_TIMEOUT);
@@ -194,7 +178,7 @@ describe("Conversation + Message API", () => {
 
     expect(status).toBe(201);
     expect(data.success).toBe(true);
-    const conv = props(data.conversation);
+    const conv = data.conversation as Record<string, unknown>;
     conversationId = conv.id as string;
     expect(conversationId).toBeDefined();
     expect(conv.title).toBe("__desktop_test__First Chat");
@@ -211,7 +195,7 @@ describe("Conversation + Message API", () => {
 
     expect(status).toBe(201);
     expect(data.success).toBe(true);
-    const msg = props(data.message);
+    const msg = data.message as Record<string, unknown>;
     userMessageId = msg.id as string;
     expect(msg.role).toBe("user");
     expect(msg.content).toBe("What is MemFlow?");
@@ -229,7 +213,7 @@ describe("Conversation + Message API", () => {
     });
 
     expect(status).toBe(201);
-    const msg = props(data.message);
+    const msg = data.message as Record<string, unknown>;
     assistantMessageId = msg.id as string;
     expect(msg.role).toBe("assistant");
     expect(msg.workflowName).toBe("chat");
@@ -256,11 +240,11 @@ describe("Conversation + Message API", () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
-    const msg = props(data.message);
+    const msg = data.message as Record<string, unknown>;
     expect(msg.content).toBe("MemFlow is a self-improving RAG and lifelong memory workflow engine.");
-    expect(num(msg.stageCount)).toBe(3);
-    expect(num(msg.durationMs)).toBe(3070);
-    expect(num(msg.tokenUsage)).toBe(450);
+    expect(Number(msg.stageCount)).toBe(3);
+    expect(Number(msg.durationMs)).toBe(3070);
+    expect(Number(msg.tokenUsage)).toBe(450);
   }, MEMGRAPH_TIMEOUT);
 
   test("GET /conversations?solutionId — List conversations for solution", async () => {
@@ -268,10 +252,9 @@ describe("Conversation + Message API", () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
-    const rawConvos = data.conversations as Array<unknown>;
+    const rawConvos = data.conversations as Array<Record<string, unknown>>;
     expect(rawConvos.length).toBeGreaterThanOrEqual(1);
-    // The conversations have mixed raw-node + appended properties
-    const found = rawConvos.find(c => props(c).id === conversationId);
+    const found = rawConvos.find(c => c.id === conversationId);
     expect(found).toBeDefined();
   }, MEMGRAPH_TIMEOUT);
 
@@ -280,7 +263,7 @@ describe("Conversation + Message API", () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
-    const messages = (data.messages as Array<unknown>).map(props);
+    const messages = data.messages as Array<Record<string, unknown>>;
     expect(messages.length).toBe(2); // user + assistant
     expect(messages[0].role).toBe("user");
     expect(messages[1].role).toBe("assistant");
@@ -400,10 +383,9 @@ describe("Migration API", () => {
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
-    const rawMigrations = data.migrations as Array<unknown>;
+    const rawMigrations = data.migrations as Array<Record<string, unknown>>;
     expect(rawMigrations.length).toBeGreaterThanOrEqual(1);
-    const firstMigration = props(rawMigrations[0]);
-    expect(firstMigration.migrationId).toBe("v1_backfill_solutionId");
+    expect(rawMigrations[0].migrationId).toBe("v1_backfill_solutionId");
   }, MEMGRAPH_TIMEOUT);
 });
 

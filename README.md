@@ -8,7 +8,7 @@ The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with 
 
 The **Self-Evolution Layer** enables autonomous skill distillation, SLM training dataset export, prediction harness versioning, and natural-language workflow compilation. Backed by Trace2Skill (arXiv:2603.25158), AutoSkill (arXiv:2604.17614), and Milkyway (arXiv:2604.15719) research.
 
-**MemFlow Desktop** provides a native Tauri 2 desktop shell with a production-grade Bun sidecar (process spawning, health polling, crash restart with exponential backoff, platform-specific process cleanup), streaming chat with inline DAG auditing, and a React frontend for Solution management, Conversation persistence, and Workflow Library browsing. The desktop app compiles and launches successfully via `bun run tauri dev`. The project is structured as a Bun workspace monorepo (`packages/desktop-app/`, `packages/shared/`).
+**MemFlow Desktop** provides a native Tauri 2 desktop shell with a production-grade Bun sidecar (process spawning, health polling, crash restart with exponential backoff, platform-specific process cleanup), streaming chat with inline DAG auditing, and a React frontend for Solution management, Conversation persistence, and Workflow Library browsing. The desktop API normalizes all Memgraph responses to flat JSON via `normalizeNode()`. The frontend includes a 4-step connection wizard, tabbed settings dialog, slide-out stage inspector, markdown rendering with syntax highlighting (`react-markdown` + `rehype-highlight`), and a premium dark-first design system (850+ lines of vanilla CSS). The desktop app compiles and launches successfully via `bun run tauri dev`. The project is structured as a Bun workspace monorepo (`packages/desktop-app/`, `packages/shared/`).
 
 ## Prerequisites
 
@@ -257,7 +257,7 @@ Optional: `bun test src/tests/integration/real-services/` runs against live Memg
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 497 tests across 62 files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 15 integration test files (6 mock E2E + 9 real-services), and workflow JSON structural validation.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 497 tests across 62 files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 15 integration test files (6 mock E2E + 9 real-services), and workflow JSON structural validation. Desktop API tests (`desktop-api-real.test.ts`) use direct property access on normalized flat JSON responses — no `props()`/`num()` unwrapper helpers needed.
 
 ### Real-Services Integration Suite (requires Memgraph + Ollama)
 

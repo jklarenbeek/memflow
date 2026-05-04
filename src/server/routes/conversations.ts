@@ -9,6 +9,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { GlobalConfig } from "../../core/types.js";
 import { withMemgraph } from "../../mcp/tools/_helpers.js";
+import { normalizeNode } from "./_helpers.js";
 
 const CreateConversationSchema = z.object({
   solutionId: z.string().uuid(),
@@ -101,7 +102,7 @@ export function createConversationsRouter(globalConfig: GlobalConfig): Hono {
 
       return c.json({
         success: true,
-        conversations: result.map((r) => ({ ...r.c, lastMessagePreview: r.lastMessage ? String(r.lastMessage).slice(0, 200) : null })),
+        conversations: result.map((r) => ({ ...normalizeNode(r.c), lastMessagePreview: r.lastMessage ? String(r.lastMessage).slice(0, 200) : null })),
         count: result.length,
       });
     } catch (err) {
@@ -122,7 +123,7 @@ export function createConversationsRouter(globalConfig: GlobalConfig): Hono {
           `MATCH (m:Message)-[:IN_CONVERSATION]->(c:Conversation {id: $id})
            RETURN m ORDER BY m.createdAt ASC`, { id });
 
-        return { conversation: convItems[0].c, messages: messages.map(r => r.m) };
+        return { conversation: normalizeNode(convItems[0].c), messages: messages.map(r => normalizeNode(r.m)) };
       });
 
       if (!result) return c.json({ success: false, error: "Conversation not found" }, 404);
@@ -168,7 +169,7 @@ export function createConversationsRouter(globalConfig: GlobalConfig): Hono {
       });
 
       if (!message) return c.json({ success: false, error: "Conversation not found" }, 404);
-      return c.json({ success: true, message }, 201);
+      return c.json({ success: true, message: normalizeNode(message) }, 201);
     } catch (err) {
       return c.json({ success: false, error: (err as Error).message }, 500);
     }
@@ -206,7 +207,7 @@ export function createConversationsRouter(globalConfig: GlobalConfig): Hono {
       });
 
       if (!result) return c.json({ success: false, error: "Message not found" }, 404);
-      return c.json({ success: true, message: result });
+      return c.json({ success: true, message: normalizeNode(result) });
     } catch (err) {
       return c.json({ success: false, error: (err as Error).message }, 500);
     }

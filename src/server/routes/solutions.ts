@@ -9,6 +9,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { GlobalConfig } from "../../core/types.js";
 import { withMemgraph } from "../../mcp/tools/_helpers.js";
+import { normalizeNode, normalizeValue } from "./_helpers.js";
 
 const CreateSolutionSchema = z.object({
   name: z.string().min(1).max(200),
@@ -70,7 +71,7 @@ export function createSolutionsRouter(globalConfig: GlobalConfig): Hono {
 
       return c.json({
         success: true,
-        solutions: result.map((r) => ({ ...r.s, stats: { entityCount: Number(r.entityCount), memoryCount: Number(r.memoryCount), conversationCount: Number(r.conversationCount) } })),
+        solutions: result.map((r) => ({ ...normalizeNode(r.s), stats: { entityCount: Number(normalizeValue(r.entityCount)), memoryCount: Number(normalizeValue(r.memoryCount)), conversationCount: Number(normalizeValue(r.conversationCount)) } })),
         count: result.length,
       });
     } catch (err) {
@@ -95,7 +96,7 @@ export function createSolutionsRouter(globalConfig: GlobalConfig): Hono {
       });
 
       if (!result) return c.json({ success: false, error: "Solution not found" }, 404);
-      return c.json({ success: true, solution: { ...result.s, stats: { entityCount: Number(result.entityCount), memoryCount: Number(result.memoryCount) } } });
+      return c.json({ success: true, solution: { ...normalizeNode(result.s), stats: { entityCount: Number(normalizeValue(result.entityCount)), memoryCount: Number(normalizeValue(result.memoryCount)) } } });
     } catch (err) {
       return c.json({ success: false, error: (err as Error).message }, 500);
     }
@@ -125,7 +126,7 @@ export function createSolutionsRouter(globalConfig: GlobalConfig): Hono {
       });
 
       if (!result) return c.json({ success: false, error: "Solution not found" }, 404);
-      return c.json({ success: true, solution: result });
+      return c.json({ success: true, solution: normalizeNode(result) });
     } catch (err) {
       return c.json({ success: false, error: (err as Error).message }, 500);
     }
