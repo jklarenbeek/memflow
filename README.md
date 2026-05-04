@@ -8,7 +8,7 @@ The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with 
 
 The **Self-Evolution Layer** enables autonomous skill distillation, SLM training dataset export, prediction harness versioning, and natural-language workflow compilation. Backed by Trace2Skill (arXiv:2603.25158), AutoSkill (arXiv:2604.17614), and Milkyway (arXiv:2604.15719) research.
 
-**MemFlow Desktop** (Phase 1) provides a native Tauri 2 desktop shell with an embedded Bun sidecar, streaming chat with inline DAG auditing, and a React frontend for Solution management, Conversation persistence, and Workflow Library browsing. The project is structured as a Bun workspace monorepo (`packages/desktop-app/`, `packages/shared/`).
+**MemFlow Desktop** provides a native Tauri 2 desktop shell with a production-grade Bun sidecar (process spawning, health polling, crash restart with exponential backoff, platform-specific process cleanup), streaming chat with inline DAG auditing, and a React frontend for Solution management, Conversation persistence, and Workflow Library browsing. The desktop app compiles and launches successfully via `bun run tauri dev`. The project is structured as a Bun workspace monorepo (`packages/desktop-app/`, `packages/shared/`).
 
 ## Prerequisites
 
@@ -257,11 +257,11 @@ Optional: `bun test src/tests/integration/real-services/` runs against live Memg
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 484 tests across 61 files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 14 integration test files (6 mock E2E + 8 real-services), and workflow JSON structural validation.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 497 tests across 62 files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 15 integration test files (6 mock E2E + 9 real-services), and workflow JSON structural validation.
 
 ### Real-Services Integration Suite (requires Memgraph + Ollama)
 
-A 7-layer integration test suite validates the full stack against live Memgraph MAGE and Ollama services:
+An 8-layer integration test suite validates the full stack against live Memgraph MAGE and Ollama services:
 
 | Layer | File | Focus | Tests |
 |---|---|---|---|
@@ -272,6 +272,7 @@ A 7-layer integration test suite validates the full stack against live Memgraph 
 | 5 | `pipelines-real.test.ts` | Custom ingest→search→rank, parallel branches, SubWorkflow nesting | 3 pass, 5 todo |
 | 6 | `e2e-api-real.test.ts` | `/health`, `/modules`, `/metrics`, MCP init/tools-list | 5 pass, 6 todo |
 | 7 | `stability-real.test.ts` | MERGE idempotency, concurrent writes, 200-chunk batch, reconnection | 4 pass, 3 todo |
+| 8 | `desktop-api-real.test.ts` | Solution CRUD, Conversation+Message, Workflow Catalog, Migration, graph traversal | 24 pass |
 
 **Run the real-services suite:**
 ```bash
@@ -279,7 +280,7 @@ A 7-layer integration test suite validates the full stack against live Memgraph 
 bun test src/tests/integration/real-services/ --timeout 120000
 ```
 
-**CPU vs GPU execution:** On CPU, `qwen3.5:4b` takes 30–60s per LLM call. Tests marked `test.todo` (18 total) invoke LLM-dependent modules and JSON pipeline definitions. These can be run individually with `--timeout 600000` on GPU hardware (e.g., `bun test src/tests/integration/real-services/ --timeout 600000` runs all 484 tests including LLM workflows).
+**CPU vs GPU execution:** On CPU, `qwen3.5:4b` takes 30–60s per LLM call. Tests marked `test.todo` (18 total) invoke LLM-dependent modules and JSON pipeline definitions. These can be run individually with `--timeout 600000` on GPU hardware (e.g., `bun test src/tests/integration/real-services/ --timeout 600000` runs all 497 tests including LLM workflows).
 
 **Test isolation:** All tests use `__test__`-prefixed node IDs and `cleanupTestData()` in `afterEach` — no test data leaks between runs.
 

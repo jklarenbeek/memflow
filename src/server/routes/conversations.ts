@@ -79,8 +79,8 @@ export function createConversationsRouter(globalConfig: GlobalConfig): Hono {
   app.get("/", async (c) => {
     try {
       const solutionId = c.req.query("solutionId");
-      const limit = Math.min(Number(c.req.query("limit") ?? "50"), 200);
-      const offset = Number(c.req.query("offset") ?? "0");
+      const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10), 200);
+      const offset = parseInt(c.req.query("offset") ?? "0", 10);
 
       const solutionFilter = solutionId ? "AND c.solutionId = $solutionId" : "";
       const params: Record<string, unknown> = { limit, offset };
@@ -94,7 +94,7 @@ export function createConversationsRouter(globalConfig: GlobalConfig): Hono {
            WITH c, collect(m.content)[0] AS lastMessage
            RETURN c, lastMessage
            ORDER BY c.updatedAt DESC
-           SKIP $offset LIMIT $limit`,
+           SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         );
       });

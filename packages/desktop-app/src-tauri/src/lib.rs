@@ -1,6 +1,7 @@
 mod sidecar;
 
 use sidecar::SidecarState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,7 +23,24 @@ pub fn run() {
             sidecar::get_sidecar_status,
             sidecar::set_external_server,
             sidecar::check_health,
+            sidecar::start_sidecar,
+            sidecar::stop_sidecar,
         ])
+        .setup(|app| {
+            // Start the background health monitor
+            sidecar::start_health_monitor(app.handle().clone());
+
+            log::info!("MemFlow Desktop initialized — health monitor started");
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Clean up sidecar when the app is closing
+            if let tauri::WindowEvent::Destroyed = event {
+                if window.label() == "main" {
+                    sidecar::cleanup_sidecar(&window.app_handle());
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -5,6 +5,11 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "shell:allow-open",
+    "shell:allow-execute",
+    "fs:default",
+    "dialog:default",
+    "notification:default"
   ]
 }

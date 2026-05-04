@@ -600,7 +600,7 @@ src/
     unit/                      47 unit test files (19 GMPL pattern/adapter/error, 12 evolution, 16 core/memory/retrieval/chunking)
     unit/evolution/             12 files (SLMDatasetExporter, DatasetFormatters, TraceCluster, SkillMerge, SkillInjector, Trace2Skill, Clustering, HarnessEvolver, IntentCompiler, SkillBasisExtractor, SkillGapAnalyzer, workflow validation)
     unit/gmpl/                 19 files (DebateModule, PeerReview, RedTeam, Delphi, Clarifier, Dispatcher, OutcomeMemory, PatternComposer, PatternRegistry, RoleRegistry, DomainRegistry, Errors, Events, TradingAdapter, TradingRoles, LiveProviders, ConsensusJudge, emitPatternEvent, WorkflowContextEmitter)
-    integration/               14 integration test files (6 mock E2E + 8 real-services)
+    integration/               15 integration test files (6 mock E2E + 9 real-services)
     helpers/                   Shared mock factory (mocks.ts)
   server/
     index.ts                   — Hono HTTP server (auto-detects Bun/Node runtime)
@@ -635,8 +635,8 @@ packages/
     package.json               — @memflow/desktop-app (Tauri + React + Vite)
     src-tauri/
       Cargo.toml               — Rust deps: tauri, shell, fs, dialog, notification, single-instance
-      src/lib.rs               — Tauri plugin registration and IPC handler
-      src/sidecar.rs           — Bun sidecar manager (port detection, health check, restart)
+      src/lib.rs               — Tauri plugin registration, IPC handler, setup hook, cleanup handler
+      src/sidecar.rs           — Bun sidecar manager (406 lines: spawn, health poll, crash restart, process cleanup)
       tauri.conf.json          — App config (window, permissions, build)
     src/
       App.tsx                  — Root layout (sidebar + chat + status bar)
@@ -650,17 +650,27 @@ packages/
         chat/                  ChatPane.tsx, MessageBubble.tsx, MessageDAGMini.tsx
         palette/               CommandPalette.tsx (Cmd+K)
 ```
-## Desktop Application (Phase 1)
+## Desktop Application
 
-The MemFlow Desktop application provides a native Tauri 2 shell with an embedded Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process.
+The MemFlow Desktop application provides a native Tauri 2 shell with a production-grade Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process. The app compiles and launches successfully via `bun run tauri dev` (~1m42s first build, 450 crates).
 
-### Sidecar Manager (`src-tauri/src/sidecar.rs`)
+### Sidecar Manager (`src-tauri/src/sidecar.rs` — 406 lines)
 
-The Rust-side sidecar manager handles:
+The Rust-side sidecar manager provides full process lifecycle management:
+- **Repo root auto-detection**: Walk-up from executable path to find `package.json` with `"name": "memflow"`; `MEMFLOW_ROOT` env override
 - **Port auto-detection**: Scans ports 3000–3099 for an available port
-- **Health checking**: Periodic `/health` endpoint polling with status tracking
+- **Process spawning**: `bun --watch src/index.ts` in dev, `bun src/index.ts` in release; `CREATE_NEW_PROCESS_GROUP` on Windows
+- **Health checking**: Background tokio task polling `/health` every 5s with status tracking
+- **Crash restart**: Exponential backoff (1s, 2s, 4s, ..., max 30s, max 5 attempts per monitoring window)
+- **Clean shutdown**: `taskkill /T /F` on Windows for process tree kill; Unix `SIGKILL` fallback
 - **External server mode**: Connects to a pre-existing MemFlow server (development scenario)
-- **IPC commands**: `get_server_url`, `get_sidecar_status`, `check_health`, `set_external_server`
+- **IPC commands**: `start_sidecar`, `stop_sidecar`, `get_server_url`, `get_sidecar_status`, `check_health`, `set_external_server`
+
+### Tauri Lifecycle Hooks (`src-tauri/src/lib.rs`)
+
+- **`setup()`**: Starts background health monitor on app launch
+- **`on_window_event(Destroyed)`**: Calls `cleanup_sidecar()` when the main window closes
+- **Plugin registration**: `shell`, `fs`, `dialog`, `notification`, `single-instance`
 
 ### State Management (Zustand)
 
