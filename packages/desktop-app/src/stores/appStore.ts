@@ -4,6 +4,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type AppTab = "chat" | "dag" | "graph" | "ingestion";
+
 export interface AppState {
   currentSolutionId: string | null;
   currentConversationId: string | null;
@@ -12,6 +14,7 @@ export interface AppState {
   serverUrl: string;
   connectionMode: "sidecar" | "external";
   hasCompletedOnboarding: boolean;
+  activeTab: AppTab;
 
   setCurrentSolution: (id: string | null) => void;
   setCurrentConversation: (id: string | null) => void;
@@ -20,6 +23,7 @@ export interface AppState {
   setServerUrl: (url: string) => void;
   setConnectionMode: (mode: "sidecar" | "external") => void;
   setOnboardingComplete: () => void;
+  setActiveTab: (tab: AppTab) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -32,6 +36,7 @@ export const useAppStore = create<AppState>()(
       serverUrl: "http://127.0.0.1:3000",
       connectionMode: "sidecar",
       hasCompletedOnboarding: false,
+      activeTab: "chat",
 
       setCurrentSolution: (id) => set({ currentSolutionId: id, currentConversationId: null }),
       setCurrentConversation: (id) => set({ currentConversationId: id }),
@@ -40,6 +45,7 @@ export const useAppStore = create<AppState>()(
       setServerUrl: (url) => set({ serverUrl: url }),
       setConnectionMode: (mode) => set({ connectionMode: mode }),
       setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
+      setActiveTab: (tab) => set({ activeTab: tab }),
     }),
     { name: "memflow-app-store" },
   ),

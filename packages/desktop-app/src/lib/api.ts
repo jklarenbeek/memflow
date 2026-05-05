@@ -120,6 +120,115 @@ export class MemFlowAPI {
   getStreamUrl() {
     return `${this.baseUrl}/workflow/run/stream`;
   }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Module Introspection
+  // ---------------------------------------------------------------------------
+
+  async listModuleSchemas() {
+    return this.request<{
+      success: boolean;
+      modules: Array<{ name: string; version: string; schema: Record<string, unknown> }>;
+    }>("/api/v1/modules/schemas");
+  }
+
+  async getModuleSchema(name: string) {
+    return this.request<{
+      success: boolean;
+      module: { name: string; version: string; schema: Record<string, unknown> };
+    }>(`/api/v1/modules/schemas/${name}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Execution History
+  // ---------------------------------------------------------------------------
+
+  async listExecutions(limit = 20) {
+    return this.request<{
+      success: boolean;
+      executions: Record<string, unknown>[];
+      count: number;
+    }>(`/api/v1/executions?limit=${limit}`);
+  }
+
+  async getExecution(id: string) {
+    return this.request<{
+      success: boolean;
+      execution: Record<string, unknown>;
+    }>(`/api/v1/executions/${id}`);
+  }
+
+  async createExecution(data: Record<string, unknown>) {
+    return this.request<{ success: boolean; execution: Record<string, unknown> }>(
+      "/api/v1/executions",
+      { method: "POST", body: JSON.stringify(data) },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Graph Explorer
+  // ---------------------------------------------------------------------------
+
+  async graphNeighbors(nodeId: string, depth = 1) {
+    return this.request<{
+      success: boolean;
+      nodes: Record<string, unknown>[];
+      relationships: Record<string, unknown>[];
+    }>(`/api/v1/graph/neighbors/${encodeURIComponent(nodeId)}?depth=${depth}`);
+  }
+
+  async graphSubgraph(nodeIds: string[], maxDepth = 2) {
+    return this.request<{
+      success: boolean;
+      nodes: Record<string, unknown>[];
+      relationships: Record<string, unknown>[];
+    }>("/api/v1/graph/subgraph", {
+      method: "POST",
+      body: JSON.stringify({ nodeIds, maxDepth }),
+    });
+  }
+
+  async graphCommunities(limit = 10) {
+    return this.request<{
+      success: boolean;
+      communities: Record<string, unknown>[];
+    }>(`/api/v1/graph/communities?limit=${limit}`);
+  }
+
+  async graphTimeline(since?: string, until?: string) {
+    const params = new URLSearchParams();
+    if (since) params.set("since", since);
+    if (until) params.set("until", until);
+    return this.request<{
+      success: boolean;
+      timeline: Record<string, unknown>[];
+    }>(`/api/v1/graph/timeline?${params}`);
+  }
+
+  async graphStats() {
+    return this.request<{
+      success: boolean;
+      stats: Record<string, unknown>;
+    }>("/api/v1/graph/stats");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: GMPL Patterns
+  // ---------------------------------------------------------------------------
+
+  async listPatterns() {
+    return this.request<{
+      success: boolean;
+      patterns: Record<string, unknown>[];
+    }>("/api/v1/gmpl/patterns");
+  }
+
+  async listRoles() {
+    return this.request<{
+      success: boolean;
+      roles: Record<string, unknown>[];
+    }>("/api/v1/gmpl/roles");
+  }
 }
 
 // Singleton instance
