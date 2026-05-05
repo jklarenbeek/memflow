@@ -1,3 +1,4 @@
+import './Palette.css';
 /**
  * CommandPalette — Cmd+K fuzzy search
  */

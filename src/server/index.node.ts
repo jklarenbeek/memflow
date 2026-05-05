@@ -6,6 +6,7 @@
  */
 
 import { createServer } from "./index.js";
+import { shutdownPool } from "./db.js";
 import type { GlobalConfig } from "../core/types.js";
 
 export async function startNodeServer(
@@ -69,4 +70,14 @@ export async function startNodeServer(
       console.log(`  Node.js HTTP server listening on port ${port}`);
     });
   }
+
+  // Graceful shutdown — close the Memgraph connection pool
+  const shutdown = async () => {
+    console.log("\n[memflow] Shutting down...");
+    await shutdownPool();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }

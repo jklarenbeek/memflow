@@ -3,3 +3,5 @@ node_modules/
 FOLLOWUP.md
 test-output/
 docs/new/
+build/
+dist/

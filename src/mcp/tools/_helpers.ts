@@ -6,6 +6,7 @@ import { WorkflowEngine } from "../../core/WorkflowEngine.js";
 import type { GlobalConfig, WorkflowData } from "../../core/types.js";
 import type { WorkflowContext } from "../../core/WorkflowContext.js";
 import { MemgraphClient } from "../../providers/MemgraphClient.js";
+import { getMemgraphPool } from "../../server/db.js";
 
 // ---------------------------------------------------------------------------
 // Workflow execution helper
@@ -34,31 +35,16 @@ export interface MemgraphDirectResult {
   records: Record<string, unknown>[];
 }
 
+/**
+ * Borrows the singleton MemgraphClient from the connection pool.
+ * The connection is NOT closed after use — it's shared across all requests.
+ */
 export async function withMemgraph<T>(
   globalConfig: GlobalConfig,
   fn: (client: MemgraphClient) => Promise<T>,
 ): Promise<T> {
-  const logger = {
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-    debug: () => {},
-  };
-
-  const client = new MemgraphClient(
-    {
-      uri: globalConfig.memgraphUri ?? process.env.MEMGRAPH_URI ?? "bolt://localhost:7687",
-      user: globalConfig.memgraphUser ?? process.env.MEMGRAPH_USER ?? "memgraph",
-      password: globalConfig.memgraphPassword ?? process.env.MEMGRAPH_PASSWORD ?? "memgraph",
-    },
-    logger as any,
-  );
-
-  try {
-    return await fn(client);
-  } finally {
-    await client.close();
-  }
+  const client = getMemgraphPool(globalConfig);
+  return fn(client);
 }
 
 // ---------------------------------------------------------------------------

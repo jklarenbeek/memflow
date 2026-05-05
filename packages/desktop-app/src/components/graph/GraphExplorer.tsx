@@ -1,3 +1,4 @@
+import './Graph.css';
 /**
  * GraphExplorer — Layout wrapper for the Graph tab
  *

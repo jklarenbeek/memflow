@@ -1,0 +1,114 @@
+/**
+ * Sidebar — Solution list, conversation tree, workflow library
+ */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  transition: width 0.3s ease;
+  flex-shrink: 0;
+
+  &.collapsed { width: 36px; }
+}
+
+.sidebar-toggle {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); padding: 8px; font-size: 10px;
+  text-align: center; display: block; width: 100%;
+
+  &:hover { color: var(--text-primary); background: var(--bg-hover); }
+}
+
+.sidebar-divider { height: 1px; background: var(--border-subtle); margin: 4px 12px; }
+
+.section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px 8px; position: sticky; top: 0;
+  background: var(--bg-secondary); z-index: 1;
+
+  & h3 {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--text-muted);
+  }
+}
+
+/* Solution / Conversation items */
+.solution-items, .conversation-items { padding: 0 8px; }
+
+.solution-item, .conversation-item {
+  display: flex; flex-direction: column; width: 100%;
+  text-align: left; background: none; border: none;
+  padding: 10px 12px; margin: 2px 0; border-radius: var(--radius-md);
+  cursor: pointer; color: var(--text-primary);
+  transition: background 0.2s; position: relative;
+
+  &:hover { background: var(--bg-hover); }
+  &.active { background: var(--accent-dim); border-left: 3px solid var(--accent); }
+}
+
+.solution-name, .conv-title { font-weight: 500; font-size: 13px; }
+.solution-domain { font-size: 11px; color: var(--accent); margin-top: 2px; }
+.solution-stats, .conv-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.conv-preview { font-size: 11px; color: var(--text-secondary); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.solution-icon { font-size: 16px; margin-right: 8px; }
+.solution-item { flex-direction: row; align-items: center; }
+.solution-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+
+.solution-delete, .conv-delete {
+  position: absolute; top: 8px; right: 8px;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 14px; width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); opacity: 0;
+  transition: all 0.2s;
+
+  &:hover { background: rgba(248,113,113,0.2); color: var(--error); }
+}
+
+.solution-item:hover .solution-delete,
+.conversation-item:hover .conv-delete { opacity: 1; }
+
+/* Create form */
+.create-form {
+  display: flex; gap: 6px; padding: 4px 8px;
+
+  & input {
+    flex: 1; padding: 6px 10px; background: var(--bg-tertiary);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-primary); font-size: 13px; outline: none;
+
+    &:focus { border-color: var(--accent); }
+  }
+}
+
+/* Workflow library */
+.search-input {
+  width: calc(100% - 16px); margin: 0 8px; padding: 6px 10px;
+  background: var(--bg-tertiary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-size: 12px; outline: none;
+
+  &:focus { border-color: var(--accent); }
+}
+
+.category-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-muted); padding: 8px 16px 4px;
+}
+
+.workflow-card {
+  padding: 8px 12px; margin: 2px 8px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: background 0.2s;
+
+  &:hover { background: var(--bg-hover); }
+}
+
+.wf-header { display: flex; justify-content: space-between; align-items: center; }
+.wf-name { font-weight: 500; font-size: 13px; color: var(--text-primary); }
+.wf-version { font-size: 10px; color: var(--text-muted); }
+.wf-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-stages { font-size: 10px; color: var(--accent); }

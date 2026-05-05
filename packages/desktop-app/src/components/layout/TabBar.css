@@ -1,0 +1,115 @@
+/**
+ * TabBar — Tab navigation between Chat, DAG, Graph, Ingestion views
+ */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 38px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.tab-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  height: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  transition: color 0.2s, background 0.2s;
+  white-space: nowrap;
+
+  &:hover { color: var(--text-primary); background: var(--bg-hover); }
+  &.active { color: var(--text-primary); }
+}
+
+.tab-icon { font-size: 14px; }
+.tab-label { font-size: 12px; }
+
+.tab-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  animation: tabIndicator 0.2s ease;
+}
+
+.tab-badge {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--info);
+
+  &.pulse { animation: pulse 1.5s ease-in-out infinite; }
+}
+
+/* Tab loading / placeholder states */
+.tab-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.tab-loading-spinner {
+  width: 28px; height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.tab-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-placeholder-content {
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+
+  & h3 {
+    font-size: 22px; font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+
+  & p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    max-width: 380px;
+    line-height: 1.6;
+  }
+}
+
+.tab-placeholder-icon { font-size: 48px; display: block; margin-bottom: 16px; }
+
+.tab-placeholder-badge {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 4px 12px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+}

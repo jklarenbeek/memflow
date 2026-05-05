@@ -1,3 +1,4 @@
+import './GMPL.css';
 /**
  * PatternSelector — GMPL pattern card grid with quick-run
  *

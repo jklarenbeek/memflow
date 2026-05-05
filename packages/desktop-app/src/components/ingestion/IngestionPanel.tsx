@@ -1,3 +1,4 @@
+import './Ingestion.css';
 /**
  * IngestionPanel — Layout wrapper for the Ingestion tab
  *

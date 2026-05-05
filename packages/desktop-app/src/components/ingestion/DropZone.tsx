@@ -1,3 +1,4 @@
+import './Ingestion.css';
 /**
  * DropZone — Drag-and-drop file ingestion area
  *

@@ -6,8 +6,11 @@
 
 import { Hono } from "hono";
 import { readdir, readFile } from "fs/promises";
-import { join, basename, relative } from "path";
+import { join, basename, relative, resolve } from "path";
 import type { GlobalConfig } from "../../core/types.js";
+
+/** Resolve project root relative to this file (src/server/routes → project root) */
+const PROJECT_ROOT = resolve(import.meta.dir ?? process.cwd(), "../../..");
 
 interface WorkflowCatalogEntry {
   name: string;
@@ -38,14 +41,15 @@ async function scanWorkflowDir(dirPath: string, category: WorkflowCatalogEntry["
           entry: wf.entry ?? "",
           stageCount: Array.isArray(wf.stages) ? wf.stages.length : 0,
           stages: Array.isArray(wf.stages) ? wf.stages.map((s: { id?: string; module?: string }) => s.id ?? s.module ?? "unknown") : [],
-          filePath: relative(process.cwd(), fullPath).replace(/\\/g, "/"),
+          filePath: relative(PROJECT_ROOT, fullPath).replace(/\\/g, "/"),
         });
-      } catch {
-        // Skip unparseable files
+      } catch (e) {
+        console.warn(`[workflowCatalog] failed to parse ${file}: ${e}`);
       }
     }
-  } catch {
-    // Directory doesn't exist — that's fine
+  } catch (e) {
+    // Directory doesn't exist — log it
+    console.debug(`[workflowCatalog] directory not found: ${dirPath}: ${e}`);
   }
   return entries;
 }
@@ -56,7 +60,7 @@ export function createWorkflowCatalogRouter(_globalConfig: GlobalConfig): Hono {
   // GET /workflows/catalog — Enumerate all workflows
   app.get("/catalog", async (c) => {
     try {
-      const root = process.cwd();
+      const root = PROJECT_ROOT;
       const [examples, subs, services] = await Promise.all([
         scanWorkflowDir(join(root, "src/workflows/examples"), "example"),
         scanWorkflowDir(join(root, "src/workflows/sub"), "sub"),
@@ -74,7 +78,7 @@ export function createWorkflowCatalogRouter(_globalConfig: GlobalConfig): Hono {
   app.get("/catalog/:name", async (c) => {
     try {
       const name = c.req.param("name");
-      const root = process.cwd();
+      const root = PROJECT_ROOT;
       const dirs = [
         join(root, "src/workflows/examples"),
         join(root, "src/workflows/sub"),
@@ -86,8 +90,8 @@ export function createWorkflowCatalogRouter(_globalConfig: GlobalConfig): Hono {
           const filePath = join(dir, `${name}.json`);
           const content = await readFile(filePath, "utf-8");
           return c.json({ success: true, workflow: JSON.parse(content) });
-        } catch {
-          // Try next directory
+        } catch (e) {
+          console.debug(`[workflowCatalog] ${name} not in ${dir}: ${e}`);
         }
       }
 

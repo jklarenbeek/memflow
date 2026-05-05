@@ -1,0 +1,15 @@
+/**
+ * StatusBar — Bottom status bar with health badges and version info
+ */
+.statusbar {
+  display: flex; justify-content: space-between; align-items: center;
+  height: var(--statusbar-height); padding: 0 12px;
+  background: var(--bg-secondary); border-top: 1px solid var(--border);
+  font-size: 11px; flex-shrink: 0;
+}
+
+.statusbar-left { display: flex; gap: 12px; }
+.statusbar-badge { display: flex; align-items: center; gap: 4px; }
+.badge-ok { color: var(--success); }
+.badge-warn { color: var(--warning); }
+.statusbar-version { color: var(--text-muted); }

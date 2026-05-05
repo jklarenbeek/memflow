@@ -1,3 +1,4 @@
+import './DAG.css';
 /**
  * DAGControls — Toolbar for the WorkflowDAG view
  *

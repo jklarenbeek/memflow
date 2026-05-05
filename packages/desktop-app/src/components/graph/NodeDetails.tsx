@@ -1,3 +1,4 @@
+import './Graph.css';
 /**
  * NodeDetails — Side panel for selected graph node properties
  *

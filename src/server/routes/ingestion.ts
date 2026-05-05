@@ -14,6 +14,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
+import { tmpdir } from "os";
+import { resolve, basename, normalize } from "path";
+import { unlink } from "fs/promises";
 import type { GlobalConfig } from "../../core/types.js";
 
 const IngestPathSchema = z.object({
@@ -54,10 +57,11 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
   // POST /ingest — File ingestion (path mode or multipart)
   // -------------------------------------------------------------------------
   app.post("/", async (c) => {
+    let filePath = "";
+    let isTempFile = false;
     try {
       const contentType = c.req.header("content-type") ?? "";
 
-      let filePath: string;
       let solutionId: string;
       let format: string;
       let filename: string;
@@ -86,8 +90,9 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
         format = detectedFormat;
 
         // Write to a temp path for processing
-        const tmpDir = process.cwd();
-        filePath = `${tmpDir}/ingestion_${uuidv4()}_${filename}`;
+        const tmpPath = resolve(tmpdir(), `ingestion_${uuidv4()}_${basename(filename)}`);
+        filePath = tmpPath;
+        isTempFile = true;
         const bytes = await file.arrayBuffer();
         await Bun.write(filePath, new Uint8Array(bytes));
 
@@ -100,7 +105,14 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
         }
         filePath = parsed.data.filePath;
         solutionId = parsed.data.solutionId;
-        filename = filePath.split(/[/\\]/).pop() ?? "unknown";
+
+        // Path traversal guard
+        const normalizedPath = normalize(resolve(filePath));
+        if (filePath.includes("..") || normalizedPath !== resolve(filePath)) {
+          return c.json({ success: false, error: "Invalid file path: directory traversal not allowed" }, 400);
+        }
+
+        filename = basename(filePath);
 
         // Use explicit format or detect from extension
         format = parsed.data.format ?? detectFormat(filename) ?? "md";
@@ -177,6 +189,11 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
       }, 201);
     } catch (err) {
       return c.json({ success: false, error: (err as Error).message }, 500);
+    } finally {
+      // Clean up temp files from multipart uploads
+      if (isTempFile && filePath) {
+        unlink(filePath).catch(() => { /* best-effort cleanup */ });
+      }
     }
   });
 

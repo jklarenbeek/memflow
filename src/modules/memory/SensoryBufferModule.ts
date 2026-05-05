@@ -76,7 +76,8 @@ export class SensoryBufferModule implements BaseModule<SensoryBufferConfig> {
       buffer = results.length > 0 && results[0].value
         ? (JSON.parse(results[0].value) as BufferState)
         : { units: [], totalTokens: 0, lastUpdate: new Date().toISOString() };
-    } catch {
+    } catch (e) {
+      ctx.logger.warn(`SensoryBuffer: failed to load buffer state: ${e}`);
       buffer = { units: [], totalTokens: 0, lastUpdate: new Date().toISOString() };
     }
 
@@ -108,7 +109,7 @@ export class SensoryBufferModule implements BaseModule<SensoryBufferConfig> {
            SET s.value = $value, s.updatedAt = $updatedAt`,
           { wfId: ctx.workflowId, key: storeKey, value: JSON.stringify(emptyBuffer), updatedAt: new Date().toISOString() },
         );
-      } catch { /* continue even if persistence fails */ }
+      } catch (e) { ctx.logger.warn(`SensoryBuffer: failed to persist flush: ${e}`); }
 
       ctx.logger.info(
         `SensoryBuffer: Flushed ${flushed.length} units (${flushedTokens} tokens ≥ ${this.config.bufferCapacity} capacity)`,
@@ -132,7 +133,7 @@ export class SensoryBufferModule implements BaseModule<SensoryBufferConfig> {
          SET s.value = $value, s.updatedAt = $updatedAt`,
         { wfId: ctx.workflowId, key: storeKey, value: JSON.stringify(buffer), updatedAt: new Date().toISOString() },
       );
-    } catch { /* continue */ }
+    } catch (e) { ctx.logger.warn(`SensoryBuffer: failed to persist buffer: ${e}`); }
 
     ctx.logger.debug(
       `SensoryBuffer: Buffered ${buffer.units.length} units ` +

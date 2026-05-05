@@ -6,6 +6,7 @@
  * and contextual badge indicators (e.g., running workflow count).
  */
 import { useAppStore, type AppTab } from "../../stores/appStore";
+import './TabBar.css';
 import { useDAGStore } from "../../stores/dagStore";
 
 const TAB_CONFIG: Array<{

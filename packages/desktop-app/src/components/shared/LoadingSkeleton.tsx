@@ -1,3 +1,4 @@
+import './Shared.css';
 /**
  * LoadingSkeleton — Reusable shimmer skeleton for loading states
  */

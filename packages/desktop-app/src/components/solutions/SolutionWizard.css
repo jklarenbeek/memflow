@@ -1,0 +1,12 @@
+/**
+ * SolutionWizard — Multi-step solution creation dialog
+ */
+.solution-wizard-overlay { position: fixed; inset: 0; z-index: 250; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; animation: fadeIn 0.15s ease; }
+.solution-wizard { width: 600px; max-height: 85vh; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; }
+.wizard-domain-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.domain-card { padding: 20px; background: var(--bg-tertiary); border: 2px solid var(--border); border-radius: var(--radius-lg); cursor: pointer; text-align: center; transition: all 0.2s; }
+.domain-card:hover { border-color: var(--accent); background: var(--accent-dim); transform: translateY(-2px); }
+.domain-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+.domain-card-icon { font-size: 28px; display: block; margin-bottom: 8px; }
+.domain-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.domain-card p { font-size: 11px; color: var(--text-muted); }

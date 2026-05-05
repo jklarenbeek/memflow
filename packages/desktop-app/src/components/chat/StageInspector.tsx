@@ -1,3 +1,4 @@
+import './StageInspector.css';
 /**
  * StageInspector — Slide-out drawer showing stage I/O details
  *

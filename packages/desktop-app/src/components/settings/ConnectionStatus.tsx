@@ -1,3 +1,4 @@
+import './Settings.css';
 /**
  * ConnectionStatus — Health badge component for TopBar/SettingsDialog
  */

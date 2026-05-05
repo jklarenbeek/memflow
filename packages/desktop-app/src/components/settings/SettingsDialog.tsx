@@ -1,3 +1,4 @@
+import './Settings.css';
 /**
  * SettingsDialog — Server URL, LLM provider, theme, workflow defaults
  */

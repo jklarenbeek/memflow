@@ -26,6 +26,9 @@ export function useHealthPoller(interval = 5000) {
     api.setBaseUrl(serverUrl);
 
     const checkHealth = async () => {
+      // Skip polling when the window is hidden (saves CPU + network)
+      if (document.hidden) return;
+
       try {
         const data = await api.health();
         setHealth(
@@ -46,7 +49,7 @@ export function useHealthPoller(interval = 5000) {
     setStatus("starting");
     checkHealth();
 
-    // Periodic polling
+    // Periodic polling — pauses automatically via document.hidden check
     const id = setInterval(checkHealth, interval);
     return () => clearInterval(id);
   }, [serverUrl, interval]);

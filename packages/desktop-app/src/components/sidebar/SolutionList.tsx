@@ -1,3 +1,4 @@
+import './Sidebar.css';
 /**
  * SolutionList — Create/select/delete Solutions with wizard support
  */

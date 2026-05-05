@@ -1,3 +1,4 @@
+import './Sidebar.css';
 /**
  * WorkflowLibrary — Browse, search, and run pre-built workflows
  */

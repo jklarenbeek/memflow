@@ -1,3 +1,4 @@
+import './Sidebar.css';
 /**
  * ConversationTree — Conversation list grouped by solution
  */

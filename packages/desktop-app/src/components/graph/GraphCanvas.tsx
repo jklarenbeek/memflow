@@ -1,3 +1,4 @@
+import './Graph.css';
 /**
  * GraphCanvas — Memgraph Orb graph renderer
  *

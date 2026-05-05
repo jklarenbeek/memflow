@@ -1,0 +1,48 @@
+/**
+ * Ingestion — IngestionPanel, DropZone, FileQueue, IngestionResults
+ */
+.ingestion-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 24px; gap: 20px; }
+
+/* Drop Zone */
+.drop-zone { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 180px; border: 2px dashed var(--border); border-radius: var(--radius-lg); background: var(--bg-secondary); cursor: pointer; transition: all 0.2s; padding: 32px; text-align: center; }
+.drop-zone:hover, .drop-zone.drag-active { border-color: var(--accent); background: var(--accent-dim); }
+.drop-zone.drag-active { box-shadow: 0 0 20px rgba(124, 92, 252, 0.15); transform: scale(1.01); }
+.drop-zone-icon { font-size: 40px; display: block; margin-bottom: 12px; }
+.drop-zone h3 { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.drop-zone p { font-size: 13px; color: var(--text-muted); }
+.drop-zone-formats { display: flex; gap: 6px; margin-top: 12px; }
+.format-badge { font-size: 10px; font-weight: 600; padding: 3px 8px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); text-transform: uppercase; }
+.drop-zone-error { font-size: 12px; color: var(--error); margin-top: 8px; }
+
+/* File Queue */
+.file-queue { flex: 1; overflow-y: auto; }
+.file-queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.file-queue-header h4 { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+.file-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: 6px; animation: fadeIn 0.2s ease; }
+.file-icon { font-size: 20px; flex-shrink: 0; }
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-weight: 500; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.file-progress { width: 100%; height: 4px; background: var(--bg-tertiary); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.file-progress-bar { height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+.file-progress-bar.uploading { background: var(--info); }
+.file-progress-bar.processing { background: var(--accent); }
+.file-progress-bar.complete { background: var(--success); }
+.file-progress-bar.error { background: var(--error); }
+.file-status-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-sm); flex-shrink: 0; text-transform: uppercase; }
+.file-status-badge.queued { background: var(--bg-tertiary); color: var(--text-muted); }
+.file-status-badge.uploading { background: rgba(96, 165, 250, 0.15); color: var(--info); }
+.file-status-badge.processing { background: var(--accent-dim); color: var(--accent); }
+.file-status-badge.complete { background: rgba(52, 211, 153, 0.15); color: var(--success); }
+.file-status-badge.error { background: rgba(248, 113, 113, 0.15); color: var(--error); }
+.file-stage { font-size: 10px; color: var(--accent); font-family: var(--font-mono); }
+.file-remove-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 2px 6px; border-radius: var(--radius-sm); transition: all 0.2s; opacity: 0; }
+.file-row:hover .file-remove-btn { opacity: 1; }
+.file-remove-btn:hover { background: rgba(248, 113, 113, 0.2); color: var(--error); }
+
+/* Ingestion Results */
+.ingestion-results { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px 0; }
+.result-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.result-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
+.result-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.ingestion-actions { display: flex; gap: 8px; justify-content: center; padding-top: 8px; }

@@ -1,3 +1,4 @@
+import './Chat.css';
 /**
  * ChatPane — Main chat view with message list and input area
  */

@@ -1,3 +1,4 @@
+import './GMPL.css';
 /**
  * PatternConfigForm — GMPL pattern configuration and execution dialog
  *

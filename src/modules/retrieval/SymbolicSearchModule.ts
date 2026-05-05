@@ -68,7 +68,7 @@ export class SymbolicSearchModule implements BaseModule<SymbolicSearchConfig> {
       if (rawFilter) {
         filter = JSON.parse(rawFilter) as SymbolicFilter;
       }
-    } catch { /* use empty filter */ }
+    } catch (e) { ctx.logger.warn(`SymbolicSearch: failed to parse filter: ${e}`); }
 
     if (units.length === 0) {
       return { data: { candidates: input.data.candidates ?? [] }, metrics: { symbolicMatches: 0 } };

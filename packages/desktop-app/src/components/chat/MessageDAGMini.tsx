@@ -1,3 +1,4 @@
+import './Chat.css';
 /**
  * MessageDAGMini — Compact inline DAG visualization per assistant message
  *

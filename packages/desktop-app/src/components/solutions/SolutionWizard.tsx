@@ -1,3 +1,4 @@
+import './SolutionWizard.css';
 /**
  * SolutionWizard — 4-step domain-scoped Solution creation wizard
  *

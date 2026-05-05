@@ -1,3 +1,4 @@
+import './Graph.css';
 /**
  * GraphFilters — Filter toolbar for graph exploration
  *

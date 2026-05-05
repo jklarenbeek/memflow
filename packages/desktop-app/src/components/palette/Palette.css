@@ -1,0 +1,11 @@
+/**
+ * CommandPalette — Cmd+K overlay
+ */
+.command-palette-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; align-items: flex-start; justify-content: center; padding-top: 20vh; animation: fadeIn 0.15s ease; }
+.command-palette { width: 560px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; }
+.command-palette [cmdk-input] { width: 100%; padding: 14px 18px; background: transparent; border: none; border-bottom: 1px solid var(--border); color: var(--text-primary); font-size: 16px; outline: none; }
+.command-palette [cmdk-list] { max-height: 300px; overflow-y: auto; padding: 8px; }
+.command-palette [cmdk-item] { padding: 10px 14px; border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; color: var(--text-primary); transition: background 0.15s; }
+.command-palette [cmdk-item][data-selected="true"] { background: var(--accent-dim); }
+.command-palette [cmdk-group-heading] { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); padding: 8px 14px 4px; }
+.command-palette [cmdk-empty] { padding: 24px; text-align: center; color: var(--text-muted); }

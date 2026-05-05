@@ -1,3 +1,4 @@
+import './Graph.css';
 /**
  * CommunityPanel — Collapsible community listing sidebar
  *

@@ -1,6 +1,7 @@
 /**
  * StatusBar — Dependency health, active workflows, version
  */
+import './StatusBar.css';
 import { useSidecarStore } from "../../stores/sidecarStore";
 
 export function StatusBar() {

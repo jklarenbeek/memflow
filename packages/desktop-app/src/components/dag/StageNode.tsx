@@ -1,3 +1,4 @@
+import './DAG.css';
 /**
  * StageNode — Custom React Flow node for DAG visualization
  *

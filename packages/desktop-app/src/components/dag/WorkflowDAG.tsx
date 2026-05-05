@@ -1,3 +1,4 @@
+import './DAG.css';
 /**
  * WorkflowDAG — Interactive workflow DAG visualizer
  *

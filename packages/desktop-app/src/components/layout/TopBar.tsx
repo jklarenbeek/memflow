@@ -2,6 +2,7 @@
  * TopBar — Solution switcher, health indicator, settings, theme toggle
  */
 import { useSidecarStore } from "../../stores/sidecarStore";
+import './TopBar.css';
 import { useAppStore } from "../../stores/appStore";
 
 interface Props {

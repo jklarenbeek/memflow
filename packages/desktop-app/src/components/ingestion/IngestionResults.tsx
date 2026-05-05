@@ -1,3 +1,4 @@
+import './Ingestion.css';
 /**
  * IngestionResults — Summary of completed ingestion
  *

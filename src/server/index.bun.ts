@@ -5,6 +5,7 @@
  */
 
 import { createServer } from "./index.js";
+import { shutdownPool } from "./db.js";
 import type { GlobalConfig } from "../core/types.js";
 
 export async function startBunServer(
@@ -35,4 +36,14 @@ export async function startBunServer(
     fetch: app.fetch,
     port,
   });
+
+  // Graceful shutdown — close the Memgraph connection pool
+  const shutdown = async () => {
+    console.log("\n[memflow] Shutting down...");
+    await shutdownPool();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }

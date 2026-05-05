@@ -78,7 +78,8 @@ export class STMBufferModule implements BaseModule<STMBufferConfig> {
       stm = results.length > 0 && results[0].value
         ? (JSON.parse(results[0].value) as STMState)
         : { segments: [], totalTokens: 0, lastUpdate: new Date().toISOString() };
-    } catch {
+    } catch (e) {
+      ctx.logger.warn(`STMBuffer: failed to load state: ${e}`);
       stm = { segments: [], totalTokens: 0, lastUpdate: new Date().toISOString() };
     }
 
@@ -103,7 +104,7 @@ export class STMBufferModule implements BaseModule<STMBufferConfig> {
            SET s.value = $value, s.updatedAt = $updatedAt`,
           { wfId: ctx.workflowId, key: storeKey, value: JSON.stringify(stm), updatedAt: new Date().toISOString() },
         );
-      } catch { /* continue */ }
+      } catch (e) { ctx.logger.warn(`STMBuffer: failed to persist buffer: ${e}`); }
 
       ctx.logger.debug(
         `STMBuffer: Accumulated ${stm.segments.length} segments ` +
@@ -141,7 +142,8 @@ export class STMBufferModule implements BaseModule<STMBufferConfig> {
           summary = typeof resp.content === "string"
             ? resp.content.substring(0, 800)
             : segmentText.substring(0, 400);
-        } catch {
+        } catch (e) {
+          ctx.logger.warn(`STMBuffer: summarization failed for segment ${segIdx}: ${e}`);
           summary = segmentText.substring(0, 400);
         }
 
@@ -149,7 +151,7 @@ export class STMBufferModule implements BaseModule<STMBufferConfig> {
         let embedding: number[] = [];
         try {
           embedding = await embedder.embedQuery(summary.substring(0, 500));
-        } catch { /* no embedding */ }
+        } catch (e) { ctx.logger.warn(`STMBuffer: embedding failed: ${e}`); }
 
         // Build LTM entry: {topic, eᵢ, userᵢ, modelᵢ}
         const ltmEntry: MemoryUnit = {
@@ -202,7 +204,7 @@ export class STMBufferModule implements BaseModule<STMBufferConfig> {
          SET s.value = $value, s.updatedAt = $updatedAt`,
         { wfId: ctx.workflowId, key: storeKey, value: JSON.stringify(newStm), updatedAt: new Date().toISOString() },
       );
-    } catch { /* continue */ }
+    } catch (e) { ctx.logger.warn(`STMBuffer: failed to persist reset: ${e}`); }
 
     const existingUnits = (input.data.memoryUnits ?? []) as MemoryUnit[];
 

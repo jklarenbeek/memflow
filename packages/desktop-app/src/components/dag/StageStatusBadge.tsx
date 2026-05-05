@@ -1,3 +1,4 @@
+import './DAG.css';
 /**
  * StageStatusBadge — Compact status indicator for workflow stages
  *

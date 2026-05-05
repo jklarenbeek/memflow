@@ -18,7 +18,7 @@ import { ModuleRegistry } from "../core/ModuleRegistry.js";
 import type { WorkflowConfig, GlobalConfig } from "../core/types.js";
 import { clearPromptCache, validateAllPrompts } from "../utils/promptLoader.js";
 import { metricsHandler, wireEngineMetrics } from "./metrics.js";
-import { MemgraphClient } from "../providers/MemgraphClient.js";
+import { getMemgraphPool } from "./db.js";
 import { mountMCPRoutes } from "./mcp.js";
 import { createAPIRouter } from "./api.js";
 import { mountACPRoutes } from "./acp.js";
@@ -36,14 +36,9 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
 
     // Memgraph
     try {
-      const mgUri = globalConfig.memgraphUri ?? process.env.MEMGRAPH_URI ?? "bolt://localhost:7687";
-      const mgUser = globalConfig.memgraphUser ?? process.env.MEMGRAPH_USER ?? "memgraph";
-      const mgPass = globalConfig.memgraphPassword ?? process.env.MEMGRAPH_PASSWORD ?? "memgraph";
-      const dummyLogger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
-      const mg = new MemgraphClient({ uri: mgUri, user: mgUser, password: mgPass }, dummyLogger as any);
+      const mg = getMemgraphPool(globalConfig);
       await mg.query("RETURN 1 AS n");
       checks.memgraph = "connected";
-      await mg.close();
     } catch {
       checks.memgraph = "disconnected";
     }
@@ -174,7 +169,7 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
         {
           success: false,
           error: error.message,
-          code: (error as any).code ?? "UNKNOWN",
+          code: (error as Error & { code?: string }).code ?? "UNKNOWN",
         },
         500,
       );

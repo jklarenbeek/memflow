@@ -1,3 +1,4 @@
+import './Chat.css';
 /**
  * MessageBubble — Rich message rendering with markdown, DAG, and timestamps
  */
