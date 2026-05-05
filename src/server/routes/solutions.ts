@@ -5,21 +5,11 @@
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { GlobalConfig } from "../../core/types.js";
 import { withMemgraph } from "../../mcp/tools/_helpers.js";
 import { normalizeNode, normalizeValue } from "./_helpers.js";
-
-const CreateSolutionSchema = z.object({
-  name: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
-  domain: z.string().max(100).optional(),
-  llmProvider: z.enum(["ollama", "openrouter", "openai"]).optional(),
-  llmModel: z.string().max(200).optional(),
-});
-
-const UpdateSolutionSchema = CreateSolutionSchema.partial();
+import { CreateSolutionSchema, UpdateSolutionSchema } from "@memflow/shared";
 
 export function createSolutionsRouter(globalConfig: GlobalConfig): Hono {
   const app = new Hono();

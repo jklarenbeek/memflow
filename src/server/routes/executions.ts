@@ -143,7 +143,7 @@ export function createExecutionsRouter(globalConfig: GlobalConfig): Hono {
            ${whereClause}
            RETURN e
            ORDER BY e.createdAt DESC
-           SKIP $offset LIMIT $limit`,
+           SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         );
       });

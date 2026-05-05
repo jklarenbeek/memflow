@@ -5,40 +5,11 @@
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import type { GlobalConfig } from "../../core/types.js";
 import { withMemgraph } from "../../mcp/tools/_helpers.js";
 import { normalizeNode } from "./_helpers.js";
-
-const CreateConversationSchema = z.object({
-  solutionId: z.string().uuid(),
-  title: z.string().max(500).optional(),
-  workflowName: z.string().max(200).optional(),
-});
-
-const CreateMessageSchema = z.object({
-  role: z.enum(["user", "assistant", "system"]),
-  content: z.string(),
-  workflowId: z.string().optional(),
-  workflowName: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
-});
-
-const UpdateMessageSchema = z.object({
-  content: z.string().optional(),
-  stageTrace: z.array(z.object({
-    stageId: z.string(),
-    module: z.string(),
-    durationMs: z.number(),
-    status: z.string(),
-  })).optional(),
-  stageCount: z.number().optional(),
-  durationMs: z.number().optional(),
-  sources: z.array(z.string()).optional(),
-  tokenUsage: z.number().optional(),
-  metadata: z.record(z.unknown()).optional(),
-});
+import { CreateConversationSchema, CreateMessageSchema, UpdateMessageSchema } from "@memflow/shared";
 
 export function createConversationsRouter(globalConfig: GlobalConfig): Hono {
   const app = new Hono();

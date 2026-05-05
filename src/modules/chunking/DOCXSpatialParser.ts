@@ -49,15 +49,26 @@ import { unzipSync } from "fflate";
 import type { OfficeContentNode, HeadingMetadata, ListMetadata } from "officeparser";
 
 // ---------------------------------------------------------------------------
-// Bun compat: fflate.unzip (async/worker-based) silently fails on Bun.
-// Patch the CJS cache BEFORE require("officeparser") resolves it.
+// Bun compatibility shim
+//
+// officeparser internally calls fflate.unzip() — the async, worker-based
+// variant — which silently fails on Bun due to incompatible Worker support.
+//
+// This block patches the CJS module cache BEFORE require("officeparser")
+// resolves fflate, replacing the async unzip() with a synchronous shim
+// that wraps unzipSync() and delivers the result via queueMicrotask().
+//
+// We must use require("fflate") here (not the ESM import above) because
+// officeparser also uses require("fflate"), and we need to mutate the
+// exact same CJS exports object it will receive. ESM namespace objects
+// are read-only and cannot be patched.
 // ---------------------------------------------------------------------------
 if (typeof globalThis.Bun !== "undefined") {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fflate = require("fflate");
-    if (typeof fflate.unzip === "function") {
-      fflate.unzip = (
+    const fflateExports = require("fflate");
+    if (typeof fflateExports.unzip === "function") {
+      fflateExports.unzip = (
         data: Uint8Array,
         optsOrCb: any,
         cb?: any,
@@ -65,7 +76,7 @@ if (typeof globalThis.Bun !== "undefined") {
         const opts = typeof optsOrCb === "function" ? undefined : optsOrCb;
         const callback = typeof optsOrCb === "function" ? optsOrCb : cb;
         try {
-          const all = fflate.unzipSync(data);
+          const all = unzipSync(data);
           let result: Record<string, Uint8Array> = all;
           if (opts?.filter) {
             result = {};
@@ -81,7 +92,7 @@ if (typeof globalThis.Bun !== "undefined") {
         }
       };
     }
-  } catch { /* fflate not installed — nothing to patch */ }
+  } catch { /* fflate not available — officeparser will fail on its own */ }
 }
 
 // Deferred require: runs AFTER the patch above (unlike ESM imports which hoist).

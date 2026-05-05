@@ -64,6 +64,24 @@
   --shadow: 0 2px 12px rgba(0,0,0,0.08);
 }
 
+/* Light theme — highlight.js syntax coloring */
+.light .hljs-keyword { color: #7c3aed; }
+.light .hljs-string { color: #16a34a; }
+.light .hljs-number { color: #c2410c; }
+.light .hljs-comment { color: var(--text-muted); }
+.light .hljs-function { color: #2563eb; }
+.light .hljs-title { color: #b45309; }
+.light .hljs-built_in { color: #0891b2; }
+.light .hljs-attr { color: #b45309; }
+
+/* Light theme — softer shadows for panels and overlays */
+.light .graph-node-details { box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08); }
+.light .graph-timeline-bar { box-shadow: 4px 0 16px rgba(0, 0, 0, 0.06); }
+.light .dag-stage-inspector { box-shadow: -4px 0 20px rgba(0, 0, 0, 0.06); }
+.light .graph-search-overlay { background: rgba(255, 255, 255, 0.85); }
+.light .pattern-config-overlay { background: rgba(255, 255, 255, 0.85); }
+.light .ingestion-overlay { background: rgba(255, 255, 255, 0.85); }
+
 /* ================================================================
    Global Reset & Base
    ================================================================ */

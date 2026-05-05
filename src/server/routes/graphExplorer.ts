@@ -58,7 +58,7 @@ export function createGraphExplorerRouter(globalConfig: GlobalConfig): Hono {
                   labels(m) AS neighborLabels,
                   type(r) AS edgeType,
                   CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END AS direction
-           LIMIT $limit`,
+           LIMIT toInteger($limit)`,
           { id, limit },
         );
 
@@ -199,7 +199,7 @@ export function createGraphExplorerRouter(globalConfig: GlobalConfig): Hono {
            WITH c, count(DISTINCT e) AS memberCount, collect(DISTINCT e.name)[..5] AS topEntities
            RETURN c, memberCount, topEntities
            ORDER BY memberCount DESC
-           LIMIT $limit`,
+           LIMIT toInteger($limit)`,
           params,
         );
       });
