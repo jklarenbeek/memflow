@@ -1,0 +1,50 @@
+{
+  "name": "ingest-file",
+  "version": "1.0",
+  "description": "File ingestion pipeline — parse file, chunk, embed, index to graph, extract entities, persist to memory",
+  "entry": "parse",
+  "stages": [
+    {
+      "id": "parse",
+      "module": "MarkdownSpatialParser",
+      "config": {},
+      "next": "chunk"
+    },
+    {
+      "id": "chunk",
+      "module": "S2Chunker",
+      "config": { "maxTokens": 1200, "overlapTokens": 100 },
+      "next": "embed"
+    },
+    {
+      "id": "embed",
+      "module": "Embedder",
+      "config": {},
+      "next": "index"
+    },
+    {
+      "id": "index",
+      "module": "ChunkIngestor",
+      "config": {},
+      "next": "extract"
+    },
+    {
+      "id": "extract",
+      "module": "FactExtractor",
+      "config": { "maxFactsPerChunk": 8 },
+      "next": "persist"
+    },
+    {
+      "id": "persist",
+      "module": "GraphPersist",
+      "config": { "batchSize": 50, "enabled": true }
+    }
+  ],
+  "globalConfig": {
+    "llmProvider": "ollama",
+    "llmModel": "qwen3.5:9b",
+    "embeddingProvider": "ollama",
+    "embeddingModel": "nomic-embed-text",
+    "logLevel": "info"
+  }
+}
