@@ -1,9 +1,10 @@
 /**
- * SolutionList — Create/select/delete Solutions
+ * SolutionList — Create/select/delete Solutions with wizard support
  */
 import { useState, useEffect, useCallback } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { api } from "../../lib/api";
+import { SolutionWizard } from "../solutions/SolutionWizard";
 
 interface Solution {
   id: string;
@@ -15,8 +16,7 @@ interface Solution {
 export function SolutionList() {
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { currentSolutionId, setCurrentSolution, serverUrl } = useAppStore();
 
@@ -37,21 +37,6 @@ export function SolutionList() {
 
   useEffect(() => { loadSolutions(); }, [loadSolutions]);
 
-  const createSolution = async () => {
-    if (!newName.trim()) return;
-    try {
-      const res = await api.createSolution({ name: newName.trim() });
-      const sol = res.solution as unknown as Solution;
-      setSolutions([sol, ...solutions]);
-      setCurrentSolution(sol.id);
-      setNewName("");
-      setCreating(false);
-    } catch (err) {
-      console.error("Failed to create solution:", err);
-      setError("Failed to create solution");
-    }
-  };
-
   const deleteSolution = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("Delete this solution? This action cannot be undone.")) return;
@@ -67,40 +52,31 @@ export function SolutionList() {
     }
   };
 
+  const handleWizardCreated = useCallback((solution: Record<string, unknown>) => {
+    setSolutions((prev) => [solution as unknown as Solution, ...prev]);
+  }, []);
+
   const domainIcons: Record<string, string> = {
     research: "📚",
     trading: "📈",
     custom: "⚙️",
     engineering: "🔧",
     creative: "🎨",
+    healthcare: "🏥",
+    legal: "⚖️",
   };
 
   return (
     <div className="solution-list">
       <div className="section-header">
         <h3>Solutions</h3>
-        <button className="btn-icon" onClick={() => setCreating(!creating)} title="New Solution">+</button>
+        <button className="btn-icon" onClick={() => setWizardOpen(true)} title="New Solution">+</button>
       </div>
 
       {error && (
         <div className="error-banner">
           <span>{error}</span>
           <button className="btn-dismiss" onClick={() => setError(null)}>×</button>
-        </div>
-      )}
-
-      {creating && (
-        <div className="create-form">
-          <input
-            type="text" placeholder="Solution name..." value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createSolution()}
-            autoFocus
-          />
-          <div className="create-actions">
-            <button className="btn-sm" onClick={createSolution}>Create</button>
-            <button className="btn-sm btn-ghost" onClick={() => { setCreating(false); setNewName(""); }}>Cancel</button>
-          </div>
         </div>
       )}
 
@@ -131,10 +107,16 @@ export function SolutionList() {
             <button className="solution-delete" onClick={(e) => deleteSolution(sol.id, e)} title="Delete">×</button>
           </button>
         ))}
-        {solutions.length === 0 && !creating && !loading && (
+        {solutions.length === 0 && !wizardOpen && !loading && (
           <p className="empty-state">No solutions yet. Create one to get started.</p>
         )}
       </div>
+
+      <SolutionWizard
+        isOpen={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={handleWizardCreated}
+      />
     </div>
   );
 }

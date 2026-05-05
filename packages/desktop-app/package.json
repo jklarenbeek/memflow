@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@memflow/shared": "workspace:*",
+    "@memgraph/orb": "~0.4.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-fs": "^2",

@@ -2,6 +2,54 @@
  * MemFlow API Client — typed fetch wrapper for all REST endpoints
  */
 
+// ---------------------------------------------------------------------------
+// Shared Types
+// ---------------------------------------------------------------------------
+
+export interface GraphNode {
+  id: string;
+  labels: string[];
+  [key: string]: unknown;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  type: string;
+}
+
+export interface GraphNeighbor {
+  node: GraphNode;
+  edge: string;
+  direction: "incoming" | "outgoing";
+}
+
+export interface CommunityData {
+  id: string;
+  memberCount: number;
+  topEntities: string[];
+  [key: string]: unknown;
+}
+
+export interface TimelineEntry {
+  label: string;
+  date: string;
+  count: number;
+}
+
+export interface GraphStatsData {
+  nodeCounts: Array<{ label: string; count: number }>;
+  relationCounts: Array<{ type: string; count: number }>;
+  entityTypes: Array<{ type: string; count: number }>;
+}
+
+export interface SubgraphFilters {
+  labels?: string[];
+  timeRange?: { from?: string; to?: string };
+  community?: string;
+  solutionId?: string;
+}
+
 export class MemFlowAPI {
   constructor(private baseUrl: string) {}
 
@@ -166,50 +214,56 @@ export class MemFlowAPI {
   }
 
   // ---------------------------------------------------------------------------
-  // Phase 2: Graph Explorer
+  // Phase 2: Graph Explorer — aligned with graphExplorer.ts server responses
   // ---------------------------------------------------------------------------
 
-  async graphNeighbors(nodeId: string, depth = 1) {
+  async graphNeighbors(nodeId: string, depth = 1, limit = 50) {
     return this.request<{
       success: boolean;
-      nodes: Record<string, unknown>[];
-      relationships: Record<string, unknown>[];
-    }>(`/api/v1/graph/neighbors/${encodeURIComponent(nodeId)}?depth=${depth}`);
+      node: GraphNode;
+      neighbors: GraphNeighbor[];
+    }>(`/api/v1/graph/neighbors/${encodeURIComponent(nodeId)}?depth=${depth}&limit=${limit}`);
   }
 
-  async graphSubgraph(nodeIds: string[], maxDepth = 2) {
+  async graphSubgraph(nodeIds: string[], maxDepth = 2, filters?: SubgraphFilters) {
     return this.request<{
       success: boolean;
-      nodes: Record<string, unknown>[];
-      relationships: Record<string, unknown>[];
+      nodes: GraphNode[];
+      edges: GraphEdge[];
     }>("/api/v1/graph/subgraph", {
       method: "POST",
-      body: JSON.stringify({ nodeIds, maxDepth }),
+      body: JSON.stringify({ nodeIds, maxDepth, filters }),
     });
   }
 
-  async graphCommunities(limit = 10) {
+  async graphCommunities(solutionId?: string, limit = 50) {
+    const params = new URLSearchParams();
+    if (solutionId) params.set("solutionId", solutionId);
+    params.set("limit", String(limit));
     return this.request<{
       success: boolean;
-      communities: Record<string, unknown>[];
-    }>(`/api/v1/graph/communities?limit=${limit}`);
+      communities: CommunityData[];
+      count: number;
+    }>(`/api/v1/graph/communities?${params}`);
   }
 
-  async graphTimeline(since?: string, until?: string) {
+  async graphTimeline(solutionId?: string, from?: string, to?: string) {
     const params = new URLSearchParams();
-    if (since) params.set("since", since);
-    if (until) params.set("until", until);
+    if (solutionId) params.set("solutionId", solutionId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
     return this.request<{
       success: boolean;
-      timeline: Record<string, unknown>[];
+      timeline: TimelineEntry[];
     }>(`/api/v1/graph/timeline?${params}`);
   }
 
-  async graphStats() {
+  async graphStats(solutionId?: string) {
+    const params = new URLSearchParams();
+    if (solutionId) params.set("solutionId", solutionId);
     return this.request<{
       success: boolean;
-      stats: Record<string, unknown>;
-    }>("/api/v1/graph/stats");
+    } & GraphStatsData>(`/api/v1/graph/stats?${params}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -219,15 +273,74 @@ export class MemFlowAPI {
   async listPatterns() {
     return this.request<{
       success: boolean;
-      patterns: Record<string, unknown>[];
+      patterns: Array<{
+        id: string;
+        version?: string;
+        description: string;
+        workflowRef?: string;
+        requiredRoles: string[];
+        observabilityEvents?: string[];
+        hasConfigSchema: boolean;
+      }>;
+      count: number;
     }>("/api/v1/gmpl/patterns");
   }
 
   async listRoles() {
     return this.request<{
       success: boolean;
-      roles: Record<string, unknown>[];
+      roles: Array<{
+        id: string;
+        description: string;
+        persona: string;
+        promptPack?: string | null;
+        requiredModules?: string[];
+        base?: string | null;
+      }>;
+      count: number;
     }>("/api/v1/gmpl/roles");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: File Ingestion
+  // ---------------------------------------------------------------------------
+
+  async ingestFile(file: File, solutionId: string) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("solutionId", solutionId);
+    const url = `${this.baseUrl}/api/v1/ingest`;
+    const res = await fetch(url, { method: "POST", body: formData });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<{
+      success: boolean;
+      ingestionId: string;
+      filename: string;
+      format: string;
+      parserModule: string;
+      solutionId: string;
+      workflow: Record<string, unknown>;
+      streamUrl: string;
+    }>;
+  }
+
+  async ingestFilePath(filePath: string, solutionId: string, format?: string) {
+    return this.request<{
+      success: boolean;
+      ingestionId: string;
+      filename: string;
+      format: string;
+      parserModule: string;
+      solutionId: string;
+      workflow: Record<string, unknown>;
+      streamUrl: string;
+    }>("/api/v1/ingest", {
+      method: "POST",
+      body: JSON.stringify({ filePath, solutionId, format }),
+    });
   }
 }
 

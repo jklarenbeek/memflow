@@ -647,15 +647,19 @@ packages/
       tauri.conf.json          — App config (window, permissions, build)
     src/
       App.tsx                  — Root layout (wizard → tab-switched main area: Chat/DAG/Graph/Ingestion + overlays)
-      App.css                  — Design system (1,310+ lines: CSS variables, dark/light theme, tabs, DAG, component styles)
-      stores/                  — Zustand: appStore.ts (with activeTab), chatStore.ts, dagStore.ts, sidecarStore.ts
+      App.css                  — Design system (2,030+ lines: CSS variables, dark/light theme, tabs, DAG, graph, ingestion, solutions, GMPL styles)
+      stores/                  — Zustand: appStore.ts, chatStore.ts, dagStore.ts, sidecarStore.ts, graphStore.ts, ingestionStore.ts
       hooks/                   — useSSE.ts, useWorkflowStream.ts, useMemFlowAPI.ts
-      lib/                     — api.ts (typed API client with 25+ endpoint methods)
+      lib/                     — api.ts (typed API client with 32 endpoint methods)
       components/
         layout/                TopBar.tsx, StatusBar.tsx, TabBar.tsx
-        sidebar/               SolutionList.tsx, ConversationTree.tsx, WorkflowLibrary.tsx
+        sidebar/               SolutionList.tsx (with SolutionWizard trigger), ConversationTree.tsx, WorkflowLibrary.tsx
         chat/                  ChatPane.tsx, MessageBubble.tsx, MessageDAGMini.tsx, StageInspector.tsx
         dag/                   WorkflowDAG.tsx, StageNode.tsx, DAGControls.tsx, StageStatusBadge.tsx
+        graph/                 GraphExplorer.tsx, GraphCanvas.tsx, GraphFilters.tsx, NodeDetails.tsx, CommunityPanel.tsx
+        ingestion/             IngestionPanel.tsx, DropZone.tsx, FileQueue.tsx, IngestionResults.tsx
+        gmpl/                  PatternSelector.tsx, PatternConfigForm.tsx
+        solutions/             SolutionWizard.tsx
         palette/               CommandPalette.tsx (Cmd+K)
         settings/              SettingsDialog.tsx (tabbed: Connection/Appearance/About), ConnectionStatus.tsx
         onboarding/            ConnectionWizard.tsx (4-step first-launch flow)
@@ -663,7 +667,7 @@ packages/
 ```
 ## Desktop Application
 
-The MemFlow Desktop application provides a native Tauri 2 shell with a production-grade Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process. All API routes normalize Memgraph responses to flat JSON via `normalizeNode()` (in `src/server/routes/_helpers.ts`), eliminating raw Neo4j Node/Integer wrapper objects from frontend consumption. The app compiles and launches successfully via `bun run tauri dev` (~1m42s first build, 450 crates). The frontend features a **tab-based layout** (Chat, DAG Runner, Graph, Ingestion) with keyboard shortcuts (`Ctrl+1-4`) and a **WorkflowDAG visualizer** built on React Flow with real-time SSE streaming execution.
+The MemFlow Desktop application provides a native Tauri 2 shell with a production-grade Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process. All API routes normalize Memgraph responses to flat JSON via `normalizeNode()` (in `src/server/routes/_helpers.ts`), eliminating raw Neo4j Node/Integer wrapper objects from frontend consumption. The app compiles and launches successfully via `bun run tauri dev` (~1m42s first build, 450 crates). The frontend features a **tab-based layout** (Chat, DAG Runner, Graph, Ingestion) with keyboard shortcuts (`Ctrl+1-4`), a **WorkflowDAG visualizer** built on React Flow with real-time SSE streaming execution, a **Graph Explorer** with `@memgraph/orb` (Canvas 2D + d3-force layout), a **File Ingestion UI** with drag-and-drop and persistent queue state, a **4-step Solution Wizard** with domain selection, and a **GMPL Pattern Selector** with one-click execution.
 
 ### Sidecar Manager (`src-tauri/src/sidecar.rs` — 406 lines)
 
@@ -691,6 +695,8 @@ The Rust-side sidecar manager provides full process lifecycle management:
 | `chatStore` | Messages array, streaming tokens, stage status tracking | In-memory |
 | `dagStore` | Workflow definition, stage statuses, execution state, inspector selection, layout direction | In-memory |
 | `sidecarStore` | Server status, health checks, version, module count, restart tracking | In-memory |
+| `graphStore` | Nodes, edges, communities, selected node, filters, label/search/community filtering, node expansion, "Load Full Graph" support | In-memory |
+| `ingestionStore` | File queue (id, name, size, status, progress, stage, result), drop zone state | `localStorage` (persisted via zustand/persist) |
 
 ### React Component Tree
 
@@ -700,11 +706,11 @@ App.tsx
 │   [shown only on first launch; hidden after onboarding completes]
 ├── TopBar (logo, health dots for Memgraph/Ollama, version, settings gear, theme toggle)
 ├── Sidebar
-│   ├── SolutionList (CRUD, domain icons, entity/memory counts, loading skeleton, error banner)
+│   ├── SolutionList (CRUD, SolutionWizard modal trigger, domain icons, entity/memory counts, loading skeleton, error banner)
 │   ├── ConversationTree (conversation list, relative timestamps, create/delete)
 │   └── WorkflowLibrary (catalog browser with category grouping and search)
 ├── TabBar (Chat | DAG Runner | Graph | Ingest — animated indicator, Ctrl+1-4 shortcuts, execution badge)
-├── Main Area (tab-switched, lazy-loaded)
+├── Main Area (tab-switched, lazy-loaded via React.lazy + Suspense)
 │   ├── [chat] ChatPane
 │   │   ├── LoadingSkeleton (shimmer while loading conversation history)
 │   │   ├── MessageBubble (markdown rendering, syntax highlighting, copy, relative timestamps, token usage)
@@ -716,16 +722,26 @@ App.tsx
 │   │   │   └── StageStatusBadge (reusable pending/running/complete/error indicator)
 │   │   ├── Inspector Sidebar (click-to-inspect: stage detail, metrics, error trace)
 │   │   └── Workflow Catalog (overlay: browse and load available workflow JSONs)
-│   ├── [graph] Coming Soon — Graph Explorer (Sprint 3)
-│   └── [ingestion] Coming Soon — File Ingestion (Sprint 4)
+│   ├── [graph] GraphExplorer (@memgraph/orb Canvas 2D + d3-force layout)
+│   │   ├── GraphCanvas (Orb container: node/edge rendering, click/dblclick handlers, recenter)
+│   │   ├── GraphFilters (label toggles, search field, Load Full Graph button, stats summary)
+│   │   ├── NodeDetails (slide-out property inspector: node properties, actions, adjacent edges)
+│   │   └── CommunityPanel (collapsible community list with entity preview and click-to-load)
+│   └── [ingestion] IngestionPanel
+│       ├── DropZone (drag-and-drop with file type validation, multipart upload + SSE progress)
+│       ├── FileQueue (per-file status rows: progress bar, stage name, result summary, remove)
+│       └── IngestionResults (aggregate counts: chunks/entities/memories, "View in Graph" nav)
 ├── StatusBar (Memgraph/Ollama/Tavily health badges, version)
 ├── CommandPalette (Cmd+K fuzzy search overlay)
 ├── SettingsDialog (Ctrl+, — tabs: Connection, Appearance, About)
 │   └── ConnectionStatus (health dots compact or full service cards)
-└── StageInspector (slide-out drawer: stage info, config, input/output JSON, error display)
+├── StageInspector (slide-out drawer: stage info, config, input/output JSON, error display)
+├── SolutionWizard (4-step modal: Name → Domain → LLM Config → Review & Create)
+├── PatternSelector (GMPL pattern card grid with icons, descriptions, role tags)
+└── PatternConfigForm (pattern execution dialog: prompt input, SSE streaming output, cancel)
 ```
 
-**Dependencies**: `react-markdown@10.1.0`, `rehype-highlight@7.0.2`, `remark-gfm@4.0.1` for rich message rendering. `@xyflow/react` for the DAG visualizer canvas.
+**Dependencies**: `react-markdown@10.1.0`, `rehype-highlight@7.0.2`, `remark-gfm@4.0.1` for rich message rendering. `@xyflow/react` for the DAG visualizer canvas. `@memgraph/orb@~0.4.3` for the Graph Explorer. `uuid` for ingestion file ID generation.
 
 ### Streaming Architecture
 

@@ -24,6 +24,12 @@ import "./App.css";
 const WorkflowDAG = lazy(() =>
   import("./components/dag/WorkflowDAG").then((m) => ({ default: m.WorkflowDAG })),
 );
+const GraphExplorer = lazy(() =>
+  import("./components/graph/GraphExplorer").then((m) => ({ default: m.GraphExplorer })),
+);
+const IngestionPanel = lazy(() =>
+  import("./components/ingestion/IngestionPanel").then((m) => ({ default: m.IngestionPanel })),
+);
 
 function TabFallback({ label }: { label: string }) {
   return (
@@ -34,18 +40,6 @@ function TabFallback({ label }: { label: string }) {
   );
 }
 
-function ComingSoon({ icon, title, description }: { icon: string; title: string; description: string }) {
-  return (
-    <div className="tab-placeholder">
-      <div className="tab-placeholder-content">
-        <span className="tab-placeholder-icon">{icon}</span>
-        <h3>{title}</h3>
-        <p>{description}</p>
-        <span className="tab-placeholder-badge">Coming in Sprint 3</span>
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const { theme, sidebarCollapsed, toggleSidebar, hasCompletedOnboarding, activeTab, setActiveTab } = useAppStore();
@@ -128,18 +122,14 @@ export default function App() {
               </Suspense>
             )}
             {activeTab === "graph" && (
-              <ComingSoon
-                icon="🕸️"
-                title="Graph Explorer"
-                description="Explore your knowledge graph with Memgraph Orb. Navigate entities, relationships, and communities."
-              />
+              <Suspense fallback={<TabFallback label="Graph Explorer" />}>
+                <GraphExplorer />
+              </Suspense>
             )}
             {activeTab === "ingestion" && (
-              <ComingSoon
-                icon="📥"
-                title="File Ingestion"
-                description="Drag & drop files to ingest into your knowledge graph. Track processing progress in real-time."
-              />
+              <Suspense fallback={<TabFallback label="File Ingestion" />}>
+                <IngestionPanel />
+              </Suspense>
             )}
           </main>
         </div>
