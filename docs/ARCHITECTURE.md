@@ -293,8 +293,9 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 - **:Conversation** — Chat thread persistence (id, solutionId, title, workflowName, messageCount, createdAt, updatedAt, deletedAt)
 - **:Message** — Individual chat messages with audit trail (id, conversationId, role, content, stageTrace, sources, durationMs, tokenUsage, createdAt)
 - **:MigrationLog** — Migration version tracking (id, migrationId, migratedNodes, message, createdAt)
+- **:WorkflowExecution** — Workflow execution history (id, solutionId, conversationId, workflowName, status, stageCount, durationMs, finalAnswer, stageTraceJson, stateJson, tokenUsage, error, createdAt)
 - **Edges**: `SPATIAL_NEAR`, `MEMORY_RELATION`, `MENTIONS`, `RELATES_TO` (typed relationships with description + keywords), `BELONGS_TO` (child→parent chunks; conversation→solution), `CITES` (answer→citation), `IMPROVED_BY` (decision→reflection), `REFERENCES` (decision→entity), `IN_CONVERSATION` (message→conversation)
-- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`, `Skill.embedding` (configurable via `enableVectorIndex`); scalar on `Skill.id`, `PredictionHarness.id`, `PredictionHarness.topicId`, `PendingDecision.id`, `Decision.pendingId`, `Reflection.decisionId`, `Solution.id`, `Conversation.id`, `Message.id`
+- **Indexes**: Vector on `Chunk.embedding`, `MemoryUnit.embedding`, `Skill.embedding` (configurable via `enableVectorIndex`); scalar on `Skill.id`, `PredictionHarness.id`, `PredictionHarness.topicId`, `PendingDecision.id`, `Decision.pendingId`, `Reflection.decisionId`, `Solution.id`, `Conversation.id`, `Message.id`, `WorkflowExecution.id`
 
 ## HTTP API (Hono)
 
@@ -307,7 +308,7 @@ Modules opt into token-level streaming by implementing `processStream()` (curren
 | `/workflow/run/stream` | POST | Execute workflow with SSE streaming |
 | `/mcp` | POST | MCP server (7 tools: write, recall, search, manage, entity_get, gmpl_run_pattern, gmpl_resolve_outcome) |
 | `/acp` | POST/GET | ACP server (request/response + SSE) |
-| `/api/v1/*` | CRUD | REST API for memories, entities, search, recall, graph stats, evolution endpoints, solutions, conversations, workflow catalog, migration |
+| `/api/v1/*` | CRUD | REST API for memories, entities, search, recall, graph explorer, module schemas, executions, ingestion, GMPL patterns, evolution endpoints, solutions, conversations, workflow catalog, migration |
 | `/prompts/validate` | GET | Validate TOML prompt references |
 | `/prompts/reload` | POST | Invalidate TOML prompt cache |
 
@@ -583,7 +584,7 @@ src/
     sub/patterns/              structured-debate.json, clarification-pipeline.json,
                                parallel-analysis.json, peer-review.json,
                                red-team.json, delphi-panel.json
-    service/                   ingest.json, recall.json, search.json, chat.json (REST API + Desktop backing workflows)
+    service/                   ingest.json, ingest-file.json, recall.json, search.json, chat.json (REST API + Desktop backing workflows)
   domains/
     trading/                   adapter.ts, schemas.ts, roles.ts, index.ts (reference DomainAdapter)
   prompts/                     TOML prompt templates (71 files — see Prompt System section)
@@ -610,6 +611,11 @@ src/
       conversations.ts         — Conversation + Message persistence with audit trail
       workflowCatalog.ts       — Dynamic workflow JSON enumeration
       migration.ts             — State migration (solutionId backfill, :MigrationLog tracking)
+      graphExplorer.ts         — Graph exploration API (neighbors, subgraph, communities, timeline, stats)
+      modules.ts               — Module introspection (Zod → JSON Schema)
+      executions.ts            — Workflow execution history (create, list, detail)
+      ingestion.ts             — File ingestion (dual-mode: Tauri IPC path + multipart/form-data)
+      gmplPatterns.ts          — GMPL pattern and role listing
       _helpers.ts              — Response normalization: normalizeNode(), normalizeValue(), normalizeRecord()
     metrics.ts                 — Prometheus metrics endpoint
     mcp.ts                     — MCP server
@@ -627,7 +633,7 @@ src/
     sub/patterns/              structured-debate.json, clarification-pipeline.json,
                                parallel-analysis.json, peer-review.json,
                                red-team.json, delphi-panel.json
-    service/                   ingest.json, recall.json, search.json, chat.json (REST API + Desktop backing workflows)
+    service/                   ingest.json, ingest-file.json, recall.json, search.json, chat.json (REST API + Desktop backing workflows)
 packages/
   shared/
     package.json               — @memflow/shared (Zod API contract schemas)
@@ -640,15 +646,16 @@ packages/
       src/sidecar.rs           — Bun sidecar manager (406 lines: spawn, health poll, crash restart, process cleanup)
       tauri.conf.json          — App config (window, permissions, build)
     src/
-      App.tsx                  — Root layout (wizard → sidebar + chat + status bar + overlays)
-      App.css                  — Design system (850+ lines: CSS variables, dark/light theme, component styles)
-      stores/                  — Zustand: appStore.ts, chatStore.ts, sidecarStore.ts
+      App.tsx                  — Root layout (wizard → tab-switched main area: Chat/DAG/Graph/Ingestion + overlays)
+      App.css                  — Design system (1,310+ lines: CSS variables, dark/light theme, tabs, DAG, component styles)
+      stores/                  — Zustand: appStore.ts (with activeTab), chatStore.ts, dagStore.ts, sidecarStore.ts
       hooks/                   — useSSE.ts, useWorkflowStream.ts, useMemFlowAPI.ts
-      lib/                     — api.ts (typed API client)
+      lib/                     — api.ts (typed API client with 25+ endpoint methods)
       components/
-        layout/                TopBar.tsx, StatusBar.tsx
+        layout/                TopBar.tsx, StatusBar.tsx, TabBar.tsx
         sidebar/               SolutionList.tsx, ConversationTree.tsx, WorkflowLibrary.tsx
         chat/                  ChatPane.tsx, MessageBubble.tsx, MessageDAGMini.tsx, StageInspector.tsx
+        dag/                   WorkflowDAG.tsx, StageNode.tsx, DAGControls.tsx, StageStatusBadge.tsx
         palette/               CommandPalette.tsx (Cmd+K)
         settings/              SettingsDialog.tsx (tabbed: Connection/Appearance/About), ConnectionStatus.tsx
         onboarding/            ConnectionWizard.tsx (4-step first-launch flow)
@@ -656,7 +663,7 @@ packages/
 ```
 ## Desktop Application
 
-The MemFlow Desktop application provides a native Tauri 2 shell with a production-grade Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process. All API routes normalize Memgraph responses to flat JSON via `normalizeNode()` (in `src/server/routes/_helpers.ts`), eliminating raw Neo4j Node/Integer wrapper objects from frontend consumption. The app compiles and launches successfully via `bun run tauri dev` (~1m42s first build, 450 crates).
+The MemFlow Desktop application provides a native Tauri 2 shell with a production-grade Bun sidecar for the MemFlow server. The architecture follows a **sidecar-managed** pattern where Tauri's Rust backend manages the lifecycle of the Bun process. All API routes normalize Memgraph responses to flat JSON via `normalizeNode()` (in `src/server/routes/_helpers.ts`), eliminating raw Neo4j Node/Integer wrapper objects from frontend consumption. The app compiles and launches successfully via `bun run tauri dev` (~1m42s first build, 450 crates). The frontend features a **tab-based layout** (Chat, DAG Runner, Graph, Ingestion) with keyboard shortcuts (`Ctrl+1-4`) and a **WorkflowDAG visualizer** built on React Flow with real-time SSE streaming execution.
 
 ### Sidecar Manager (`src-tauri/src/sidecar.rs` — 406 lines)
 
@@ -680,8 +687,9 @@ The Rust-side sidecar manager provides full process lifecycle management:
 
 | Store | Purpose | Persistence |
 |---|---|---|
-| `appStore` | Theme, current solution/conversation, server URL, sidebar state | `localStorage` |
+| `appStore` | Theme, current solution/conversation, server URL, sidebar state, active tab | `localStorage` |
 | `chatStore` | Messages array, streaming tokens, stage status tracking | In-memory |
+| `dagStore` | Workflow definition, stage statuses, execution state, inspector selection, layout direction | In-memory |
 | `sidecarStore` | Server status, health checks, version, module count, restart tracking | In-memory |
 
 ### React Component Tree
@@ -695,11 +703,21 @@ App.tsx
 │   ├── SolutionList (CRUD, domain icons, entity/memory counts, loading skeleton, error banner)
 │   ├── ConversationTree (conversation list, relative timestamps, create/delete)
 │   └── WorkflowLibrary (catalog browser with category grouping and search)
-├── ChatPane
-│   ├── LoadingSkeleton (shimmer while loading conversation history)
-│   ├── MessageBubble (markdown rendering, syntax highlighting, copy, relative timestamps, token usage)
-│   │   └── MessageDAGMini (horizontal stage flow: pending→running→complete, clickable → StageInspector)
-│   └── ChatInput (Ctrl+Enter send, streaming cancel)
+├── TabBar (Chat | DAG Runner | Graph | Ingest — animated indicator, Ctrl+1-4 shortcuts, execution badge)
+├── Main Area (tab-switched, lazy-loaded)
+│   ├── [chat] ChatPane
+│   │   ├── LoadingSkeleton (shimmer while loading conversation history)
+│   │   ├── MessageBubble (markdown rendering, syntax highlighting, copy, relative timestamps, token usage)
+│   │   │   └── MessageDAGMini (horizontal stage flow: pending→running→complete, clickable → StageInspector)
+│   │   └── ChatInput (Ctrl+Enter send, streaming cancel)
+│   ├── [dag] WorkflowDAG (React Flow canvas, built-in topological layout via Kahn's algorithm)
+│   │   ├── DAGControls (run/reset/load toolbar, layout toggle TB/LR, fit view, workflow info display)
+│   │   ├── StageNode (custom React Flow node: status icon, module name, duration badge, error display)
+│   │   │   └── StageStatusBadge (reusable pending/running/complete/error indicator)
+│   │   ├── Inspector Sidebar (click-to-inspect: stage detail, metrics, error trace)
+│   │   └── Workflow Catalog (overlay: browse and load available workflow JSONs)
+│   ├── [graph] Coming Soon — Graph Explorer (Sprint 3)
+│   └── [ingestion] Coming Soon — File Ingestion (Sprint 4)
 ├── StatusBar (Memgraph/Ollama/Tavily health badges, version)
 ├── CommandPalette (Cmd+K fuzzy search overlay)
 ├── SettingsDialog (Ctrl+, — tabs: Connection, Appearance, About)
@@ -707,7 +725,7 @@ App.tsx
 └── StageInspector (slide-out drawer: stage info, config, input/output JSON, error display)
 ```
 
-**Dependencies**: `react-markdown@10.1.0`, `rehype-highlight@7.0.2`, `remark-gfm@4.0.1` for rich message rendering.
+**Dependencies**: `react-markdown@10.1.0`, `rehype-highlight@7.0.2`, `remark-gfm@4.0.1` for rich message rendering. `@xyflow/react` for the DAG visualizer canvas.
 
 ### Streaming Architecture
 

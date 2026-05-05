@@ -8,7 +8,7 @@ The **Generic Multi-Agent Pattern Library (GMPL)** extends the core engine with 
 
 The **Self-Evolution Layer** enables autonomous skill distillation, SLM training dataset export, prediction harness versioning, and natural-language workflow compilation. Backed by Trace2Skill (arXiv:2603.25158), AutoSkill (arXiv:2604.17614), and Milkyway (arXiv:2604.15719) research.
 
-**MemFlow Desktop** provides a native Tauri 2 desktop shell with a production-grade Bun sidecar (process spawning, health polling, crash restart with exponential backoff, platform-specific process cleanup), streaming chat with inline DAG auditing, and a React frontend for Solution management, Conversation persistence, and Workflow Library browsing. The desktop API normalizes all Memgraph responses to flat JSON via `normalizeNode()`. The frontend includes a 4-step connection wizard, tabbed settings dialog, slide-out stage inspector, markdown rendering with syntax highlighting (`react-markdown` + `rehype-highlight`), and a premium dark-first design system (850+ lines of vanilla CSS). The desktop app compiles and launches successfully via `bun run tauri dev`. The project is structured as a Bun workspace monorepo (`packages/desktop-app/`, `packages/shared/`).
+**MemFlow Desktop** provides a native Tauri 2 desktop shell with a production-grade Bun sidecar (process spawning, health polling, crash restart with exponential backoff, platform-specific process cleanup), streaming chat with inline DAG auditing, and a React frontend for Solution management, Conversation persistence, and Workflow Library browsing. The desktop API normalizes all Memgraph responses to flat JSON via `normalizeNode()`. The frontend features a **tab-based layout** (Chat, DAG Runner, Graph, Ingestion) with keyboard shortcuts (`Ctrl+1-4`), a **WorkflowDAG visualizer** built on React Flow with built-in topological layout (Kahn's algorithm), real-time SSE streaming execution, and a workflow catalog browser. Additional features include a 4-step connection wizard, tabbed settings dialog, slide-out stage inspector, markdown rendering with syntax highlighting (`react-markdown` + `rehype-highlight`), and a premium dark-first design system (1,310+ lines of vanilla CSS). The desktop app compiles and launches successfully via `bun run tauri dev`. The project is structured as a Bun workspace monorepo (`packages/desktop-app/`, `packages/shared/`).
 
 ## Prerequisites
 
@@ -149,6 +149,18 @@ Agent-to-agent messaging via `POST /acp` (request/response) and `GET /acp` (SSE 
 | `/api/v1/entities` | GET | List graph entities (filterable) |
 | `/api/v1/entities/:id` | GET | Get entity by ID with relations |
 | `/api/v1/graph` | GET | Graph statistics (node/relation counts) |
+| `/api/v1/graph/neighbors/:id` | GET | Get neighboring nodes with depth parameter |
+| `/api/v1/graph/subgraph` | POST | Extract a subgraph from a set of node IDs |
+| `/api/v1/graph/communities` | GET | List detected communities with summaries |
+| `/api/v1/graph/timeline` | GET | Temporal entity timeline (since/until filters) |
+| `/api/v1/graph/stats` | GET | Comprehensive graph statistics |
+| `/api/v1/modules/schemas` | GET | List all module schemas (Zod → JSON Schema) |
+| `/api/v1/modules/schemas/:name` | GET | Get a specific module's schema |
+| `/api/v1/executions` | POST/GET | Create and list workflow executions (paginated) |
+| `/api/v1/executions/:id` | GET | Get execution detail with stage trace |
+| `/api/v1/ingest` | POST | File ingestion (dual-mode: Tauri IPC path + multipart) |
+| `/api/v1/gmpl/patterns` | GET | List available GMPL patterns |
+| `/api/v1/gmpl/roles` | GET | List available GMPL roles |
 | `/api/v1/datasets/export` | POST | Export SLM training dataset (SFT/DPO) |
 | `/api/v1/skills` | GET | List distilled skills from Memgraph |
 | `/api/v1/skills/gaps` | GET | Get skill gap analysis results |
@@ -257,11 +269,11 @@ Optional: `bun test src/tests/integration/real-services/` runs against live Memg
 bun test
 ```
 
-Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 497 tests across 62 files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 15 integration test files (6 mock E2E + 9 real-services), and workflow JSON structural validation. Desktop API tests (`desktop-api-real.test.ts`) use direct property access on normalized flat JSON responses — no `props()`/`num()` unwrapper helpers needed.
+Tests use a shared mock factory (`src/tests/helpers/mocks.ts`) that provides configurable mocks for WorkflowContext, LLM, Embeddings, and MemgraphClient — no external services required. The default suite covers 497+ tests across 62+ files: 47 unit test files (19 GMPL pattern/adapter/error, 12 evolution module, 16 core/memory/retrieval/chunking), 15+ integration test files (6 mock E2E + 9+ real-services), and workflow JSON structural validation. Desktop API tests (`desktop-api-real.test.ts`) use direct property access on normalized flat JSON responses — no `props()`/`num()` unwrapper helpers needed.
 
 ### Real-Services Integration Suite (requires Memgraph + Ollama)
 
-An 8-layer integration test suite validates the full stack against live Memgraph MAGE and Ollama services:
+A 9-layer integration test suite validates the full stack against live Memgraph MAGE and Ollama services:
 
 | Layer | File | Focus | Tests |
 |---|---|---|---|
@@ -273,6 +285,7 @@ An 8-layer integration test suite validates the full stack against live Memgraph
 | 6 | `e2e-api-real.test.ts` | `/health`, `/modules`, `/metrics`, MCP init/tools-list | 5 pass, 6 todo |
 | 7 | `stability-real.test.ts` | MERGE idempotency, concurrent writes, 200-chunk batch, reconnection | 4 pass, 3 todo |
 | 8 | `desktop-api-real.test.ts` | Solution CRUD, Conversation+Message, Workflow Catalog, Migration, graph traversal | 24 pass |
+| 9 | `chat-e2e.test.ts` | SSE endpoint health, event structure, sequence integrity, error recovery | 12 pass, 3 todo |
 
 **Run the real-services suite:**
 ```bash
@@ -280,7 +293,7 @@ An 8-layer integration test suite validates the full stack against live Memgraph
 bun test src/tests/integration/real-services/ --timeout 120000
 ```
 
-**CPU vs GPU execution:** On CPU, `qwen3.5:4b` takes 30–60s per LLM call. Tests marked `test.todo` (18 total) invoke LLM-dependent modules and JSON pipeline definitions. These can be run individually with `--timeout 600000` on GPU hardware (e.g., `bun test src/tests/integration/real-services/ --timeout 600000` runs all 497 tests including LLM workflows).
+**CPU vs GPU execution:** On CPU, `qwen3.5:4b` takes 30–60s per LLM call. Tests marked `test.todo` invoke LLM-dependent modules and JSON pipeline definitions. These can be run individually with `--timeout 600000` on GPU hardware (e.g., `bun test src/tests/integration/real-services/ --timeout 600000`).
 
 **Test isolation:** All tests use `__test__`-prefixed node IDs and `cleanupTestData()` in `afterEach` — no test data leaks between runs.
 
