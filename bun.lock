@@ -12,6 +12,7 @@
         "@langchain/openai": "^0.3.17",
         "@langchain/textsplitters": "^1.0.1",
         "@memflow/shared": "workspace:*",
+        "@openrouter/sdk": "^0.12.28",
         "@tavily/core": "^0.7.3",
         "fflate": "^0.8.2",
         "hono": "^4.6.20",
@@ -262,6 +263,8 @@
     "@napi-rs/canvas-win32-arm64-msvc": ["@napi-rs/canvas-win32-arm64-msvc@0.1.100", "", { "os": "win32", "cpu": "arm64" }, "sha512-DZFFT1wIAg37LJw37yhMRFfjATd3vTQzjZ1Yki8u2vhO6Hi5VE6BVaGQ1aaDu7xb4iMErz+9EOwjpS7xcxFeBw=="],
 
     "@napi-rs/canvas-win32-x64-msvc": ["@napi-rs/canvas-win32-x64-msvc@0.1.100", "", { "os": "win32", "cpu": "x64" }, "sha512-MyT1j3mHC2+Lu4pBi9mKyMJhtP6U7k7EldY7sj/uS5gJA65gTXt8MefJQXLJo5d/vZbuWmfxzkEUNc/urV3pHA=="],
+
+    "@openrouter/sdk": ["@openrouter/sdk@0.12.28", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-YI2CipCdEoSTR3Ds3Sn6J75Qtk6pTX7mNzQWQvhOq3yNPMD3Kh3tzyrzxlsY4xZFozLnAIjT6OflxNMz2d4/Aw=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
 

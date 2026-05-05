@@ -34,7 +34,14 @@ export class ChunkIngestorModule implements BaseModule<Config> {
       id: (doc.metadata?.id as string) ?? `chunk-${this.hashContent(doc.pageContent)}`,
       text: doc.pageContent,
       emb: embeddings[i] ?? new Array(this.config.vectorDim).fill(0),
-      source: (doc.metadata?.source as string) ?? "unknown",
+      source: (doc.metadata?.source as string)
+        ?? (doc.metadata?.fileName as string)
+        ?? (input.data.fileName as string)
+        ?? "unknown",
+      solutionId: (input.data.solutionId as string) ?? "",
+      documentId: (doc.metadata?.documentId as string)
+        ?? (input.data.documentId as string)
+        ?? "",
       updatedAt: new Date().toISOString(),
     }));
 
@@ -45,6 +52,8 @@ export class ChunkIngestorModule implements BaseModule<Config> {
          SET c.text = item.text,
              c.embedding = item.emb,
              c.source = item.source,
+             c.solutionId = item.solutionId,
+             c.documentId = item.documentId,
              c.updatedAt = item.updatedAt`,
         items,
       );

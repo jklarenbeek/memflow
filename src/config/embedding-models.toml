@@ -1,0 +1,75 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Embedding Model Registry
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# IMPORTANT: The embedding model is a SYSTEM-LEVEL SINGLETON.
+# Once chosen at initialization, it cannot be changed mid-workflow because
+# vectors from different models are incompatible in the same vector index.
+#
+# Changing the embedding model requires re-indexing ALL existing chunks.
+#
+# Each entry defines:
+#   dimensions  — output vector dimensionality
+#   maxSeqLen   — maximum input tokens (text exceeding this is truncated)
+#   provider    — which driver to use (openrouter, openai, ollama)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ─── OpenRouter models ───────────────────────────────────────────────────────
+
+[models."nvidia/llama-nemotron-embed-vl-1b-v2:free"]
+dimensions = 1024
+maxSeqLen  = 512
+provider   = "openrouter"
+description = "NVIDIA Nemotron Embed VL 1B — free tier, multimodal capable"
+
+[models."openai/text-embedding-3-small"]
+dimensions = 1536
+maxSeqLen  = 8191
+provider   = "openrouter"
+description = "OpenAI text-embedding-3-small via OpenRouter"
+
+[models."openai/text-embedding-3-large"]
+dimensions = 3072
+maxSeqLen  = 8191
+provider   = "openrouter"
+description = "OpenAI text-embedding-3-large via OpenRouter"
+
+# ─── Ollama local models ─────────────────────────────────────────────────────
+
+[models."nomic-embed-text"]
+dimensions = 768
+maxSeqLen  = 8192
+provider   = "ollama"
+description = "Nomic Embed Text — default local embedding model"
+
+[models."mxbai-embed-large"]
+dimensions = 1024
+maxSeqLen  = 512
+provider   = "ollama"
+description = "MixedBread mxbai-embed-large"
+
+[models."snowflake-arctic-embed"]
+dimensions = 1024
+maxSeqLen  = 512
+provider   = "ollama"
+description = "Snowflake Arctic Embed"
+
+# ─── OpenAI native models ────────────────────────────────────────────────────
+
+[models."text-embedding-3-small"]
+dimensions = 1536
+maxSeqLen  = 8191
+provider   = "openai"
+description = "OpenAI text-embedding-3-small (native API)"
+
+[models."text-embedding-3-large"]
+dimensions = 3072
+maxSeqLen  = 8191
+provider   = "openai"
+description = "OpenAI text-embedding-3-large (native API)"
+
+[models."text-embedding-ada-002"]
+dimensions = 1536
+maxSeqLen  = 8191
+provider   = "openai"
+description = "OpenAI Ada 002 (legacy)"

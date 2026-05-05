@@ -3,10 +3,15 @@
  *
  * Creates LangChain Embeddings instances from config. Supports:
  *  - Ollama (local, e.g. nomic-embed-text)
- *  - OpenRouter (via OpenAI-compatible API)
+ *  - OpenRouter (native @openrouter/sdk driver)
  *  - OpenAI (text-embedding-3-small, etc.)
  *
- * Used by WorkflowContext to provide per-module embedding overrides.
+ * IMPORTANT: The embedding model is a SYSTEM-LEVEL SINGLETON.
+ * Vectors from different models are incompatible in the same vector index.
+ * The model is chosen at WorkflowContext initialization and locked for the
+ * session. Do not swap embedding models mid-workflow.
+ *
+ * Used by WorkflowContext to create the singleton embeddings instance.
  */
 
 import { OllamaEmbeddings } from "@langchain/ollama";
@@ -14,6 +19,8 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { Embeddings } from "@langchain/core/embeddings";
 import { z } from "zod";
 import { ProviderError } from "../core/errors.js";
+import { OpenRouterEmbeddings } from "./OpenRouterEmbeddings.js";
+import { getModelSpec } from "./EmbeddingModelRegistry.js";
 
 export const EmbeddingConfigSchema = z.object({
   provider: z.enum(["ollama", "openrouter", "openai"]).default("ollama"),
@@ -31,6 +38,7 @@ export function createEmbeddings(
 ): Embeddings {
   const parsed = EmbeddingConfigSchema.parse(config);
 
+  // ── Ollama (local) ──────────────────────────────────────────────────────
   if (parsed.provider === "ollama") {
     return new OllamaEmbeddings({
       model: parsed.model,
@@ -38,26 +46,37 @@ export function createEmbeddings(
     });
   }
 
-  const apiKey =
-    parsed.apiKey ??
-    (parsed.provider === "openrouter"
-      ? process.env.OPENROUTER_API_KEY
-      : process.env.OPENAI_API_KEY);
+  // ── OpenRouter (native SDK) ─────────────────────────────────────────────
+  if (parsed.provider === "openrouter") {
+    const apiKey = parsed.apiKey ?? process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new ProviderError(
+        "openrouter",
+        "API key required for embeddings. Set OPENROUTER_API_KEY env var.",
+      );
+    }
 
+    const spec = getModelSpec(parsed.model);
+    return new OpenRouterEmbeddings({
+      apiKey,
+      model: parsed.model,
+      dimensions: parsed.dimensions ?? spec?.dimensions,
+      maxSeqLen: spec?.maxSeqLen,
+    });
+  }
+
+  // ── OpenAI (native) ─────────────────────────────────────────────────────
+  const apiKey = parsed.apiKey ?? process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new ProviderError(
-      parsed.provider,
-      `API key required for embeddings.`,
+      "openai",
+      "API key required for embeddings. Set OPENAI_API_KEY env var.",
     );
   }
 
   return new OpenAIEmbeddings({
     modelName: parsed.model || "text-embedding-3-small",
     openAIApiKey: apiKey,
-    configuration:
-      parsed.provider === "openrouter"
-        ? { baseURL: "https://openrouter.ai/api/v1" }
-        : undefined,
     dimensions: parsed.dimensions,
   });
 }

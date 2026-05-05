@@ -26,6 +26,7 @@ import type { GlobalConfig, WorkflowConfig, WorkflowState, WorkflowData } from "
 import { MemgraphClient, type Logger } from "../providers/MemgraphClient.js";
 import { createLLM } from "../providers/LLMProvider.js";
 import { createEmbeddings } from "../providers/EmbeddingProvider.js";
+import { getDimensions } from "../providers/EmbeddingModelRegistry.js";
 import { validateAllPrompts, startPromptWatcher } from "../utils/promptLoader.js";
 import type { WorkflowEventEmitter } from "./WorkflowEventEmitter.js";
 
@@ -50,6 +51,17 @@ export class WorkflowContext {
   readonly logger: Logger;
   readonly memgraph: MemgraphClient;
   readonly trace: TraceEntry[] = [];
+
+  /**
+   * The embedding model name — locked at initialization.
+   * Vectors from different models are incompatible in the same index.
+   */
+  readonly embeddingModel: string;
+
+  /**
+   * The embedding vector dimensions — derived from the model registry.
+   */
+  readonly embeddingDimensions: number;
   readonly globalConfig: GlobalConfig;
 
   /**
@@ -77,6 +89,10 @@ export class WorkflowContext {
     this.logger = logger;
     this.memgraph = memgraph;
     this.globalConfig = globalConfig;
+
+    // Lock embedding model at construction time
+    this.embeddingModel = globalConfig.embeddingModel ?? "nomic-embed-text";
+    this.embeddingDimensions = getDimensions(this.embeddingModel);
   }
 
   /**
@@ -94,10 +110,13 @@ export class WorkflowContext {
       logger,
     );
 
-    // Ensure core vector indexes exist
+    // Ensure core vector indexes exist — dimensions from model registry
+    const embModel = config.embeddingModel ?? "nomic-embed-text";
+    const embDim = getDimensions(embModel);
+    logger.info(`Embedding model: ${embModel} (${embDim}D)`);
     try {
-      await memgraph.ensureVectorIndex("Chunk", "embedding", 768, "chunk_emb_idx");
-      await memgraph.ensureVectorIndex("MemoryUnit", "embedding", 768, "mem_emb_idx");
+      await memgraph.ensureVectorIndex("Chunk", "embedding", embDim, "chunk_emb_idx");
+      await memgraph.ensureVectorIndex("MemoryUnit", "embedding", embDim, "mem_emb_idx");
     } catch {
       logger.warn("Could not ensure vector indexes — Memgraph may not be available");
     }
@@ -173,23 +192,33 @@ export class WorkflowContext {
   }
 
   /**
-   * Get an Embeddings instance. If `moduleConfig` specifies a different
-   * provider or model, a separate cached instance is returned.
+   * Get the SINGLETON Embeddings instance.
+   *
+   * IMPORTANT: The embedding model is locked at initialization.
+   * Vectors from different models are incompatible in the same vector index.
+   * Per-module overrides are IGNORED — all modules share the same embeddings.
+   *
+   * @param _moduleConfig Deprecated — ignored. Kept for backward compat.
    */
-  getEmbeddings(moduleConfig?: {
+  getEmbeddings(_moduleConfig?: {
     embedderProvider?: string;
     embedderModel?: string;
   }): Embeddings {
-    const provider =
-      (moduleConfig?.embedderProvider as GlobalConfig["embeddingProvider"]) ??
-      this.globalConfig.embeddingProvider ??
-      "ollama";
-    const model =
-      moduleConfig?.embedderModel ??
-      this.globalConfig.embeddingModel ??
-      "nomic-embed-text";
+    if (
+      _moduleConfig?.embedderProvider ||
+      _moduleConfig?.embedderModel
+    ) {
+      this.logger.warn(
+        "getEmbeddings: Per-module embedding overrides are ignored. " +
+          `System embedding model is locked to ${this.embeddingModel} (${this.embeddingDimensions}D). ` +
+          "Vectors from different models are incompatible.",
+      );
+    }
 
-    const cacheKey = `${provider}:${model}`;
+    const provider = this.globalConfig.embeddingProvider ?? "ollama";
+    const model = this.embeddingModel;
+
+    const cacheKey = `emb:${provider}:${model}`;
     if (!this.embCache.has(cacheKey)) {
       this.embCache.set(cacheKey, createEmbeddings({ provider, model }));
     }

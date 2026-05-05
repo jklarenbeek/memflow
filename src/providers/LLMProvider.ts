@@ -2,11 +2,13 @@
  * LLM Provider Factory
  *
  * Creates LangChain chat model instances from config. Supports:
- *  - Ollama (local)
- *  - OpenRouter (any model via OpenAI-compatible API)
- *  - OpenAI (native)
+ *  - Ollama     → @langchain/ollama  (ChatOllama)
+ *  - OpenRouter → OpenRouterChatModel (native @openrouter/sdk wrapper)
+ *  - OpenAI     → @langchain/openai  (ChatOpenAI)
  *
- * Used by WorkflowContext to provide per-module LLM overrides.
+ * Unlike the embedding model, the LLM CAN be swapped per-module.
+ * Different modules may use different LLMs (e.g., cheap model for
+ * extraction, expensive model for profiling).
  */
 
 import { ChatOllama } from "@langchain/ollama";
@@ -14,6 +16,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { z } from "zod";
 import { ProviderError } from "../core/errors.js";
+import { OpenRouterChatModel } from "./OpenRouterLLM.js";
 
 export const LLMConfigSchema = z.object({
   provider: z.enum(["ollama", "openrouter", "openai"]).default("ollama"),
@@ -30,6 +33,7 @@ export type LLMConfig = z.infer<typeof LLMConfigSchema>;
 export function createLLM(config: Partial<LLMConfig> = {}): BaseChatModel {
   const parsed = LLMConfigSchema.parse(config);
 
+  // ── Ollama (local) ──────────────────────────────────────────────────────
   if (parsed.provider === "ollama") {
     return new ChatOllama({
       baseUrl: parsed.baseUrl ?? process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
@@ -39,37 +43,41 @@ export function createLLM(config: Partial<LLMConfig> = {}): BaseChatModel {
     });
   }
 
-  // OpenRouter and OpenAI share the ChatOpenAI class
-  const apiKey =
-    parsed.apiKey ??
-    (parsed.provider === "openrouter"
-      ? process.env.OPENROUTER_API_KEY
-      : process.env.OPENAI_API_KEY);
+  // ── OpenRouter (native @openrouter/sdk wrapper) ─────────────────────────
+  // Uses our custom OpenRouterChatModel which wraps the @openrouter/sdk
+  // in a LangChain SimpleChatModel interface. When the project migrates to
+  // LangChain v1.x, this should be replaced with ChatOpenRouter from
+  // @langchain/openrouter (which adds streaming, tool calling, structured
+  // output, model routing, and provider fallbacks).
+  if (parsed.provider === "openrouter") {
+    const apiKey = parsed.apiKey ?? process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new ProviderError(
+        "openrouter",
+        "API key required. Set OPENROUTER_API_KEY env var.",
+      );
+    }
 
+    return new OpenRouterChatModel({
+      apiKey,
+      model: parsed.model ?? "anthropic/claude-3.5-sonnet",
+      temperature: parsed.temperature,
+      maxTokens: parsed.maxTokens,
+    });
+  }
+
+  // ── OpenAI (native) ─────────────────────────────────────────────────────
+  const apiKey = parsed.apiKey ?? process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new ProviderError(
-      parsed.provider,
-      `API key required. Set ${parsed.provider === "openrouter" ? "OPENROUTER_API_KEY" : "OPENAI_API_KEY"} env var.`,
+      "openai",
+      "API key required. Set OPENAI_API_KEY env var.",
     );
   }
 
   return new ChatOpenAI({
-    modelName:
-      parsed.model ??
-      (parsed.provider === "openrouter"
-        ? "anthropic/claude-3.5-sonnet"
-        : "gpt-4o-mini"),
+    modelName: parsed.model ?? "gpt-4o-mini",
     openAIApiKey: apiKey,
-    configuration:
-      parsed.provider === "openrouter"
-        ? {
-            baseURL: "https://openrouter.ai/api/v1",
-            defaultHeaders: {
-              "HTTP-Referer": "https://memflow.dev",
-              "X-Title": "MemFlow",
-            },
-          }
-        : undefined,
     temperature: parsed.temperature,
     maxTokens: parsed.maxTokens,
   });
