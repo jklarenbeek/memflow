@@ -25,7 +25,7 @@ import { loadRolePrompt } from "../../utils/promptLoader.js";
 const ConfigSchema = z.object({
   /** Default role prompts for agents */
   rolePrompts: z
-    .record(z.string())
+    .record(z.string(), z.string())
     .default({
       retriever: "You are a precise evidence retriever. Use tools to gather relevant chunks and memories.",
       reasoner: "You are a logical reasoner. Synthesize evidence into coherent answer with citations.",

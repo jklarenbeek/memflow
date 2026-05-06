@@ -6,14 +6,13 @@
  */
 
 import { Hono } from "hono";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import type { GlobalConfig } from "../../core/types.js";
 import { ModuleRegistry } from "../../core/ModuleRegistry.js";
 
-// Lazy-load zod-to-json-schema to avoid startup cost
-async function convertToJsonSchema(zodSchema: ZodType): Promise<unknown> {
-  const { zodToJsonSchema } = await import("zod-to-json-schema");
-  return zodToJsonSchema(zodSchema);
+// Use Zod 4's native JSON Schema conversion
+function convertToJsonSchema(zodSchema: ZodType): unknown {
+  return z.toJSONSchema(zodSchema);
 }
 
 export function createModulesRouter(_globalConfig: GlobalConfig): Hono {

@@ -55,7 +55,7 @@ const ConfigSchema = z.object({
   maxSamples: z.number().min(1).max(100000).default(10000),
   domainFilter: z.string().optional(),
   trigger: TriggerConfigSchema.default({ type: "on_demand" }),
-  quality: QualityFilterSchema.default({}),
+  quality: QualityFilterSchema.prefault({}),
   /** Include a dataset manifest with statistics */
   includeManifest: z.boolean().default(true),
 });

@@ -22,6 +22,7 @@ const ConfigSchema = z.object({
   lineGroupThreshold: z.number().default(2),
   pageGap: z.number().default(50),
   filterWhitespace: z.boolean().default(true),
+  filePath: z.string().optional(),
 });
 
 type ParserConfig = z.infer<typeof ConfigSchema>;
@@ -57,6 +58,17 @@ export class PDFSpatialParserModule implements BaseModule<ParserConfig> {
         bytes[i] = binary.charCodeAt(i);
       }
       pdfData = bytes;
+    }
+
+    // Fallback: read from filePath in config (used by ingestion pipeline)
+    if ((!pdfData || pdfData.length === 0) && this.config.filePath) {
+      const { readFile } = await import("fs/promises");
+      try {
+        const buf = await readFile(this.config.filePath);
+        pdfData = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+      } catch (err) {
+        return { data: { documents: [] }, metrics: { elements: 0, pages: 0, error: `Failed to read file: ${(err as Error).message}` } };
+      }
     }
 
     if (!pdfData || pdfData.length === 0) {

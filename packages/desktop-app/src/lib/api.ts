@@ -266,6 +266,17 @@ export class MemFlowAPI {
     } & GraphStatsData>(`/api/v1/graph/stats?${params}`);
   }
 
+  async graphNodes(solutionId?: string, label?: string, limit = 20) {
+    const params = new URLSearchParams();
+    if (solutionId) params.set("solutionId", solutionId);
+    if (label) params.set("label", label);
+    params.set("limit", String(limit));
+    return this.request<{
+      success: boolean;
+      nodes: GraphNode[];
+    }>(`/api/v1/graph/nodes?${params}`);
+  }
+
   // ---------------------------------------------------------------------------
   // Phase 2: GMPL Patterns
   // ---------------------------------------------------------------------------
@@ -305,10 +316,11 @@ export class MemFlowAPI {
   // Phase 2: File Ingestion
   // ---------------------------------------------------------------------------
 
-  async ingestFile(file: File, solutionId: string) {
+  async ingestFile(file: File, solutionId: string, skipMemory = false) {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("solutionId", solutionId);
+    if (skipMemory) formData.append("skipMemory", "true");
     const url = `${this.baseUrl}/api/v1/ingest`;
     const res = await fetch(url, { method: "POST", body: formData });
     if (!res.ok) {
@@ -324,6 +336,7 @@ export class MemFlowAPI {
       solutionId: string;
       workflow: Record<string, unknown>;
       streamUrl: string;
+      tempFilePath?: string;
     }>;
   }
 

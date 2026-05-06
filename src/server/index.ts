@@ -198,11 +198,12 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
   app.post("/workflow/run/stream", async (c) => {
     // Parse the request body BEFORE entering the stream callback
     // (Hono's streamSSE doesn't allow async body reads inside the callback)
-    let body: { workflow: WorkflowConfig; input?: Record<string, unknown> };
+    let body: { workflow: WorkflowConfig; input?: Record<string, unknown>; tempFilePath?: string };
     try {
       body = await c.req.json<{
         workflow: WorkflowConfig;
         input?: Record<string, unknown>;
+        tempFilePath?: string;
       }>();
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
@@ -236,23 +237,40 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
         });
 
         // Consume the AsyncGenerator and write each event as SSE
+        // Start a keepalive ping to prevent idle timeout during long-running stages
+        const keepaliveInterval = setInterval(async () => {
+          if (!stream.aborted) {
+            try {
+              await stream.writeSSE({
+                id: String(eventId++),
+                event: "keepalive",
+                data: JSON.stringify({ type: "keepalive", timestamp: new Date().toISOString() }),
+              });
+            } catch { /* stream may have closed */ }
+          }
+        }, 30_000);
+
         const generator = engine.runStream(
           body.input ?? {},
           abortController.signal,
         );
 
-        let result = await generator.next();
-        while (!result.done) {
-          if (stream.aborted) break;
+        try {
+          let result = await generator.next();
+          while (!result.done) {
+            if (stream.aborted) break;
 
-          const event = result.value;
-          await stream.writeSSE({
-            id: String(eventId++),
-            event: event.type,
-            data: JSON.stringify(event),
-          });
+            const event = result.value;
+            await stream.writeSSE({
+              id: String(eventId++),
+              event: event.type,
+              data: JSON.stringify(event),
+            });
 
-          result = await generator.next();
+            result = await generator.next();
+          }
+        } finally {
+          clearInterval(keepaliveInterval);
         }
 
         // If the generator returned a final state (workflow:complete path)
@@ -275,6 +293,11 @@ export function createServer(globalConfig: GlobalConfig = {}): Hono {
         // Always shut down the engine
         if (engine) {
           await engine.shutdown();
+        }
+        // Clean up temp files from ingestion uploads
+        if (body.tempFilePath) {
+          const { unlink } = await import("fs/promises");
+          unlink(body.tempFilePath).catch(() => { /* best-effort cleanup */ });
         }
       }
     });

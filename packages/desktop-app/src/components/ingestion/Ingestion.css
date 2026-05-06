@@ -46,3 +46,18 @@
 .result-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
 .result-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .ingestion-actions { display: flex; gap: 8px; justify-content: center; padding-top: 8px; }
+
+/* Quick Ingest Toggle */
+.quick-ingest-toggle { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 8px 14px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s; }
+.quick-ingest-toggle:hover { border-color: var(--accent); }
+.quick-ingest-toggle input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+.toggle-label { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.toggle-hint { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
+
+/* Chunk Progress (sub-progress within a stage) */
+.chunk-progress { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.chunk-progress-bar { flex: 1; height: 3px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
+.chunk-progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #a78bfa); border-radius: 2px; transition: width 0.3s ease; }
+.chunk-progress-label { font-size: 9px; font-weight: 600; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.chunk-failed { color: var(--warning, #f59e0b); }
+.file-elapsed { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }

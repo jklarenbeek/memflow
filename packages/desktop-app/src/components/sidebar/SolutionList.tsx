@@ -90,10 +90,13 @@ export function SolutionList() {
           </div>
         )}
         {solutions.map((sol) => (
-          <button
+          <div
             key={sol.id}
             className={`solution-item ${sol.id === currentSolutionId ? "active" : ""}`}
             onClick={() => setCurrentSolution(sol.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setCurrentSolution(sol.id); }}
           >
             <span className="solution-icon">{domainIcons[sol.domain] ?? "📁"}</span>
             <div className="solution-info">
@@ -106,7 +109,7 @@ export function SolutionList() {
               )}
             </div>
             <button className="solution-delete" onClick={(e) => deleteSolution(sol.id, e)} title="Delete">×</button>
-          </button>
+          </div>
         ))}
         {solutions.length === 0 && !wizardOpen && !loading && (
           <p className="empty-state">No solutions yet. Create one to get started.</p>

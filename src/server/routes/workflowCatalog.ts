@@ -75,6 +75,7 @@ export function createWorkflowCatalogRouter(_globalConfig: GlobalConfig): Hono {
   });
 
   // GET /workflows/catalog/:name — Get full workflow JSON by name
+  // Searches by the internal `name` field inside each JSON file, not by filename.
   app.get("/catalog/:name", async (c) => {
     try {
       const name = c.req.param("name");
@@ -86,12 +87,23 @@ export function createWorkflowCatalogRouter(_globalConfig: GlobalConfig): Hono {
       ];
 
       for (const dir of dirs) {
+        let files: string[];
         try {
-          const filePath = join(dir, `${name}.json`);
-          const content = await readFile(filePath, "utf-8");
-          return c.json({ success: true, workflow: JSON.parse(content) });
-        } catch (e) {
-          console.debug(`[workflowCatalog] ${name} not in ${dir}: ${e}`);
+          files = (await readdir(dir)).filter((f) => typeof f === "string" && f.endsWith(".json"));
+        } catch {
+          continue; // directory doesn't exist
+        }
+
+        for (const file of files) {
+          try {
+            const fullPath = join(dir, file);
+            const content = await readFile(fullPath, "utf-8");
+            const wf = JSON.parse(content);
+            const wfName = wf.name ?? basename(file, ".json");
+            if (wfName === name) {
+              return c.json({ success: true, workflow: wf });
+            }
+          } catch { /* skip unparseable files */ }
         }
       }
 

@@ -45,9 +45,9 @@ const ConfigSchema = z.object({
   /** Maximum loop iterations */
   maxIterations: z.number().default(3),
   /** Input mapping for the child workflow */
-  inputMap: z.record(z.string()).default({}),
+  inputMap: z.record(z.string(), z.string()).prefault({}),
   /** Output mapping from the child workflow */
-  outputMap: z.record(z.string()).default({}),
+  outputMap: z.record(z.string(), z.string()).prefault({}),
 });
 
 type AutonomousLoopConfig = z.infer<typeof ConfigSchema>;

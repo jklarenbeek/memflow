@@ -19,6 +19,7 @@ const ConfigSchema = z.object({
   yScale: z.number().default(1.0),
   chunkSize: z.number().default(512),
   alpha: z.number().min(0).max(1).default(0.5),
+  filePath: z.string().optional(),
 });
 
 type ParserConfig = z.infer<typeof ConfigSchema>;
@@ -36,7 +37,18 @@ export class MarkdownSpatialParserModule implements BaseModule<ParserConfig> {
     input: ModuleInput<ParserConfig>,
     _context: unknown,
   ): Promise<ModuleOutput> {
-    const markdown = (input.data.markdown as string) ?? "";
+    let markdown = (input.data.markdown as string) ?? "";
+
+    // Fallback: read from filePath in config (used by ingestion pipeline)
+    if (!markdown.trim() && this.config.filePath) {
+      const { readFile } = await import("fs/promises");
+      try {
+        markdown = await readFile(this.config.filePath, "utf-8");
+      } catch (err) {
+        return { data: { documents: [] }, metrics: { elements: 0, error: `Failed to read file: ${(err as Error).message}` } };
+      }
+    }
+
     if (!markdown.trim()) {
       return { data: { documents: [] }, metrics: { elements: 0 } };
     }

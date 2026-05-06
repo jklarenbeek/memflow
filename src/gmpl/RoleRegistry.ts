@@ -18,7 +18,7 @@ import { RoleNotFoundError, PatternValidationError } from "./errors.js";
 // ---------------------------------------------------------------------------
 
 /** Permissive passthrough schema — used as default for roles without strict contracts */
-const AnyObjectSchema = z.record(z.unknown());
+const AnyObjectSchema = z.record(z.string(), z.unknown());
 
 function createBuiltinRoles(): AgentRole[] {
   return [
@@ -96,7 +96,7 @@ function createBuiltinRoles(): AgentRole[] {
       persona: "fundamentals_analyst",
       promptPack: "gmpl/analysis/analyst",
       inputSchema: z.object({ query: z.string() }),
-      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), keyMetrics: z.record(z.unknown()).optional() }),
+      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), keyMetrics: z.record(z.string(), z.unknown()).optional() }),
       requiredModules: ["EntityExtractor", "VectorSearch"],
     },
     {
@@ -105,7 +105,7 @@ function createBuiltinRoles(): AgentRole[] {
       persona: "technical_analyst",
       promptPack: "gmpl/analysis/analyst",
       inputSchema: z.object({ query: z.string() }),
-      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), signals: z.record(z.unknown()).optional() }),
+      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), signals: z.record(z.string(), z.unknown()).optional() }),
       requiredModules: ["EntityExtractor"],
     },
     {
@@ -114,7 +114,7 @@ function createBuiltinRoles(): AgentRole[] {
       persona: "sentiment_analyst",
       promptPack: "gmpl/analysis/analyst",
       inputSchema: z.object({ query: z.string() }),
-      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), sentimentBreakdown: z.record(z.unknown()).optional() }),
+      outputSchema: z.object({ analysis: z.string(), confidence: z.number(), sources: z.array(z.string()), sentimentBreakdown: z.record(z.string(), z.unknown()).optional() }),
       requiredModules: ["EntityExtractor", "VectorSearch"],
     },
   ];

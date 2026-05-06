@@ -38,7 +38,7 @@ const ConfigSchema = z.object({
       graph: z.number().default(0.3),
       keyword: z.number().default(0.2),
     })
-    .default({}),
+    .prefault({}),
   tokenBudget: z.number().default(4000),
 });
 

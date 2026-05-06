@@ -484,10 +484,22 @@ export interface StreamEventStageProgress {
   type: "stage:progress";
   stageId: string;
   module: string;
-  /** Streamed token from LLM output */
-  token: string;
+  /** Streamed token from LLM output (token-level streaming) */
+  token?: string;
   /** Token index within the current stage's output */
-  tokenIndex: number;
+  tokenIndex?: number;
+  /** Current item index for batch processing (1-based) */
+  chunkIndex?: number;
+  /** Total items to process in this stage */
+  totalChunks?: number;
+  /** Human-readable progress message */
+  message?: string;
+  /** LLM I/O and additional debug detail */
+  detail?: {
+    promptPreview?: string;
+    responsePreview?: string;
+    [key: string]: unknown;
+  };
   timestamp: string;
 }
 
@@ -521,6 +533,8 @@ export interface StreamEventWorkflowComplete {
   finalAnswer?: string;
   confidence?: number;
   sources?: string[];
+  /** Accumulated metrics from all stages */
+  metrics?: Record<string, unknown>;
   timestamp: string;
 }
 

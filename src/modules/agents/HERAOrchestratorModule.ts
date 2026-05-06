@@ -52,7 +52,7 @@ const ConfigSchema = z.object({
   /** Constrain adaptive pattern selection to these pattern IDs (empty = all) */
   patternPool: z.array(z.string()).default([]),
   rolePrompts: z
-    .record(z.string())
+    .record(z.string(), z.string())
     .default({
       retriever:
         "You are a precise evidence retriever. Use tools to gather relevant chunks and memories.",

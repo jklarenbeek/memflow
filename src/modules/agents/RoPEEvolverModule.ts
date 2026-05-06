@@ -24,7 +24,7 @@ import { loadAndRender } from "../../utils/promptLoader.js";
 
 const ConfigSchema = z.object({
   failureThreshold: z.number().default(0.4),
-  rolePrompts: z.record(z.string()).default({}),
+  rolePrompts: z.record(z.string(), z.string()).prefault({}),
   /** Maximum prompt length (chars) for consolidation projection ΠC */
   maxPromptLength: z.number().default(2000),
 });

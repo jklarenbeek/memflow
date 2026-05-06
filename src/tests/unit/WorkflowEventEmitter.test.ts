@@ -154,7 +154,7 @@ describe("WorkflowEventEmitter", () => {
 
     const consume = async () => {
       for await (const e of emitter.toAsyncGenerator()) {
-        if (e.type === "stage:progress") received.push(e.tokenIndex);
+        if (e.type === "stage:progress") received.push(e.tokenIndex ?? 0);
       }
     };
 

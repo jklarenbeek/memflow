@@ -14,13 +14,13 @@ export const JSONRPCRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number()]).optional(),
   method: z.string(),
-  params: z.record(z.unknown()).optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const JSONRPCResponseSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number()]),
-  result: z.record(z.unknown()).optional(),
+  result: z.record(z.string(), z.unknown()).optional(),
   error: z
     .object({
       code: z.number(),
@@ -33,7 +33,7 @@ export const JSONRPCResponseSchema = z.object({
 export const JSONRPCNotificationSchema = z.object({
   jsonrpc: z.literal("2.0"),
   method: z.string(),
-  params: z.record(z.unknown()).optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type JSONRPCRequest = z.infer<typeof JSONRPCRequestSchema>;
@@ -50,7 +50,7 @@ export const InitializeRequestSchema = z.object({
   method: z.literal("initialize"),
   params: z.object({
     protocolVersion: z.string(),
-    capabilities: z.record(z.unknown()).default({}),
+    capabilities: z.record(z.string(), z.unknown()).prefault({}),
     clientInfo: z.object({
       name: z.string(),
       version: z.string(),
@@ -65,7 +65,7 @@ export const InitializeResponseSchema = z.object({
     protocolVersion: z.string(),
     capabilities: z.object({
       tools: z.object({}).optional(),
-    }).default({}),
+    }).prefault({}),
     serverInfo: z.object({
       name: z.string(),
       version: z.string(),
@@ -85,7 +85,7 @@ export const ToolDefinitionSchema = z.object({
   description: z.string(),
   inputSchema: z.object({
     type: z.literal("object"),
-    properties: z.record(z.unknown()),
+    properties: z.record(z.string(), z.unknown()),
     required: z.array(z.string()).optional(),
   }),
 });
@@ -120,8 +120,8 @@ export const ToolCallRequestSchema = z.object({
   method: z.literal("tools/call"),
   params: z.object({
     name: z.string(),
-    arguments: z.record(z.unknown()).optional(),
-    meta: z.record(z.unknown()).optional(),
+    arguments: z.record(z.string(), z.unknown()).optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
   }),
 });
 
@@ -134,7 +134,7 @@ export const ErrorContentSchema = z.object({
   type: z.literal("error"),
   code: z.string(),
   message: z.string(),
-  details: z.record(z.unknown()).optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const ToolCallResponseSchema = z.object({

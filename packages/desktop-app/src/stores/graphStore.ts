@@ -33,6 +33,7 @@ export interface GraphState {
 
   // UI State
   loading: boolean;
+  hasLoaded: boolean;
   error: string | null;
   detailsPanelOpen: boolean;
   communityPanelOpen: boolean;
@@ -96,6 +97,7 @@ export const useGraphStore = create<GraphState>()((set, get) => ({
   expandedNodeIds: new Set(),
   filters: { ...DEFAULT_FILTERS },
   loading: false,
+  hasLoaded: false,
   error: null,
   detailsPanelOpen: false,
   communityPanelOpen: false,
@@ -110,39 +112,61 @@ export const useGraphStore = create<GraphState>()((set, get) => ({
       // Load communities for context
       const commRes = await api.graphCommunities(solutionId, 50);
 
-      // Load initial subgraph: start from community nodes + top entities
-      // If graph is small enough (< 200 nodes), load all via a broad query
+      // Collect community IDs as potential seeds
+      const commIds = commRes.communities
+        .filter((c) => c.id)
+        .map((c) => c.id as string);
+
       let nodes: GraphNode[] = [];
       let edges: GraphEdge[] = [];
 
-      if (totalNodes <= 200 && totalNodes > 0) {
-        // Small graph — load everything via a community-seed expansion
-        const seedIds = commRes.communities
-          .filter((c) => c.id)
-          .map((c) => c.id as string)
-          .slice(0, 10);
+      if (totalNodes > 0 && commIds.length > 0) {
+        // Use communities as seed nodes for expansion
+        const seedIds = totalNodes <= 200 ? commIds.slice(0, 10) : commIds.slice(0, 5);
+        const depth = totalNodes <= 200 ? 3 : 1;
 
-        if (seedIds.length > 0) {
-          const subRes = await api.graphSubgraph(seedIds, 3, {
-            solutionId: solutionId ?? undefined,
-          });
-          nodes = subRes.nodes;
-          edges = subRes.edges;
-        }
-      } else if (totalNodes > 200) {
-        // Large graph — load top communities only as seeds
-        const seedIds = commRes.communities
-          .filter((c) => c.id)
-          .map((c) => c.id as string)
-          .slice(0, 5);
+        const subRes = await api.graphSubgraph(seedIds, depth, {
+          solutionId: solutionId ?? undefined,
+        });
+        nodes = totalNodes > 200 ? subRes.nodes.slice(0, 200) : subRes.nodes;
+        edges = subRes.edges;
+      } else if (totalNodes > 0 && commIds.length === 0) {
+        // No communities — use graphNodes() to discover seed nodes directly
+        try {
+          // Prefer non-Chunk labels as seeds (Chunks can overwhelm the view)
+          const preferredLabels = statsRes.nodeCounts
+            .filter((c) => c.label !== "Chunk" && c.count > 0)
+            .map((c) => c.label);
 
-        if (seedIds.length > 0) {
-          const subRes = await api.graphSubgraph(seedIds, 1, {
-            solutionId: solutionId ?? undefined,
-          });
-          nodes = subRes.nodes.slice(0, 200);
-          edges = subRes.edges;
-        }
+          let seedNodes: GraphNode[] = [];
+
+          // Try preferred labels first, then fall back to all nodes
+          for (const label of [...preferredLabels, undefined]) {
+            const nodesRes = await api.graphNodes(
+              solutionId ?? undefined,
+              label,
+              20,
+            );
+            if (nodesRes.nodes?.length > 0) {
+              seedNodes = [...seedNodes, ...nodesRes.nodes];
+            }
+            if (seedNodes.length >= 10) break;
+          }
+
+          // Filter to nodes that actually have an id property (some node types don't)
+          const seedIds = seedNodes
+            .map((n) => n.id)
+            .filter((id): id is string => !!id)
+            .slice(0, 10);
+
+          if (seedIds.length > 0) {
+            const subRes = await api.graphSubgraph(seedIds, 2, {
+              solutionId: solutionId ?? undefined,
+            });
+            nodes = subRes.nodes.slice(0, 200);
+            edges = subRes.edges;
+          }
+        } catch { /* fallback failed, show empty */ }
       }
 
       set({
@@ -155,11 +179,12 @@ export const useGraphStore = create<GraphState>()((set, get) => ({
           entityTypes: statsRes.entityTypes,
         },
         loading: false,
+        hasLoaded: true,
         expandedNodeIds: new Set(),
         filters: { ...DEFAULT_FILTERS, solutionId: solutionId ?? null },
       });
     } catch (err) {
-      set({ loading: false, error: (err as Error).message });
+      set({ loading: false, hasLoaded: true, error: (err as Error).message });
     }
   },
 
@@ -293,6 +318,7 @@ export const useGraphStore = create<GraphState>()((set, get) => ({
       expandedNodeIds: new Set(),
       filters: { ...DEFAULT_FILTERS },
       loading: false,
+      hasLoaded: false,
       error: null,
       detailsPanelOpen: false,
       communityPanelOpen: false,

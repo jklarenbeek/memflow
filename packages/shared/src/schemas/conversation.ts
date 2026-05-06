@@ -14,7 +14,7 @@ export const CreateMessageSchema = z.object({
   content: z.string(),
   workflowId: z.string().optional(),
   workflowName: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const StageTraceEntrySchema = z.object({
@@ -31,7 +31,7 @@ export const UpdateMessageSchema = z.object({
   durationMs: z.number().optional(),
   sources: z.array(z.string()).optional(),
   tokenUsage: z.number().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const MessageSchema = z.object({

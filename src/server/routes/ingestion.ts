@@ -65,12 +65,14 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
       let solutionId: string;
       let format: string;
       let filename: string;
+      let skipMemory = false;
 
       if (contentType.includes("multipart/form-data")) {
         // ---- Multipart upload mode (external server) ----
         const formData = await c.req.formData();
         const file = formData.get("file");
         solutionId = formData.get("solutionId")?.toString() ?? "";
+        skipMemory = formData.get("skipMemory")?.toString() === "true";
 
         if (!file || !(file instanceof File)) {
           return c.json({ success: false, error: "No file provided" }, 400);
@@ -129,48 +131,51 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
       const parserModule = getParserModule(format);
 
       // Build the ingestion workflow config
+      // Pipeline: parse → chunk → embed → index → [store?]
+      // SimpleMem (store) includes its own sub-workflow with FactExtractor,
+      // DensityGate, SemanticSynthesis — no need for standalone extraction.
+      const stages: Array<Record<string, unknown>> = [
+        {
+          id: "parse",
+          module: parserModule,
+          config: { filePath },
+          next: "chunk",
+        },
+        {
+          id: "chunk",
+          module: "S2Chunker",
+          config: { maxChunkSize: 1200, minChunkSize: 100 },
+          next: "embed",
+        },
+        {
+          id: "embed",
+          module: "Embedder",
+          config: {},
+          next: "index",
+        },
+        {
+          id: "index",
+          module: "ChunkIngestor",
+          config: {},
+          next: skipMemory ? null : "store",
+        },
+      ];
+
+      // Only include SimpleMem when full memory extraction is requested
+      if (!skipMemory) {
+        stages.push({
+          id: "store",
+          module: "SimpleMem",
+          config: { category: "document", importance: 0.7 },
+          next: null,
+        });
+      }
+
       const workflowConfig = {
         name: `ingest-${ingestionId}`,
         version: "1.0",
-        stages: [
-          {
-            id: "parse",
-            module: parserModule,
-            config: { filePath },
-          },
-          {
-            id: "chunk",
-            module: "S2Chunker",
-            config: { maxChunkSize: 1200, minChunkSize: 100 },
-          },
-          {
-            id: "embed",
-            module: "Embedder",
-            config: {},
-          },
-          {
-            id: "index",
-            module: "ChunkIngestor",
-            config: {},
-          },
-          {
-            id: "extract",
-            module: "FactExtractor",
-            config: {},
-          },
-          {
-            id: "store",
-            module: "SimpleMem",
-            config: { category: "document", importance: 0.7 },
-          },
-        ],
-        edges: [
-          { from: "parse", to: "chunk" },
-          { from: "chunk", to: "embed" },
-          { from: "embed", to: "index" },
-          { from: "index", to: "extract" },
-          { from: "extract", to: "store" },
-        ],
+        entry: "parse",
+        stages,
       };
 
       // Return the workflow config and ingestion ID
@@ -185,15 +190,16 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
         solutionId,
         workflow: workflowConfig,
         streamUrl: `/workflow/run/stream`,
+        // Temp file path for cleanup after workflow execution
+        tempFilePath: isTempFile ? filePath : undefined,
         note: "Use the returned workflow config with POST /workflow/run/stream to execute the ingestion pipeline with SSE progress tracking.",
       }, 201);
     } catch (err) {
-      return c.json({ success: false, error: (err as Error).message }, 500);
-    } finally {
-      // Clean up temp files from multipart uploads
+      // Only clean up temp file on error (workflow never runs)
       if (isTempFile && filePath) {
         unlink(filePath).catch(() => { /* best-effort cleanup */ });
       }
+      return c.json({ success: false, error: (err as Error).message }, 500);
     }
   });
 

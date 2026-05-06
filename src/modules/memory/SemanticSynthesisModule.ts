@@ -5,6 +5,8 @@
  * consolidation. Identifies clusters of semantically similar memory
  * units and merges them into coherent entries using LLM synthesis.
  *
+ * Implements StreamableModule for per-cluster progress events.
+ *
  * Paper spec: Fsyn(Osession, Ccontext; f) — operates on session scope,
  * merging scattered fragments into coherent wholes using conversational
  * context. Example: "wants coffee" + "prefers oat milk" + "likes hot"
@@ -19,7 +21,9 @@
 
 import { z } from "zod";
 import type {
-  BaseModule,
+  StreamableModule,
+  StreamEvent,
+  StreamEventStageProgress,
   ModuleInput,
   ModuleOutput,
   MemoryUnit,
@@ -39,9 +43,9 @@ const ConfigSchema = z.object({
 
 type SemanticSynthesisConfig = z.infer<typeof ConfigSchema>;
 
-export class SemanticSynthesisModule implements BaseModule<SemanticSynthesisConfig> {
+export class SemanticSynthesisModule implements StreamableModule<SemanticSynthesisConfig> {
   readonly name = "SemanticSynthesis";
-  readonly version = "0.5.0";
+  readonly version = "0.5.1";
   private config: SemanticSynthesisConfig;
 
   constructor(config: Record<string, unknown> = {}) {
@@ -85,6 +89,71 @@ export class SemanticSynthesisModule implements BaseModule<SemanticSynthesisConf
         result.push(synthesized);
       } else {
         result.push(this.pairwiseMerge(cluster));
+      }
+    }
+
+    ctx.logger.info(
+      `SemanticSynthesis: ${clusters.length} clusters from ${units.length} units, ` +
+        `${mergeCount} merged (LLM=${this.config.useLLM})`,
+    );
+
+    return {
+      data: { memoryUnits: result },
+      metrics: { merged: mergeCount, before: units.length, after: result.length, clusters: clusters.length },
+    };
+  }
+
+  async *processStream(
+    input: ModuleInput<SemanticSynthesisConfig>,
+    context: unknown,
+  ): AsyncGenerator<StreamEvent, ModuleOutput, undefined> {
+    const ctx = context as WorkflowContext;
+    const units = [...((input.data.memoryUnits ?? []) as MemoryUnit[])];
+
+    if (units.length <= 1) {
+      return { data: { memoryUnits: units }, metrics: { merged: 0 } };
+    }
+
+    const clusters = this.buildClusters(units);
+
+    if (clusters.length === units.length) {
+      return { data: { memoryUnits: units }, metrics: { merged: 0, clusters: clusters.length } };
+    }
+
+    const result: MemoryUnit[] = [];
+    let mergeCount = 0;
+
+    for (let i = 0; i < clusters.length; i++) {
+      const cluster = clusters[i];
+      if (cluster.length === 1) {
+        result.push(cluster[0]);
+      } else {
+        mergeCount += cluster.length - 1;
+        if (this.config.useLLM) {
+          const synthesized = await this.llmSynthesize(cluster, ctx);
+          result.push(synthesized);
+        } else {
+          result.push(this.pairwiseMerge(cluster));
+        }
+      }
+
+      // Only yield progress for multi-unit clusters (the interesting ones)
+      if (cluster.length > 1) {
+        const progressEvent: StreamEventStageProgress = {
+          type: "stage:progress",
+          stageId: "synthesize",
+          module: "SemanticSynthesis",
+          chunkIndex: i + 1,
+          totalChunks: clusters.length,
+          message: `Synthesizing: cluster ${i + 1}/${clusters.length} (${cluster.length} units → 1)`,
+          detail: {
+            clusterSize: cluster.length,
+            promptPreview: cluster.map((u) => u.content.substring(0, 50)).join(" | "),
+            responsePreview: result[result.length - 1]?.content.substring(0, 150),
+          },
+          timestamp: new Date().toISOString(),
+        };
+        yield progressEvent;
       }
     }
 

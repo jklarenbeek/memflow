@@ -24,6 +24,7 @@ const ConfigSchema = z.object({
   useEigengap: z.boolean().default(true),
   xScale: z.number().default(2.0),
   yScale: z.number().default(1.0),
+  filePath: z.string().optional(),
 });
 
 type ParserConfig = z.infer<typeof ConfigSchema>;
@@ -56,6 +57,16 @@ export class DOCXSpatialParserModule implements BaseModule<ParserConfig> {
     } else if (typeof rawData === "string" && rawData.length > 0) {
       // Decode base64
       docxData = Buffer.from(rawData, "base64");
+    }
+
+    // Fallback: read from filePath in config (used by ingestion pipeline)
+    if ((!docxData || docxData.length === 0) && this.config.filePath) {
+      const { readFile } = await import("fs/promises");
+      try {
+        docxData = await readFile(this.config.filePath);
+      } catch (err) {
+        return { data: { documents: [] }, metrics: { elements: 0, error: `Failed to read file: ${(err as Error).message}` } };
+      }
     }
 
     if (!docxData || docxData.length === 0) {

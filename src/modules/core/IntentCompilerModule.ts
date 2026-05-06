@@ -65,9 +65,9 @@ type Config = z.infer<typeof ConfigSchema>;
 const WorkflowStageSchema = z.object({
   id: z.string(),
   module: z.string(),
-  config: z.record(z.unknown()).default({}),
+  config: z.record(z.string(), z.unknown()).prefault({}),
   dependsOn: z.array(z.string()).optional(),
-  next: z.union([z.string(), z.array(z.string()), z.record(z.string()), z.null()]).optional(),
+  next: z.union([z.string(), z.array(z.string()), z.record(z.string(), z.string()), z.null()]).optional(),
 });
 
 const WorkflowConfigSchema = z.object({

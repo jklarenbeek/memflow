@@ -15,6 +15,8 @@ export interface IngestionFile {
   status: "queued" | "uploading" | "processing" | "complete" | "error";
   progress: number;
   currentStage?: string;
+  /** Per-chunk progress within the current stage (e.g., FactExtractor chunk 15/52) */
+  chunkProgress?: { current: number; total: number; failed: number };
   result?: { chunks: number; entities: number; memories: number };
   error?: string;
   startedAt?: string;

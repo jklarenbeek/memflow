@@ -35,6 +35,9 @@ export async function startBunServer(
   Bun.serve({
     fetch: app.fetch,
     port,
+    // LLM-heavy workflows (FactExtractor, ingestion) can take 10+ minutes.
+    // Bun max is 255s; we also add SSE keepalive pings in the stream handler.
+    idleTimeout: 255,
   });
 
   // Graceful shutdown — close the Memgraph connection pool

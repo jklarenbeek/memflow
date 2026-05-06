@@ -6,6 +6,11 @@ import './Ingestion.css';
  * Supports dual-mode transport:
  *   - Tauri desktop: IPC file path mode
  *   - External server: multipart/form-data upload
+ *
+ * Features:
+ *   - Quick Ingest toggle (skips LLM memory extraction for fast ~5s ingest)
+ *   - Per-chunk progress tracking for long-running LLM stages
+ *   - SSE keepalive and reconnection handling
  */
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { v4 as uuidv4 } from "uuid";
@@ -41,6 +46,7 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
   const { isDropActive, setDropActive, addFile, updateFile } = useIngestionStore();
   const { currentSolutionId, connectionMode } = useAppStore();
   const [error, setError] = useState<string | null>(null);
+  const [skipMemory, setSkipMemory] = useState(false);
 
   const processFile = useCallback(
     async (file: File) => {
@@ -67,10 +73,11 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
       });
 
       try {
-        // Upload to ingestion endpoint
+        // Upload to ingestion endpoint (with skipMemory flag)
         updateFile(fileId, { status: "uploading", progress: 30 });
-        const res = await api.ingestFile(file, currentSolutionId);
+        const res = await api.ingestFile(file, currentSolutionId, skipMemory);
 
+        const totalStages = skipMemory ? 4 : 5; // parse→chunk→embed→index [→store]
         updateFile(fileId, { status: "processing", progress: 50, currentStage: "Pipeline starting…" });
 
         // Now stream the workflow execution for real-time progress
@@ -80,6 +87,7 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
           body: JSON.stringify({
             workflow: res.workflow,
             input: { solutionId: currentSolutionId },
+            tempFilePath: res.tempFilePath,
           }),
         });
 
@@ -91,7 +99,9 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
         const decoder = new TextDecoder();
         let buffer = "";
         let stageCount = 0;
-        const totalStages = 6; // parse → chunk → embed → index → extract → store
+
+        // Accumulate per-stage metrics for final result counts
+        const stageMetrics: Record<string, Record<string, unknown>> = {};
 
         while (true) {
           const { done, value } = await reader.read();
@@ -111,36 +121,81 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
               switch (event.type) {
                 case "stage:start":
                   updateFile(fileId, {
-                    currentStage: event.module || event.stageId,
+                    currentStage: `${event.module || event.stageId}`,
                     progress: 50 + Math.round((stageCount / totalStages) * 40),
+                    chunkProgress: undefined, // Reset chunk progress for new stage
                   });
                   break;
+
+                case "stage:progress":
+                  // Per-chunk progress within a stage (e.g., FactExtractor chunk 15/52)
+                  updateFile(fileId, {
+                    currentStage: event.message || `${event.module} (${event.chunkIndex}/${event.totalChunks})`,
+                    chunkProgress: event.chunkIndex && event.totalChunks ? {
+                      current: event.chunkIndex,
+                      total: event.totalChunks,
+                      failed: event.detail?.failed ? 1 : 0,
+                    } : undefined,
+                    // Sub-progress within the current stage
+                    progress: 50 + Math.round(
+                      ((stageCount + (event.chunkIndex ?? 0) / (event.totalChunks ?? 1)) / totalStages) * 40,
+                    ),
+                  });
+                  break;
+
                 case "stage:complete":
                   stageCount++;
+                  // Track per-stage metrics for result aggregation
+                  if (event.metrics && event.stageId) {
+                    stageMetrics[event.stageId] = event.metrics;
+                  }
                   updateFile(fileId, {
                     progress: 50 + Math.round((stageCount / totalStages) * 40),
+                    chunkProgress: undefined,
+                    currentStage: event.module ? `${event.module} ✓` : undefined,
                   });
                   break;
-                case "workflow:complete":
+
+                case "workflow:complete": {
+                  // Build result from workflow metrics or accumulated stage metrics
+                  const wm = event.metrics ?? {};
+                  const chunkMetrics = stageMetrics["index"] ?? stageMetrics["chunk"] ?? {};
+                  const storeMetrics = stageMetrics["store"] ?? {};
+
+                  const chunks = (wm.chunks as number)
+                    ?? (chunkMetrics.ingested as number)
+                    ?? 0;
+                  const entities = (wm.entities as number)
+                    ?? (storeMetrics.extracted as number)
+                    ?? 0;
+                  const memories = (wm.memoryUnits as number)
+                    ?? (storeMetrics.after as number)
+                    ?? (storeMetrics.merged as number)
+                    ?? 0;
+
                   updateFile(fileId, {
                     status: "complete",
                     progress: 100,
                     currentStage: undefined,
+                    chunkProgress: undefined,
                     completedAt: new Date().toISOString(),
-                    result: {
-                      chunks: event.data?.chunks?.length ?? 0,
-                      entities: event.data?.entities?.length ?? 0,
-                      memories: event.data?.memories?.length ?? 0,
-                    },
+                    result: { chunks, entities, memories },
                   });
                   break;
+                }
+
                 case "workflow:error":
                   updateFile(fileId, {
                     status: "error",
                     progress: 0,
                     error: event.error,
                     currentStage: undefined,
+                    chunkProgress: undefined,
                   });
+                  break;
+
+                case "keepalive":
+                  // Keepalive pings — ignore silently
                   break;
               }
             } catch { /* skip unparseable */ }
@@ -154,6 +209,7 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
             status: "complete",
             progress: 100,
             currentStage: undefined,
+            chunkProgress: undefined,
             completedAt: new Date().toISOString(),
           });
         }
@@ -163,10 +219,11 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
           progress: 0,
           error: (err as Error).message,
           currentStage: undefined,
+          chunkProgress: undefined,
         });
       }
     },
-    [currentSolutionId, connectionMode, addFile, updateFile],
+    [currentSolutionId, connectionMode, skipMemory, addFile, updateFile],
   );
 
   const handleDrop = useCallback(
@@ -245,6 +302,21 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
           </span>
         ))}
       </div>
+
+      <label
+        className="quick-ingest-toggle"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={skipMemory}
+          onChange={(e) => setSkipMemory(e.target.checked)}
+        />
+        <span className="toggle-label">
+          ⚡ Quick ingest
+          <span className="toggle-hint">(skip LLM extraction — fast ~5s)</span>
+        </span>
+      </label>
 
       {error && <p className="drop-zone-error">⚠️ {error}</p>}
 

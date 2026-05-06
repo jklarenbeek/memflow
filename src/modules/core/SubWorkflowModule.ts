@@ -37,9 +37,9 @@ const ConfigSchema = z.object({
   /** Path to workflow JSON file (relative to project root or absolute) */
   workflowRef: z.string().optional(),
   /** Map parent data keys → child input keys */
-  inputMap: z.record(z.string()).optional(),
+  inputMap: z.record(z.string(), z.string()).optional(),
   /** Map child output keys → parent data keys */
-  outputMap: z.record(z.string()).optional(),
+  outputMap: z.record(z.string(), z.string()).optional(),
   /** Maximum recursion depth for nested sub-workflows */
   maxDepth: z.number().default(5),
 });
@@ -79,7 +79,7 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
     const workflowConfig = await this.loadWorkflow(stageConfig);
 
     // Map parent data → child input
-    const childInput = applyInputMap(input.data, stageConfig.inputMap);
+    const childInput = applyInputMap(input.data, stageConfig.inputMap as Record<string, string> | undefined);
 
     // Execute child workflow with shared context
     ctx.depth++;
@@ -101,7 +101,7 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
       // Map child output → parent data
       const mappedOutput = applyOutputMap(
         childState.data,
-        stageConfig.outputMap,
+        stageConfig.outputMap as Record<string, string> | undefined,
       );
 
       return {

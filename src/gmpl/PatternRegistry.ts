@@ -73,23 +73,23 @@ function createBuiltinPatterns(): WorkflowPattern[] {
           maxTurns: z.number().min(1).max(10).default(5),
           complexityGate: z.boolean().default(true),
           intentSchema: z.string().optional(),
-        }).default({}),
+        }).prefault({}),
         retrieval: z.object({
           localSource: z.object({
             type: z.string().default("vector_kg"),
             collection: z.string().optional(),
-          }).default({}),
+          }).prefault({}),
           dynamicSource: z.object({
             type: z.string().default("web_agent"),
             safelist: z.array(z.string()).default([]),
-          }).default({}),
+          }).prefault({}),
           fusionStrategy: z.enum(["authority_weighted", "equal", "local_only", "web_only"]).default("authority_weighted"),
-        }).default({}),
+        }).prefault({}),
         generation: z.object({
           hallucinationCheck: z.boolean().default(true),
           citationRequired: z.boolean().default(true),
           sourceAuthorityScoring: z.boolean().default(true),
-        }).default({}),
+        }).prefault({}),
       }),
       requiredRoles: ["clarifier"],
       inputContract: z.object({

@@ -14,16 +14,16 @@ import { useGraphStore } from "../../stores/graphStore";
 import { useAppStore } from "../../stores/appStore";
 
 export function GraphExplorer() {
-  const { loadInitialGraph, loadStats, nodes, loading, error } = useGraphStore();
+  const { loadInitialGraph, loadStats, loading, hasLoaded, error } = useGraphStore();
   const { currentSolutionId } = useAppStore();
 
   // Load graph data when tab activates or solution changes
   useEffect(() => {
-    if (nodes.length === 0 && !loading) {
+    if (!hasLoaded && !loading) {
       loadInitialGraph(currentSolutionId ?? undefined);
       loadStats(currentSolutionId ?? undefined);
     }
-  }, [currentSolutionId, loadInitialGraph, loadStats, nodes.length, loading]);
+  }, [currentSolutionId, loadInitialGraph, loadStats, hasLoaded, loading]);
 
   return (
     <div className="graph-explorer">

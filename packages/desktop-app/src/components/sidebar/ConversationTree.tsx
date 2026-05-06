@@ -81,10 +81,13 @@ export function ConversationTree() {
           </div>
         )}
         {conversations.map((conv) => (
-          <button
+          <div
             key={conv.id}
             className={`conversation-item ${conv.id === currentConversationId ? "active" : ""}`}
             onClick={() => setCurrentConversation(conv.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setCurrentConversation(conv.id); }}
           >
             <span className="conv-title">{conv.title}</span>
             <span className="conv-meta">
@@ -94,7 +97,7 @@ export function ConversationTree() {
               <span className="conv-preview">{conv.lastMessagePreview}</span>
             )}
             <button className="conv-delete" onClick={(e) => deleteConversation(conv.id, e)} title="Remove">×</button>
-          </button>
+          </div>
         ))}
         {!currentSolutionId && (
           <p className="empty-state">Select a solution to see conversations.</p>

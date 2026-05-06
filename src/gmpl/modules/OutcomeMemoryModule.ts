@@ -25,7 +25,7 @@ const ConfigSchema = z.object({
   pruneResolved: z.object({
     maxEntries: z.number().default(500),
     strategy: z.enum(["oldest_by_entity", "lowest_confidence"]).default("oldest_by_entity"),
-  }).default({}),
+  }).prefault({}),
 });
 type Config = z.infer<typeof ConfigSchema>;
 

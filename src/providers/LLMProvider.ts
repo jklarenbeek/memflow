@@ -2,9 +2,9 @@
  * LLM Provider Factory
  *
  * Creates LangChain chat model instances from config. Supports:
- *  - Ollama     → @langchain/ollama  (ChatOllama)
- *  - OpenRouter → OpenRouterChatModel (native @openrouter/sdk wrapper)
- *  - OpenAI     → @langchain/openai  (ChatOpenAI)
+ *  - Ollama     → @langchain/ollama     (ChatOllama)
+ *  - OpenRouter → @langchain/openrouter (ChatOpenRouter)
+ *  - OpenAI     → @langchain/openai     (ChatOpenAI)
  *
  * Unlike the embedding model, the LLM CAN be swapped per-module.
  * Different modules may use different LLMs (e.g., cheap model for
@@ -13,10 +13,10 @@
 
 import { ChatOllama } from "@langchain/ollama";
 import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenRouter } from "@langchain/openrouter";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { z } from "zod";
 import { ProviderError } from "../core/errors.js";
-import { OpenRouterChatModel } from "./OpenRouterLLM.js";
 
 export const LLMConfigSchema = z.object({
   provider: z.enum(["ollama", "openrouter", "openai"]).default("ollama"),
@@ -43,12 +43,9 @@ export function createLLM(config: Partial<LLMConfig> = {}): BaseChatModel {
     });
   }
 
-  // ── OpenRouter (native @openrouter/sdk wrapper) ─────────────────────────
-  // Uses our custom OpenRouterChatModel which wraps the @openrouter/sdk
-  // in a LangChain SimpleChatModel interface. When the project migrates to
-  // LangChain v1.x, this should be replaced with ChatOpenRouter from
-  // @langchain/openrouter (which adds streaming, tool calling, structured
-  // output, model routing, and provider fallbacks).
+  // ── OpenRouter (official @langchain/openrouter integration) ─────────────
+  // Uses the first-party ChatOpenRouter which provides streaming, tool
+  // calling, structured output, model routing, and provider fallbacks.
   if (parsed.provider === "openrouter") {
     const apiKey = parsed.apiKey ?? process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
@@ -58,11 +55,14 @@ export function createLLM(config: Partial<LLMConfig> = {}): BaseChatModel {
       );
     }
 
-    return new OpenRouterChatModel({
+    return new ChatOpenRouter({
       apiKey,
       model: parsed.model ?? "anthropic/claude-3.5-sonnet",
       temperature: parsed.temperature,
       maxTokens: parsed.maxTokens,
+      siteUrl: "https://memflow.dev",
+      siteName: "MemFlow",
+      maxRetries: 3,
     });
   }
 
@@ -82,3 +82,4 @@ export function createLLM(config: Partial<LLMConfig> = {}): BaseChatModel {
     maxTokens: parsed.maxTokens,
   });
 }
+

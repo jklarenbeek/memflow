@@ -52,9 +52,9 @@ const WorkflowConfigSchema = z.object({
     z.object({
       id: z.string(),
       module: z.string(),
-      config: z.record(z.unknown()).default({}),
+      config: z.record(z.string(), z.unknown()).prefault({}),
       next: z
-        .union([z.string(), z.array(z.string()), z.record(z.string())])
+        .union([z.string(), z.array(z.string()), z.record(z.string(), z.string())])
         .nullable()
         .optional(),
       dependsOn: z.array(z.string()).optional(),
@@ -371,6 +371,24 @@ export class WorkflowEngine {
         new Date(this.state.metadata.startTime).getTime();
 
       // Emit workflow:complete
+      // Build accumulated metrics from final state data for UI consumption
+      const accumulatedMetrics: Record<string, unknown> = {};
+      if (Array.isArray(this.state.data.chunks)) {
+        accumulatedMetrics.chunks = this.state.data.chunks.length;
+      }
+      if (Array.isArray(this.state.data.memoryUnits)) {
+        accumulatedMetrics.memoryUnits = this.state.data.memoryUnits.length;
+      }
+      if (Array.isArray(this.state.data.entities)) {
+        accumulatedMetrics.entities = this.state.data.entities.length;
+      }
+      // Copy any numeric metrics from the last stage output
+      for (const [key, val] of Object.entries(this.state.data)) {
+        if (typeof val === "number" && !accumulatedMetrics[key]) {
+          accumulatedMetrics[key] = val;
+        }
+      }
+
       const completeEvent: StreamEvent = {
         type: "workflow:complete",
         workflowId: this.state.id,
@@ -378,6 +396,7 @@ export class WorkflowEngine {
         finalAnswer: this.state.data.finalAnswer as string | undefined,
         confidence: this.state.data.confidence as number | undefined,
         sources: this.state.data.sources as string[] | undefined,
+        metrics: accumulatedMetrics,
         timestamp: new Date().toISOString(),
       };
       this.emitter.emit(completeEvent);

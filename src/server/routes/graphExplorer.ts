@@ -176,6 +176,50 @@ export function createGraphExplorerRouter(globalConfig: GlobalConfig): Hono {
   });
 
   // -------------------------------------------------------------------------
+  // GET /graph/nodes — Retrieve initial seed nodes (for community-less graphs)
+  // -------------------------------------------------------------------------
+  app.get("/nodes", async (c) => {
+    try {
+      const solutionId = c.req.query("solutionId");
+      const label = c.req.query("label");
+      const limit = Math.min(Number(c.req.query("limit") ?? "20"), 200);
+
+      const result = await withMemgraph(globalConfig, async (client) => {
+        const filters: string[] = [];
+        const params: Record<string, unknown> = { limit };
+
+        let matchClause = "MATCH (n)";
+        if (label) {
+          matchClause = `MATCH (n:${label})`;
+        }
+        if (solutionId) {
+          filters.push("n.solutionId = $solutionId");
+          params.solutionId = solutionId;
+        }
+
+        const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+
+        const rows = await client.query<{ n: Record<string, unknown>; nLabels: string[] }>(
+          `${matchClause} ${whereClause}
+           RETURN n, labels(n) AS nLabels
+           ORDER BY n.updatedAt DESC
+           LIMIT toInteger($limit)`,
+          params,
+        );
+
+        return rows.map((r) => ({
+          ...normalizeNode(r.n),
+          labels: r.nLabels,
+        }));
+      });
+
+      return c.json({ success: true, nodes: result });
+    } catch (err) {
+      return c.json({ success: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // GET /graph/communities — Community nodes with summaries
   // -------------------------------------------------------------------------
   app.get("/communities", async (c) => {

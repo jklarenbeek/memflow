@@ -441,7 +441,7 @@ export const PendingDecisionSchema = z.object({
   /** When the decision should be resolved by */
   resolveBefore: z.string().optional(),
   /** Additional context */
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type PendingDecision = z.infer<typeof PendingDecisionSchema>;
@@ -454,7 +454,7 @@ export const OutcomeResultSchema = z.object({
   /** Human-readable summary of the outcome */
   summary: z.string(),
   /** Additional domain-specific metrics */
-  metrics: z.record(z.unknown()).optional(),
+  metrics: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type OutcomeResult = z.infer<typeof OutcomeResultSchema>;
@@ -501,7 +501,7 @@ export const PatternStageSchema = z.object({
   /** Module to execute directly (alternative to pattern) */
   module: z.string().optional(),
   /** Pattern/module config */
-  config: z.record(z.unknown()).default({}),
+  config: z.record(z.string(), z.unknown()).prefault({}),
 });
 
 export const PatternCompositionSchema = z.object({
