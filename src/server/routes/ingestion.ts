@@ -168,6 +168,7 @@ export function createIngestionRouter(globalConfig: GlobalConfig): Hono {
           module: "SimpleMem",
           config: { category: "document", importance: 0.7 },
           next: null,
+          workflowRef: "src/workflows/sub/simplemem-pipeline.json",
         });
       }
 

@@ -27,6 +27,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { StageNode, type StageNodeData } from "./StageNode";
+import { CompoundStageNode } from "./CompoundStageNode";
 import { DAGControls } from "./DAGControls";
 import { StageStatusBadge } from "./StageStatusBadge";
 import { useDAGStore, type DAGWorkflow } from "../../stores/dagStore";
@@ -38,7 +39,7 @@ import { api } from "../../lib/api";
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const nodeTypes = { stage: StageNode } as any;
+const nodeTypes = { stage: StageNode, compound: CompoundStageNode } as any;
 
 // ---------------------------------------------------------------------------
 // Layout helper (simplified dagre-like layout without external dep)
@@ -61,7 +62,9 @@ function layoutWorkflow(
   workflow: DAGWorkflow,
   direction: "TB" | "LR",
   executionState: "idle" | "running" | "complete" | "error",
-): { nodes: Node<StageNodeData>[]; edges: Edge[] } {
+  expandedStages: Set<string>,
+  activeProcessId: string | null,
+): { nodes: Node[]; edges: Edge[] } {
   const nodeWidth = 180;
   const nodeHeight = 90;
   const hGap = 60;
@@ -124,7 +127,7 @@ function layoutWorkflow(
   }
 
   // Position nodes in layers
-  const nodes: Node<StageNodeData>[] = [];
+  const nodes: Node[] = [];
   const terminalStages = findTerminalStages(workflow);
 
   // ---------------------------------------------------------------------------
@@ -138,7 +141,7 @@ function layoutWorkflow(
     id: startNodeId,
     type: "default",
     position: { x: startX - nodeWidth / 2, y: startY },
-    data: { label: "▶ Start" } as unknown as StageNodeData,
+    data: { label: "▶ Start" },
     style: {
       background: "var(--accent)",
       color: "white",
@@ -168,45 +171,128 @@ function layoutWorkflow(
   // ---------------------------------------------------------------------------
   // Stage nodes — positioned in topological layers
   // ---------------------------------------------------------------------------
+  let currentY = direction === "TB" ? 0 : 0;
+  let currentX = direction === "LR" ? 0 : 0;
+
   for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
     const layer = layers[layerIdx];
-    const layerWidth = layer.length * (nodeWidth + hGap) - hGap;
-    const startLayerX = -layerWidth / 2;
-
-    for (let nodeIdx = 0; nodeIdx < layer.length; nodeIdx++) {
-      const stageId = layer[nodeIdx];
+    
+    // Calculate dimensions
+    const nodeDims = layer.map(stageId => {
       const stage = stageMap.get(stageId);
-      if (!stage) continue;
+      const isCompound = !!stage?.workflowRef || !!stage?.childWorkflow;
+      const isExpanded = isCompound && expandedStages.has(`${activeProcessId ?? "null"}:${stageId}`);
+      let w = nodeWidth;
+      let h = nodeHeight;
+      if (isExpanded && stage?.childWorkflow) {
+        const childCount = stage.childWorkflow.stages.length;
+        if (direction === "TB") {
+          w = nodeWidth + 60;
+          h = childCount * (nodeHeight + 30) + 60;
+        } else {
+          w = childCount * (nodeWidth + 30) + 60;
+          h = nodeHeight + 80;
+        }
+      }
+      return { stageId, stage, isCompound, isExpanded, w, h };
+    });
 
-      const x = direction === "TB"
-        ? startLayerX + nodeIdx * (nodeWidth + hGap)
-        : layerIdx * (nodeWidth + hGap);
-      const y = direction === "TB"
-        ? layerIdx * (nodeHeight + vGap)
-        : startLayerX + nodeIdx * (nodeHeight + vGap);
+    const maxH = Math.max(...nodeDims.map(d => d.h));
+    const maxW = Math.max(...nodeDims.map(d => d.w));
 
-      nodes.push({
-        id: stageId,
-        type: "stage",
+    const layerWidth = nodeDims.reduce((sum, d) => sum + d.w, 0) + (layer.length - 1) * hGap;
+    let layerX = -layerWidth / 2;
+    let layerY = -layerWidth / 2;
+
+    for (const d of nodeDims) {
+      if (!d.stage) continue;
+
+      const x = direction === "TB" ? layerX : currentX;
+      const y = direction === "TB" ? currentY : layerY;
+
+      if (direction === "TB") layerX += d.w + hGap;
+      else layerY += d.w + hGap;
+
+      const baseNode = {
+        id: d.stageId,
         position: { x, y },
         data: {
-          stageId,
-          module: stage.module,
+          stageId: d.stageId,
+          module: d.stage.module,
           status: "pending",
-          isEntry: stageId === workflow.entry,
-          isTerminal: terminalStages.has(stageId),
+          isEntry: d.stageId === workflow.entry,
+          isTerminal: terminalStages.has(d.stageId),
         },
-      });
+      };
+
+      if (d.isCompound) {
+        nodes.push({
+          ...baseNode,
+          type: "compound",
+          style: d.isExpanded ? { width: d.w, height: d.h, zIndex: -1 } : undefined,
+          data: {
+            ...baseNode.data,
+            label: d.stage.module,
+            isExpanded: d.isExpanded,
+            processId: activeProcessId ?? "null",
+            childStageCount: d.stage.childWorkflow?.stages.length ?? 0,
+          },
+        });
+
+        if (d.isExpanded && d.stage.childWorkflow) {
+          // Add child nodes
+          let childY = 40; // below header
+          let childX = 30;
+          for (let i = 0; i < d.stage.childWorkflow.stages.length; i++) {
+            const childStage = d.stage.childWorkflow.stages[i];
+            const childId = `${d.stageId}.${childStage.id}`;
+            nodes.push({
+              id: childId,
+              type: "stage",
+              parentId: d.stageId,
+              position: { x: childX, y: childY },
+              style: { zIndex: 10 },
+              data: {
+                stageId: childId,
+                module: childStage.module,
+                status: "pending",
+                isEntry: i === 0,
+                isTerminal: i === d.stage.childWorkflow.stages.length - 1,
+              },
+            });
+
+            // Edge to next child
+            if (i < d.stage.childWorkflow.stages.length - 1) {
+              const nextChildId = `${d.stageId}.${d.stage.childWorkflow.stages[i+1].id}`;
+              edges.push({
+                id: `${childId}-${nextChildId}`,
+                source: childId,
+                target: nextChildId,
+                type: "smoothstep",
+                animated: false,
+                style: { stroke: "var(--border)", strokeWidth: 2 },
+              });
+            }
+
+            if (direction === "TB") childY += nodeHeight + 30;
+            else childX += nodeWidth + 30;
+          }
+        }
+      } else {
+        nodes.push({ ...baseNode, type: "stage" });
+      }
     }
+
+    if (direction === "TB") currentY += maxH + vGap;
+    else currentX += maxW + hGap;
   }
 
   // ---------------------------------------------------------------------------
   // Virtual "End" node — placed after the last layer
   // ---------------------------------------------------------------------------
   const endNodeId = "__end__";
-  const lastLayerIdx = layers.length;
-  const endX = direction === "TB" ? 0 : lastLayerIdx * (nodeWidth + hGap);
-  const endY = direction === "TB" ? lastLayerIdx * (nodeHeight + vGap) : 0;
+  const endX = direction === "TB" ? 0 : currentX;
+  const endY = direction === "TB" ? currentY : 0;
   const isCompleted = executionState === "complete";
 
   nodes.push({
@@ -267,7 +353,7 @@ const PROCESS_STATUS_ICONS: Record<string, string> = {
 export function WorkflowDAG() {
   const {
     workflow, stageStatuses, executionState, selectedStageId, layoutDirection,
-    trackedProcesses, activeProcessId,
+    trackedProcesses,    activeProcessId, expandedStages
   } = useDAGStore();
   const {
     loadWorkflow, setStageStatus, setExecutionState, setSelectedStage,
@@ -275,7 +361,7 @@ export function WorkflowDAG() {
   } = useDAGStore();
   const serverUrl = useAppStore((s) => s.serverUrl);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<StageNodeData>>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [workflows, setWorkflows] = useState<Array<{ name: string; version: string; description?: string; stages: unknown[] }>>([]);
@@ -288,12 +374,12 @@ export function WorkflowDAG() {
       setEdges([]);
       return;
     }
-    const layout = layoutWorkflow(workflow, layoutDirection, executionState);
+    const layout = layoutWorkflow(workflow, layoutDirection, executionState, expandedStages, activeProcessId);
     setNodes(layout.nodes);
     setEdges(layout.edges);
     // Fit view after layout
     setTimeout(() => reactFlowInstance.fitView({ padding: 0.2 }), 50);
-  }, [workflow, layoutDirection, executionState, setNodes, setEdges, reactFlowInstance]);
+  }, [workflow, layoutDirection, executionState, expandedStages, activeProcessId, setNodes, setEdges, reactFlowInstance]);
 
   // Update node data when stage statuses change
   useEffect(() => {
@@ -367,7 +453,7 @@ export function WorkflowDAG() {
         if (node.id !== "__end__") return node;
         return {
           ...node,
-          data: { label: isCompleted ? "✓ End" : "◻ End" } as unknown as StageNodeData,
+          data: { label: isCompleted ? "✓ End" : "◻ End" },
           style: {
             ...node.style,
             background: isCompleted ? "var(--success)" : "var(--bg-tertiary)",
@@ -465,6 +551,14 @@ export function WorkflowDAG() {
       switch (event.type) {
         case "workflow:start":
           setWorkflowId(event.workflowId as string);
+          break;
+
+        case "subworkflow:expand":
+          useDAGStore.getState().setChildWorkflow(
+            activeProcessId ?? "null",
+            event.parentStageId as string,
+            event.childWorkflow as DAGWorkflow,
+          );
           break;
 
         case "stage:start":

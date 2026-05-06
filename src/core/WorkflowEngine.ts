@@ -538,6 +538,7 @@ export class WorkflowEngine {
           config: {
             ...buildStageConfig(stage),
             ...this.stageConfigOverrides[stage.id],
+            _parentStageId: stage.id,
           },
         };
 
@@ -717,6 +718,7 @@ export class WorkflowEngine {
           config: {
             ...buildStageConfig(stage),
             ...this.stageConfigOverrides[stage.id],
+            _parentStageId: stage.id,
           },
         };
 

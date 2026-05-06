@@ -146,6 +146,14 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
                   });
                   break;
 
+                case "subworkflow:expand":
+                  useDAGStore.getState().setChildWorkflow(
+                    fileId,
+                    event.parentStageId as string,
+                    event.childWorkflow as any,
+                  );
+                  break;
+
                 case "stage:progress":
                   // Per-chunk progress within a stage (e.g., FactExtractor chunk 15/52)
                   updateFile(fileId, {

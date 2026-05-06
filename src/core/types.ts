@@ -461,6 +461,7 @@ export type StreamEvent =
   | StreamEventStageError
   | StreamEventWorkflowComplete
   | StreamEventWorkflowError
+  | StreamEventSubWorkflowExpand
   | StreamEventPatternEvent;
 
 export interface StreamEventWorkflowStart {
@@ -478,6 +479,8 @@ export interface StreamEventStageStart {
   attempt: number;
   progress: StageProgress;
   timestamp: string;
+  isSubWorkflow?: boolean;
+  parentStageId?: string;
 }
 
 export interface StreamEventStageProgress {
@@ -513,6 +516,8 @@ export interface StreamEventStageComplete {
   preview?: string;
   progress: StageProgress;
   timestamp: string;
+  isSubWorkflow?: boolean;
+  parentStageId?: string;
 }
 
 export interface StreamEventStageError {
@@ -524,6 +529,8 @@ export interface StreamEventStageError {
   maxAttempts: number;
   willRetry: boolean;
   timestamp: string;
+  isSubWorkflow?: boolean;
+  parentStageId?: string;
 }
 
 export interface StreamEventWorkflowComplete {
@@ -543,6 +550,15 @@ export interface StreamEventWorkflowError {
   workflowId: string;
   error: string;
   stage?: string;
+  timestamp: string;
+}
+
+export interface StreamEventSubWorkflowExpand {
+  type: "subworkflow:expand";
+  /** The parent stage ID that contains this sub-workflow */
+  parentStageId: string;
+  /** The child workflow definition (for DAG rendering) */
+  childWorkflow: WorkflowConfig;
   timestamp: string;
 }
 

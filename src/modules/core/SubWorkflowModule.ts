@@ -82,7 +82,11 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
     const childInput = applyInputMap(input.data, stageConfig.inputMap as Record<string, string> | undefined);
 
     // Execute child workflow with shared context
-    ctx.depth++;
+    // Use Object.create to create a scoped context that inherits methods/services
+    // but allows overriding properties (like eventEmitter and depth) without mutating the parent.
+    const childCtx = Object.create(ctx) as WorkflowContext;
+    childCtx.depth = ctx.depth + 1;
+
     try {
       const childEngine = new WorkflowEngine(workflowConfig);
 
@@ -95,7 +99,30 @@ export class SubWorkflowModule implements BaseModule<SubWorkflowConfig> {
         childEngine.setStageConfigOverrides(stageOverrides);
       }
 
-      await childEngine.initializeWithContext(ctx);
+      await childEngine.initializeWithContext(childCtx);
+
+      // Forward child events to parent emitter with scoped stageIds
+      const parentStageId = (input.config as Record<string, unknown>)._parentStageId as string ?? "sub";
+      childEngine.events.on("*", (childEvent) => {
+        // Clone and prefix stageId for scoped identification
+        const forwarded = { ...childEvent };
+        if ("stageId" in forwarded && forwarded.stageId) {
+          forwarded.stageId = `${parentStageId}.${forwarded.stageId}`;
+        }
+        // Mark as sub-workflow event for client disambiguation
+        (forwarded as Record<string, unknown>).parentStageId = parentStageId;
+        (forwarded as Record<string, unknown>).isSubWorkflow = true;
+        ctx.eventEmitter?.emit(forwarded as any);
+      });
+
+      // Emit sub-workflow expansion metadata so the client can render child stages
+      ctx.eventEmitter?.emit({
+        type: "subworkflow:expand",
+        parentStageId,
+        childWorkflow: workflowConfig,
+        timestamp: new Date().toISOString(),
+      });
+
       const childState = await childEngine.run(childInput);
 
       // Map child output → parent data

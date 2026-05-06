@@ -31,6 +31,9 @@ export interface DAGWorkflow {
     config: Record<string, unknown>;
     next?: string | string[] | Record<string, string> | null;
     dependsOn?: string[];
+    workflowRef?: string;
+    /** Inline child workflow (loaded on expand) */
+    childWorkflow?: DAGWorkflow;
   }>;
 }
 
@@ -62,6 +65,10 @@ export interface DAGState {
   trackedProcesses: Map<string, TrackedProcess>;
   /** Which process is currently visualised */
   activeProcessId: string | null;
+  /** Set of currently expanded compound stage IDs (parentStageId) */
+  expandedStages: Set<string>;
+  /** User preference: whether to auto-expand sub-workflows when they start */
+  autoExpandSubworkflows: boolean;
 
   // Actions
   loadWorkflow: (workflow: DAGWorkflow) => void;
@@ -73,6 +80,9 @@ export interface DAGState {
   setLayoutDirection: (dir: "TB" | "LR") => void;
   resetExecution: () => void;
   clearWorkflow: () => void;
+  toggleStageExpansion: (processId: string, stageId: string) => void;
+  setAutoExpandSubworkflows: (autoExpand: boolean) => void;
+  setChildWorkflow: (processId: string, parentStageId: string, childWorkflow: DAGWorkflow) => void;
 
   // Multi-process actions
   trackProcess: (id: string, label: string, workflow: DAGWorkflow) => void;
@@ -106,16 +116,42 @@ export const useDAGStore = create<DAGState>()((set, get) => ({
   layoutDirection: "TB",
   trackedProcesses: new Map(),
   activeProcessId: null,
+  expandedStages: new Set(),
+  autoExpandSubworkflows: false,
 
-  loadWorkflow: (workflow) => {
+  loadWorkflow: async (workflow) => {
+    // Pre-fetch child workflows for catalog viewing
+    const expandedStages = new Set<string>();
+    const stagesWithChildren = [...workflow.stages];
+
+    for (const stage of stagesWithChildren) {
+      if (stage.workflowRef && !stage.childWorkflow) {
+        try {
+          const { api } = await import("../lib/api");
+          // Extract the workflow name from the ref path, e.g. src/workflows/sub/simplemem-pipeline.json -> simplemem-pipeline
+          const refNameMatch = stage.workflowRef.match(/([^/]+)\.json$/);
+          if (refNameMatch) {
+            const res = await api.getWorkflow(refNameMatch[1]);
+            stage.childWorkflow = res.workflow as unknown as DAGWorkflow;
+            if (get().autoExpandSubworkflows) {
+              expandedStages.add(stage.id);
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to pre-fetch child workflow", stage.workflowRef, err);
+        }
+      }
+    }
+
     set({
-      workflow,
-      stageStatuses: buildPendingStatuses(workflow),
+      workflow: { ...workflow, stages: stagesWithChildren },
+      stageStatuses: buildPendingStatuses({ ...workflow, stages: stagesWithChildren }),
       executionState: "idle",
       selectedStageId: null,
       workflowId: null,
       totalDurationMs: null,
       activeProcessId: null,
+      expandedStages,
     });
   },
 
@@ -166,7 +202,52 @@ export const useDAGStore = create<DAGState>()((set, get) => ({
       workflowId: null,
       totalDurationMs: null,
       activeProcessId: null,
+      expandedStages: new Set(),
     }),
+
+  toggleStageExpansion: (processId, stageId) => {
+    // We prefix expandedStages with processId to isolate expansion state per process
+    const key = `${processId}:${stageId}`;
+    const expanded = new Set(get().expandedStages);
+    if (expanded.has(key)) {
+      expanded.delete(key);
+    } else {
+      expanded.add(key);
+    }
+    set({ expandedStages: expanded });
+  },
+
+  setAutoExpandSubworkflows: (autoExpandSubworkflows) => set({ autoExpandSubworkflows }),
+
+  setChildWorkflow: (processId, parentStageId, childWorkflow) => {
+    const processes = new Map(get().trackedProcesses);
+    const proc = processes.get(processId);
+    let targetWorkflow = proc?.workflow ?? get().workflow;
+    
+    if (targetWorkflow) {
+      const stages = [...targetWorkflow.stages];
+      const stageIdx = stages.findIndex((s) => s.id === parentStageId);
+      if (stageIdx !== -1) {
+        stages[stageIdx] = { ...stages[stageIdx], childWorkflow };
+        targetWorkflow = { ...targetWorkflow, stages };
+        
+        if (proc) {
+          processes.set(processId, { ...proc, workflow: targetWorkflow });
+          set({ trackedProcesses: processes });
+        }
+        
+        if (!proc || get().activeProcessId === processId) {
+          set({ workflow: targetWorkflow });
+          if (get().autoExpandSubworkflows) {
+            const key = `${processId}:${parentStageId}`;
+            const expanded = new Set(get().expandedStages);
+            expanded.add(key);
+            set({ expandedStages: expanded });
+          }
+        }
+      }
+    }
+  },
 
   // ---------------------------------------------------------------------------
   // Multi-process tracking

@@ -21,7 +21,10 @@ function makeEvent(type: StreamEvent["type"], overrides: Partial<StreamEvent> = 
       return { type, workflowId: "w1", error: "err", ...base } as StreamEvent;
     case "pattern:event":
       return { type, patternId: "test", eventName: "test:event", stageId: "s1", payload: {}, ...base } as StreamEvent;
+    case "subworkflow:expand":
+      return { type, parentStageId: "s1", childWorkflow: { name: "test", entry: "s1", stages: [] }, ...base } as unknown as StreamEvent;
   }
+  throw new Error(`Unhandled event type: ${type}`);
 }
 
 describe("WorkflowEventEmitter", () => {

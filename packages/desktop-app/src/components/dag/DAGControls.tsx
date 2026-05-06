@@ -20,7 +20,7 @@ interface Props {
 }
 
 export function DAGControls({ onRun, onReset, onFitView, onLoadWorkflow }: Props) {
-  const { workflow, executionState, layoutDirection, setLayoutDirection, totalDurationMs, stageStatuses } = useDAGStore();
+  const { workflow, executionState, layoutDirection, setLayoutDirection, totalDurationMs, stageStatuses, autoExpandSubworkflows, setAutoExpandSubworkflows } = useDAGStore();
 
   const completedCount = Array.from(stageStatuses.values()).filter((s) => s.status === "complete").length;
   const totalCount = stageStatuses.size;
@@ -53,6 +53,15 @@ export function DAGControls({ onRun, onReset, onFitView, onLoadWorkflow }: Props
         >
           ↺ Reset
         </button>
+
+        <label className="dag-ctrl-checkbox" title="Automatically expand sub-workflows when they start">
+          <input
+            type="checkbox"
+            checked={autoExpandSubworkflows}
+            onChange={(e) => setAutoExpandSubworkflows(e.target.checked)}
+          />
+          Auto-expand sub-workflows
+        </label>
       </div>
 
       <div className="dag-controls-center">

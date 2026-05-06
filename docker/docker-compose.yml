@@ -159,7 +159,10 @@ services:
       - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD:-memgraph}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FILE_PATH=${LOG_FILE_PATH:-logs/memflow.log}
       - PORT=${PORT:-3000}
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       memgraph-mage:
         condition: service_healthy

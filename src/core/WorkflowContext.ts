@@ -322,7 +322,12 @@ export class WorkflowContext {
         winston.format.json(),
       ),
       defaultMeta: { service: "memflow" },
-      transports: [new winston.transports.Console()],
+      transports: [
+        new winston.transports.Console(),
+        new winston.transports.File({
+          filename: process.env.LOG_FILE_PATH || "logs/memflow.log",
+        }),
+      ],
     });
   }
 }
