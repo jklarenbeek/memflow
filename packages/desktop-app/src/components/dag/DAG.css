@@ -93,4 +93,19 @@
 .dag-catalog-item:hover { background: var(--bg-hover); }
 .dag-catalog-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
 .dag-catalog-meta { font-size: 11px; color: var(--accent); margin-top: 2px; }
-.dag-catalog-desc { font-size: 12px; color: var(--text-secondary); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dag-catalog-desc { font-size: 12px; color: var(--text-secondary); margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+
+/* Workflow description in toolbar */
+.dag-wf-desc { font-size: 11px; color: var(--text-secondary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Process selector bar */
+.dag-process-bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--bg-secondary); border-top: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; }
+.dag-process-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+.dag-process-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s; font-family: var(--font-sans); font-size: 12px; white-space: nowrap; color: var(--text-primary); }
+.dag-process-btn:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+.dag-process-btn.active { background: var(--accent-dim); border-color: var(--accent); }
+.dag-process-btn.process-running { animation: nodePulse 2s ease-in-out infinite; }
+.dag-process-btn.process-complete .process-icon { color: var(--success); }
+.dag-process-btn.process-error .process-icon { color: var(--error); }
+.process-icon { font-size: 10px; flex-shrink: 0; }
+.process-name { font-weight: 500; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }

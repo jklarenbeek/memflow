@@ -5,10 +5,12 @@ import './DAG.css';
  * Renders the workflow stages as a directed acyclic graph using React Flow.
  * Features:
  *  - Auto-layout with dagre (TB/LR direction)
+ *  - Virtual Start / End label nodes for workflow boundaries
  *  - Real-time status updates via SSE during execution
  *  - Click-to-inspect stage details
  *  - Workflow loading from the catalog
  *  - Run workflow with streaming progress
+ *  - Multi-process selector bar for concurrent ingestion pipelines
  */
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -42,9 +44,23 @@ const nodeTypes = { stage: StageNode } as any;
 // Layout helper (simplified dagre-like layout without external dep)
 // ---------------------------------------------------------------------------
 
+/** Identifies terminal stages (no outgoing edges) */
+function findTerminalStages(workflow: DAGWorkflow): Set<string> {
+  const terminals = new Set<string>();
+  for (const stage of workflow.stages) {
+    const hasNext =
+      (typeof stage.next === "string" && stage.next.length > 0) ||
+      (Array.isArray(stage.next) && stage.next.length > 0) ||
+      (stage.next && typeof stage.next === "object" && !Array.isArray(stage.next) && Object.keys(stage.next).length > 0);
+    if (!hasNext) terminals.add(stage.id);
+  }
+  return terminals;
+}
+
 function layoutWorkflow(
   workflow: DAGWorkflow,
   direction: "TB" | "LR",
+  executionState: "idle" | "running" | "complete" | "error",
 ): { nodes: Node<StageNodeData>[]; edges: Edge[] } {
   const nodeWidth = 180;
   const nodeHeight = 90;
@@ -109,10 +125,53 @@ function layoutWorkflow(
 
   // Position nodes in layers
   const nodes: Node<StageNodeData>[] = [];
+  const terminalStages = findTerminalStages(workflow);
+
+  // ---------------------------------------------------------------------------
+  // Virtual "Start" node — placed before the first layer
+  // ---------------------------------------------------------------------------
+  const startNodeId = "__start__";
+  const startX = direction === "TB" ? 0 : -(nodeWidth + hGap);
+  const startY = direction === "TB" ? -(nodeHeight + vGap) : 0;
+
+  nodes.push({
+    id: startNodeId,
+    type: "default",
+    position: { x: startX - nodeWidth / 2, y: startY },
+    data: { label: "▶ Start" } as unknown as StageNodeData,
+    style: {
+      background: "var(--accent)",
+      color: "white",
+      border: "2px solid var(--accent)",
+      borderRadius: "24px",
+      padding: "8px 20px",
+      fontWeight: 700,
+      fontSize: "13px",
+      minWidth: "100px",
+      textAlign: "center" as const,
+      fontFamily: "var(--font-sans)",
+    },
+    selectable: false,
+    draggable: false,
+  });
+
+  // Edge from Start to entry stage
+  edges.push({
+    id: `${startNodeId}-${workflow.entry}`,
+    source: startNodeId,
+    target: workflow.entry,
+    type: "smoothstep",
+    animated: false,
+    style: { stroke: "var(--accent)", strokeWidth: 2, strokeDasharray: "6 3" },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Stage nodes — positioned in topological layers
+  // ---------------------------------------------------------------------------
   for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
     const layer = layers[layerIdx];
     const layerWidth = layer.length * (nodeWidth + hGap) - hGap;
-    const startX = -layerWidth / 2;
+    const startLayerX = -layerWidth / 2;
 
     for (let nodeIdx = 0; nodeIdx < layer.length; nodeIdx++) {
       const stageId = layer[nodeIdx];
@@ -120,11 +179,11 @@ function layoutWorkflow(
       if (!stage) continue;
 
       const x = direction === "TB"
-        ? startX + nodeIdx * (nodeWidth + hGap)
+        ? startLayerX + nodeIdx * (nodeWidth + hGap)
         : layerIdx * (nodeWidth + hGap);
       const y = direction === "TB"
         ? layerIdx * (nodeHeight + vGap)
-        : startX + nodeIdx * (nodeHeight + vGap);
+        : startLayerX + nodeIdx * (nodeHeight + vGap);
 
       nodes.push({
         id: stageId,
@@ -135,22 +194,85 @@ function layoutWorkflow(
           module: stage.module,
           status: "pending",
           isEntry: stageId === workflow.entry,
-          isTerminal: !stage.next || (typeof stage.next === "string" && !stage.next),
+          isTerminal: terminalStages.has(stageId),
         },
       });
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Virtual "End" node — placed after the last layer
+  // ---------------------------------------------------------------------------
+  const endNodeId = "__end__";
+  const lastLayerIdx = layers.length;
+  const endX = direction === "TB" ? 0 : lastLayerIdx * (nodeWidth + hGap);
+  const endY = direction === "TB" ? lastLayerIdx * (nodeHeight + vGap) : 0;
+  const isCompleted = executionState === "complete";
+
+  nodes.push({
+    id: endNodeId,
+    type: "default",
+    position: { x: endX - nodeWidth / 2, y: endY },
+    data: { label: isCompleted ? "✓ End" : "◻ End" } as unknown as StageNodeData,
+    style: {
+      background: isCompleted ? "var(--success)" : "var(--bg-tertiary)",
+      color: isCompleted ? "white" : "var(--text-muted)",
+      border: `2px solid ${isCompleted ? "var(--success)" : "var(--border)"}`,
+      borderRadius: "24px",
+      padding: "8px 20px",
+      fontWeight: 700,
+      fontSize: "13px",
+      minWidth: "100px",
+      textAlign: "center" as const,
+      fontFamily: "var(--font-sans)",
+      boxShadow: isCompleted ? "0 0 16px rgba(52, 211, 153, 0.3)" : "none",
+      transition: "all 0.3s ease",
+    },
+    selectable: false,
+    draggable: false,
+  });
+
+  // Edges from terminal stages to End
+  for (const termId of terminalStages) {
+    edges.push({
+      id: `${termId}-${endNodeId}`,
+      source: termId,
+      target: endNodeId,
+      type: "smoothstep",
+      animated: false,
+      style: {
+        stroke: isCompleted ? "var(--success)" : "var(--border)",
+        strokeWidth: 2,
+        strokeDasharray: "6 3",
+      },
+    });
   }
 
   return { nodes, edges };
 }
 
 // ---------------------------------------------------------------------------
+// Process status icon map
+// ---------------------------------------------------------------------------
+const PROCESS_STATUS_ICONS: Record<string, string> = {
+  running: "◉",
+  complete: "✓",
+  error: "✗",
+};
+
+// ---------------------------------------------------------------------------
 // WorkflowDAG Component
 // ---------------------------------------------------------------------------
 
 export function WorkflowDAG() {
-  const { workflow, stageStatuses, selectedStageId, layoutDirection } = useDAGStore();
-  const { loadWorkflow, setStageStatus, setExecutionState, setSelectedStage, setWorkflowId, setTotalDuration, resetExecution } = useDAGStore();
+  const {
+    workflow, stageStatuses, executionState, selectedStageId, layoutDirection,
+    trackedProcesses, activeProcessId,
+  } = useDAGStore();
+  const {
+    loadWorkflow, setStageStatus, setExecutionState, setSelectedStage,
+    setWorkflowId, setTotalDuration, resetExecution, setActiveProcess,
+  } = useDAGStore();
   const serverUrl = useAppStore((s) => s.serverUrl);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<StageNodeData>>([]);
@@ -159,24 +281,27 @@ export function WorkflowDAG() {
   const [workflows, setWorkflows] = useState<Array<{ name: string; version: string; description?: string; stages: unknown[] }>>([]);
   const reactFlowInstance = useReactFlow();
 
-  // Layout nodes when workflow or direction changes
+  // Layout nodes when workflow, direction, or executionState changes
   useEffect(() => {
     if (!workflow) {
       setNodes([]);
       setEdges([]);
       return;
     }
-    const layout = layoutWorkflow(workflow, layoutDirection);
+    const layout = layoutWorkflow(workflow, layoutDirection, executionState);
     setNodes(layout.nodes);
     setEdges(layout.edges);
     // Fit view after layout
     setTimeout(() => reactFlowInstance.fitView({ padding: 0.2 }), 50);
-  }, [workflow, layoutDirection, setNodes, setEdges, reactFlowInstance]);
+  }, [workflow, layoutDirection, executionState, setNodes, setEdges, reactFlowInstance]);
 
   // Update node data when stage statuses change
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => {
+        // Skip virtual Start/End nodes
+        if (node.id === "__start__" || node.id === "__end__") return node;
+
         const status = stageStatuses.get(node.id);
         if (!status) return node;
         return {
@@ -198,6 +323,26 @@ export function WorkflowDAG() {
   useEffect(() => {
     setEdges((eds) =>
       eds.map((edge) => {
+        // Skip edges from/to virtual nodes (Start → entry, terminal → End)
+        if (edge.source === "__start__") {
+          return {
+            ...edge,
+            style: { ...edge.style, stroke: "var(--accent)", strokeDasharray: "6 3" },
+          };
+        }
+        if (edge.target === "__end__") {
+          const sourceStatus = stageStatuses.get(edge.source);
+          const isSourceComplete = sourceStatus?.status === "complete";
+          return {
+            ...edge,
+            style: {
+              ...edge.style,
+              stroke: isSourceComplete ? "var(--success)" : "var(--border)",
+              strokeDasharray: "6 3",
+            },
+          };
+        }
+
         const sourceStatus = stageStatuses.get(edge.source);
         const isRunning = sourceStatus?.status === "running";
         const isComplete = sourceStatus?.status === "complete";
@@ -207,11 +352,33 @@ export function WorkflowDAG() {
           style: {
             ...edge.style,
             stroke: isComplete ? "var(--success)" : isRunning ? "var(--info)" : "var(--border)",
+            strokeDasharray: undefined,
           },
         };
       }),
     );
   }, [stageStatuses, setEdges]);
+
+  // Update End node styling when executionState changes
+  useEffect(() => {
+    const isCompleted = executionState === "complete";
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id !== "__end__") return node;
+        return {
+          ...node,
+          data: { label: isCompleted ? "✓ End" : "◻ End" } as unknown as StageNodeData,
+          style: {
+            ...node.style,
+            background: isCompleted ? "var(--success)" : "var(--bg-tertiary)",
+            color: isCompleted ? "white" : "var(--text-muted)",
+            border: `2px solid ${isCompleted ? "var(--success)" : "var(--border)"}`,
+            boxShadow: isCompleted ? "0 0 16px rgba(52, 211, 153, 0.3)" : "none",
+          },
+        };
+      }),
+    );
+  }, [executionState, setNodes]);
 
   // Load workflow catalog
   const handleLoadWorkflow = useCallback(async () => {
@@ -357,6 +524,9 @@ export function WorkflowDAG() {
   // Selected stage detail panel
   const selectedStage = selectedStageId ? stageStatuses.get(selectedStageId) : null;
 
+  // Tracked processes (for the process selector bar)
+  const processEntries = Array.from(trackedProcesses.values());
+
   return (
     <div className="dag-view">
       <DAGControls
@@ -382,6 +552,8 @@ export function WorkflowDAG() {
             <Controls showInteractive={false} />
             <MiniMap
               nodeColor={(n) => {
+                if (n.id === "__start__") return "var(--accent)";
+                if (n.id === "__end__") return executionState === "complete" ? "var(--success)" : "var(--bg-hover)";
                 const s = stageStatuses.get(n.id);
                 if (s?.status === "complete") return "var(--success)";
                 if (s?.status === "running") return "var(--info)";
@@ -405,6 +577,24 @@ export function WorkflowDAG() {
           </div>
         )}
       </div>
+
+      {/* Process selector bar — visible when tracking concurrent processes */}
+      {processEntries.length > 0 && (
+        <div className="dag-process-bar">
+          <span className="dag-process-label">Processes:</span>
+          {processEntries.map((proc) => (
+            <button
+              key={proc.id}
+              className={`dag-process-btn ${activeProcessId === proc.id ? "active" : ""} process-${proc.status}`}
+              onClick={() => setActiveProcess(proc.id)}
+              title={`${proc.label} — ${proc.status}`}
+            >
+              <span className="process-icon">{PROCESS_STATUS_ICONS[proc.status] ?? "○"}</span>
+              <span className="process-name">{proc.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Stage detail sidebar */}
       {selectedStage && (
@@ -467,7 +657,7 @@ export function WorkflowDAG() {
                       v{wf.version} · {Array.isArray(wf.stages) ? wf.stages.length : "?"} stages
                     </span>
                     {wf.description && (
-                      <span className="dag-catalog-desc">{wf.description}</span>
+                      <span className="dag-catalog-desc" title={wf.description}>{wf.description}</span>
                     )}
                   </button>
                 ))

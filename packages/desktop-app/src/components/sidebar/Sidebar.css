@@ -110,5 +110,5 @@
 .wf-header { display: flex; justify-content: space-between; align-items: center; }
 .wf-name { font-weight: 500; font-size: 13px; color: var(--text-primary); }
 .wf-version { font-size: 10px; color: var(--text-muted); }
-.wf-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
 .wf-stages { font-size: 10px; color: var(--accent); }

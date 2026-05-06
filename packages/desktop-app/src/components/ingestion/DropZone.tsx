@@ -14,8 +14,10 @@ import './Ingestion.css';
  */
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { v4 as uuidv4 } from "uuid";
-import { useIngestionStore } from "../../stores/ingestionStore";
+import { useIngestionStore, type IngestionFile } from "../../stores/ingestionStore";
 import { useAppStore } from "../../stores/appStore";
+import { useDAGStore } from "../../stores/dagStore";
+import type { DAGWorkflow } from "../../stores/dagStore";
 import { api } from "../../lib/api";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".md", ".txt", ".markdown"];
@@ -78,7 +80,19 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
         const res = await api.ingestFile(file, currentSolutionId, skipMemory);
 
         const totalStages = skipMemory ? 4 : 5; // parse→chunk→embed→index [→store]
-        updateFile(fileId, { status: "processing", progress: 50, currentStage: "Pipeline starting…" });
+
+        // Store workflow config on the ingestion file and register as tracked DAG process
+        const wfConfig = res.workflow as unknown as DAGWorkflow;
+        updateFile(fileId, {
+          status: "processing",
+          progress: 50,
+          currentStage: "Pipeline starting…",
+          workflow: wfConfig as IngestionFile["workflow"],
+          stageStatuses: Object.fromEntries(
+            (wfConfig.stages ?? []).map((s) => [s.id, { stageId: s.id, module: s.module, status: "pending" as const }]),
+          ),
+        });
+        useDAGStore.getState().trackProcess(fileId, file.name, wfConfig);
 
         // Now stream the workflow execution for real-time progress
         const streamRes = await fetch(api.getStreamUrl(), {
@@ -125,6 +139,11 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
                     progress: 50 + Math.round((stageCount / totalStages) * 40),
                     chunkProgress: undefined, // Reset chunk progress for new stage
                   });
+                  // Sync to DAG process tracker
+                  useDAGStore.getState().updateProcessStage(fileId, event.stageId as string, {
+                    status: "running",
+                    module: event.module as string,
+                  });
                   break;
 
                 case "stage:progress":
@@ -154,6 +173,13 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
                     chunkProgress: undefined,
                     currentStage: event.module ? `${event.module} ✓` : undefined,
                   });
+                  // Sync to DAG process tracker
+                  useDAGStore.getState().updateProcessStage(fileId, event.stageId as string, {
+                    status: "complete",
+                    durationMs: event.durationMs as number,
+                    preview: event.preview as string,
+                    metrics: event.metrics as Record<string, unknown>,
+                  });
                   break;
 
                 case "workflow:complete": {
@@ -181,6 +207,8 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
                     completedAt: new Date().toISOString(),
                     result: { chunks, entities, memories },
                   });
+                  // Mark DAG process as complete
+                  useDAGStore.getState().setProcessComplete(fileId);
                   break;
                 }
 
@@ -192,6 +220,8 @@ export function DropZone({ onFilesAdded }: DropZoneProps) {
                     currentStage: undefined,
                     chunkProgress: undefined,
                   });
+                  // Mark DAG process as error
+                  useDAGStore.getState().setProcessError(fileId);
                   break;
 
                 case "keepalive":

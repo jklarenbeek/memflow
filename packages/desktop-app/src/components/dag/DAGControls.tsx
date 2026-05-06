@@ -60,6 +60,11 @@ export function DAGControls({ onRun, onReset, onFitView, onLoadWorkflow }: Props
           <div className="dag-workflow-info">
             <span className="dag-wf-name">{workflow.name}</span>
             <span className="dag-wf-version">v{workflow.version}</span>
+            {workflow.description && (
+              <span className="dag-wf-desc" title={workflow.description}>
+                {workflow.description}
+              </span>
+            )}
             {executionState !== "idle" && (
               <span className="dag-wf-progress">
                 <StageStatusBadge status={executionState === "running" ? "running" : executionState === "complete" ? "complete" : "error"} />

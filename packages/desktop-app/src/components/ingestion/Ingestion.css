@@ -61,3 +61,8 @@
 .chunk-progress-label { font-size: 9px; font-weight: 600; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
 .chunk-failed { color: var(--warning, #f59e0b); }
 .file-elapsed { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+
+/* View in DAG button */
+.file-dag-btn { display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: var(--accent-dim); border: 1px solid var(--accent); border-radius: var(--radius-sm); cursor: pointer; color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; transition: all 0.2s; opacity: 0; flex-shrink: 0; font-family: var(--font-sans); }
+.file-row:hover .file-dag-btn { opacity: 1; }
+.file-dag-btn:hover { background: var(--accent); color: white; }

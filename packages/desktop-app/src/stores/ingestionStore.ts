@@ -3,9 +3,11 @@
  *
  * Manages the file ingestion queue with per-file status tracking.
  * Persisted via Zustand to survive tab switches.
+ * Automatically cleans up tracked DAG processes when files are removed.
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useDAGStore } from "./dagStore";
 
 export interface IngestionFile {
   id: string;
@@ -21,6 +23,27 @@ export interface IngestionFile {
   error?: string;
   startedAt?: string;
   completedAt?: string;
+  /** The workflow config for this ingestion run (set after /ingest response) */
+  workflow?: {
+    name: string;
+    version: string;
+    entry: string;
+    stages: Array<{
+      id: string;
+      module: string;
+      config: Record<string, unknown>;
+      next?: string | null;
+    }>;
+  };
+  /** Per-stage execution statuses (serialisable mirror of DAGStageStatus) */
+  stageStatuses?: Record<string, {
+    stageId: string;
+    module: string;
+    status: "pending" | "running" | "complete" | "error";
+    durationMs?: number;
+    error?: string;
+    preview?: string;
+  }>;
 }
 
 export interface IngestionState {
@@ -52,10 +75,20 @@ export const useIngestionStore = create<IngestionState>()(
       },
 
       removeFile: (id) => {
+        // Auto-cleanup the tracked DAG process
+        useDAGStore.getState().removeProcess(id);
         set((s) => ({ files: s.files.filter((f) => f.id !== id) }));
       },
 
       clearCompleted: () => {
+        // Auto-cleanup tracked DAG processes for completed/errored files
+        const { files } = get();
+        const removeProcess = useDAGStore.getState().removeProcess;
+        files.forEach((f) => {
+          if (f.status === "complete" || f.status === "error") {
+            removeProcess(f.id);
+          }
+        });
         set((s) => ({
           files: s.files.filter((f) => f.status !== "complete" && f.status !== "error"),
         }));

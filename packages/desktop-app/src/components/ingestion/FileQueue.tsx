@@ -4,8 +4,11 @@ import './Ingestion.css';
  *
  * Shows each file in the ingestion queue with status, progress bar,
  * current pipeline stage, chunk-level sub-progress, and remove/clear actions.
+ * Each file with a workflow can navigate to the DAG Runner for live visualization.
  */
 import { useIngestionStore, type IngestionFile } from "../../stores/ingestionStore";
+import { useAppStore } from "../../stores/appStore";
+import { useDAGStore } from "../../stores/dagStore";
 import { formatFileSize } from "./DropZone";
 
 const STATUS_ICONS: Record<string, string> = {
@@ -61,10 +64,22 @@ function ChunkProgressBar({ file }: { file: IngestionFile }) {
 
 export function FileQueue() {
   const { files, removeFile, clearCompleted } = useIngestionStore();
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const setActiveProcess = useDAGStore((s) => s.setActiveProcess);
 
   if (files.length === 0) return null;
 
   const hasCompleted = files.some((f) => f.status === "complete" || f.status === "error");
+
+  /** Navigate to DAG Runner showing this file's workflow */
+  const handleViewInDAG = (file: IngestionFile) => {
+    setActiveProcess(file.id);
+    setActiveTab("dag");
+  };
+
+  /** Whether the "View in DAG" button should be shown */
+  const canViewInDAG = (file: IngestionFile) =>
+    !!file.workflow && file.status !== "queued" && file.status !== "uploading";
 
   return (
     <div className="file-queue">
@@ -121,6 +136,17 @@ export function FileQueue() {
             {STATUS_ICONS[file.status]} {file.status}
           </span>
 
+          {/* View in DAG Runner button */}
+          {canViewInDAG(file) && (
+            <button
+              className="file-dag-btn"
+              onClick={() => handleViewInDAG(file)}
+              title="View workflow in DAG Runner"
+            >
+              🔀 DAG
+            </button>
+          )}
+
           <button
             className="file-remove-btn"
             onClick={() => removeFile(file.id)}
@@ -133,3 +159,4 @@ export function FileQueue() {
     </div>
   );
 }
+
